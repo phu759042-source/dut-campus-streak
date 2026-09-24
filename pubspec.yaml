@@ -37,6 +37,8 @@ dependencies:
   camera: ^0.12.1
   supabase_flutter: ^2.17.2
   image_picker: ^1.2.3
+  flutter_local_notifications: ^22.3.1
+  timezone: ^0.11.1
 
 dev_dependencies:
   flutter_test:
@@ -49,7 +51,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-  
+
 flutter_launcher_icons:
   android: true
   ios: false
@@ -60,6 +62,8 @@ flutter_launcher_icons:
 
 # The following section is specific to Flutter packages.
 flutter:
+  assets:
+    - assets/icon/dut_campus_streak.png
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

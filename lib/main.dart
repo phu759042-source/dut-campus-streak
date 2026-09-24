@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,10 +16,121 @@ Future<void> main() async {
     anonKey: 'sb_publishable_i7IHac8LyrXoG3aiLDlS7A_1Vua8h8l',
   );
 
+  await NotificationService.initialize();
+
   runApp(const DUTCampusStreakApp());
 }
 
 final supabase = Supabase.instance.client;
+
+final FlutterLocalNotificationsPlugin localNotifications =
+    FlutterLocalNotificationsPlugin();
+
+class NotificationService {
+  static const String _channelId = 'class_reminders';
+  static const String _channelName = 'Nhắc lịch học';
+  static const String _channelDescription =
+      'Nhắc trước 10 phút khi tiết học sắp bắt đầu.';
+
+  static Future<void> initialize() async {
+    tz.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation('Asia/Ho_Chi_Minh'));
+
+    const settings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
+
+    await localNotifications.initialize(
+      settings: settings,
+    );
+
+    final android = localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    await android?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _channelId,
+        _channelName,
+        description: _channelDescription,
+        importance: Importance.high,
+      ),
+    );
+
+    await android?.requestNotificationsPermission();
+  }
+
+  static int _notificationId(String classId) {
+    var hash = 0;
+    for (final codeUnit in classId.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x7fffffff;
+    }
+    return hash;
+  }
+
+  static Future<void> syncSchedule(
+    List<ClassSession> classes,
+  ) async {
+    await localNotifications.cancelAll();
+
+    for (final classSession in classes) {
+      final parts = classSession.startTime.split(':');
+
+      if (classSession.id.isEmpty ||
+          parts.length < 2 ||
+          classSession.dayOfWeek < 1 ||
+          classSession.dayOfWeek > 7) {
+        continue;
+      }
+
+      final hour = int.tryParse(parts[0]);
+      final minute = int.tryParse(parts[1]);
+      if (hour == null || minute == null) continue;
+
+      final now = tz.TZDateTime.now(tz.local);
+
+      var scheduled = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        hour,
+        minute,
+      ).subtract(const Duration(minutes: 10));
+
+      final daysUntil =
+          (classSession.dayOfWeek - now.weekday + 7) % 7;
+
+      scheduled = scheduled.add(Duration(days: daysUntil));
+
+      if (!scheduled.isAfter(now)) {
+        scheduled = scheduled.add(const Duration(days: 7));
+      }
+
+      await localNotifications.zonedSchedule(
+        id: _notificationId(classSession.id),
+        title: 'Sắp đến giờ học',
+        body: 'Tiết học sẽ bắt đầu lúc ${classSession.startTime} '
+            'tại phòng ${classSession.room}.',
+        scheduledDate: scheduled,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId,
+            _channelName,
+            channelDescription: _channelDescription,
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+        androidScheduleMode:
+            AndroidScheduleMode.inexactAllowWhileIdle,
+        matchDateTimeComponents:
+            DateTimeComponents.dayOfWeekAndTime,
+      );
+    }
+  }
+}
+
 
 // ============================================================
 // APP
@@ -47,8 +161,6 @@ class DUTCampusStreakApp extends StatelessWidget {
 
 class ClassSession {
   final String id;
-  final String subjectId;
-  final String subjectCode;
   final String subject;
   final String room;
   final String startTime;
@@ -62,8 +174,6 @@ class ClassSession {
 
   ClassSession({
     required this.id,
-    required this.subjectId,
-    required this.subjectCode,
     required this.subject,
     required this.room,
     required this.startTime,
@@ -74,6 +184,29 @@ class ClassSession {
   });
 
   String get time => '$startTime – $endTime';
+
+  bool get isCheckInExcluded {
+    final normalizedRoom = room.trim().toUpperCase();
+    final normalizedSubject = subject.trim().toUpperCase();
+
+    return normalizedRoom == 'MSTEAM' ||
+        normalizedSubject.contains('GDTC');
+  }
+
+  ClassSession copyWith({
+    bool? completed,
+  }) {
+    return ClassSession(
+      id: id,
+      subject: subject,
+      room: room,
+      startTime: startTime,
+      endTime: endTime,
+      teacher: teacher,
+      dayOfWeek: dayOfWeek,
+      completed: completed ?? this.completed,
+    );
+  }
 
   factory ClassSession.fromMap(Map<String, dynamic> map) {
     final rawSubject = map['subjects'];
@@ -86,8 +219,6 @@ class ClassSession {
 
     return ClassSession(
       id: map['id']?.toString() ?? '',
-      subjectId: subjectMap?['id']?.toString() ?? map['subject_id']?.toString() ?? '',
-      subjectCode: subjectMap?['subject_code']?.toString() ?? '',
       subject:
           subjectMap?['name']?.toString() ?? 'Không có tên môn',
       room: map['room']?.toString() ?? '',
@@ -267,14 +398,8 @@ class _LoginScreenState extends State<LoginScreen> {
       TextEditingController();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
   String? _errorMessage;
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
@@ -344,210 +469,367 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF4FF),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                Container(
-                  width: 90,
-                  height: 90,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF075FD8),
+              Color(0xFF083BC5),
+              Color(0xFF071C8E),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              // Decorative circles inspired by the supplied DUT reference.
+              Positioned(
+                top: -90,
+                right: -70,
+                child: Container(
+                  width: 220,
+                  height: 220,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF005BAC),
-                    borderRadius:
-                        BorderRadius.circular(24),
-                  ),
-                  child: const Icon(
-                    Icons.school_rounded,
-                    color: Colors.white,
-                    size: 48,
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.06),
                   ),
                 ),
-
-                const SizedBox(height: 24),
-
-                const Text(
-                  'DUT Campus Streak',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF005BAC),
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                const Text(
-                  'Học đều mỗi ngày – Giữ vững streak',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.black54,
-                  ),
-                ),
-
-                const SizedBox(height: 40),
-
-                Container(
-                  padding: const EdgeInsets.all(24),
+              ),
+              Positioned(
+                bottom: -80,
+                left: -60,
+                child: Container(
+                  width: 220,
+                  height: 220,
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color:
-                            Colors.black.withOpacity(0.08),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.05),
+                  ),
+                ),
+              ),
+
+              SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(24, 34, 24, 28),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: size.height - 70,
                   ),
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'Đăng nhập',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const SizedBox(height: 12),
 
-                      const SizedBox(height: 20),
-
-                      TextField(
-                        controller: _emailController,
-                        keyboardType:
-                            TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          labelText: 'Email',
-                          hintText:
-                              'Nhập email của bạn',
-                          prefixIcon: const Icon(
-                            Icons.email_outlined,
+                      // App mark.
+                      Container(
+                        width: 104,
+                        height: 104,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.22),
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(14),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: Image.asset(
+                            'assets/icon/dut_campus_streak.png',
+                            fit: BoxFit.cover,
                           ),
                         ),
                       ),
-
-                      const SizedBox(height: 16),
-
-                      TextField(
-                        controller:
-                            _passwordController,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          labelText: 'Mật khẩu',
-                          prefixIcon: const Icon(
-                            Icons.lock_outline,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      if (_errorMessage != null)
-                        Container(
-                          padding:
-                              const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red
-                                .withOpacity(0.08),
-                            borderRadius:
-                                BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            _errorMessage!,
-                            style: const TextStyle(
-                              color: Colors.red,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
 
                       const SizedBox(height: 24),
 
-                      SizedBox(
-                        height: 52,
-                        child: FilledButton(
-                          onPressed:
-                              _isLoading ? null : _login,
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child:
-                                      CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Đăng nhập',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight:
-                                        FontWeight.bold,
-                                  ),
-                                ),
+                      const Text(
+                        'Welcome to',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
 
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 4),
 
-                      OutlinedButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const SignUpScreen(),
-                                  ),
-                                );
-                              },
-                        child: const Text('Tạo tài khoản mới'),
+                      const Text(
+                        'DUT Campus Streak',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
                       ),
 
                       const SizedBox(height: 12),
 
                       const Text(
-                        'Mật khẩu được Supabase Auth quản lý.',
+                        'Check-in đúng giờ • Giữ streak • Theo dõi hành trình học tập',
                         textAlign: TextAlign.center,
                         style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          height: 1.45,
+                        ),
+                      ),
+
+                      const SizedBox(height: 34),
+
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(28),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.18),
+                              blurRadius: 30,
+                              offset: const Offset(0, 14),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Đăng nhập',
+                              style: TextStyle(
+                                color: Color(0xFF12315C),
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+
+                            const SizedBox(height: 6),
+
+                            const Text(
+                              'Sử dụng tài khoản đã đăng ký để tiếp tục.',
+                              style: TextStyle(
+                                color: Colors.black54,
+                                fontSize: 13,
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            TextField(
+                              controller: _emailController,
+                              keyboardType:
+                                  TextInputType.emailAddress,
+                              decoration: InputDecoration(
+                                labelText: 'Email',
+                                hintText: 'you@example.com',
+                                prefixIcon: const Icon(
+                                  Icons.mail_outline_rounded,
+                                ),
+                                filled: true,
+                                fillColor:
+                                    const Color(0xFFF4F7FB),
+                                border: OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(16),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF0B63D8),
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            TextField(
+                              controller: _passwordController,
+                              obscureText: _obscurePassword,
+                              decoration: InputDecoration(
+                                labelText: 'Mật khẩu',
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline_rounded,
+                                ),
+                                suffixIcon: IconButton(
+                                  tooltip: _obscurePassword
+                                      ? 'Hiện mật khẩu'
+                                      : 'Ẩn mật khẩu',
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword =
+                                          !_obscurePassword;
+                                    });
+                                  },
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                  ),
+                                ),
+                                filled: true,
+                                fillColor:
+                                    const Color(0xFFF4F7FB),
+                                border: OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(16),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(16),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF0B63D8),
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            if (_errorMessage != null) ...[
+                              const SizedBox(height: 14),
+                              Container(
+                                padding:
+                                    const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color:
+                                      Colors.red.withOpacity(0.07),
+                                  borderRadius:
+                                      BorderRadius.circular(14),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(
+                                      Icons.error_outline_rounded,
+                                      color: Colors.red,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _errorMessage!,
+                                        style: const TextStyle(
+                                          color: Colors.red,
+                                          fontSize: 13,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+
+                            const SizedBox(height: 20),
+
+                            SizedBox(
+                              height: 54,
+                              child: FilledButton(
+                                onPressed:
+                                    _isLoading ? null : _login,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      const Color(0xFF075FD8),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child:
+                                            CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Đăng nhập',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight:
+                                              FontWeight.w800,
+                                        ),
+                                      ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            OutlinedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const SignUpScreen(),
+                                        ),
+                                      );
+                                    },
+                              style: OutlinedButton.styleFrom(
+                                minimumSize:
+                                    const Size.fromHeight(50),
+                                side: const BorderSide(
+                                  color: Color(0xFFB9C8DC),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text(
+                                'Tạo tài khoản mới',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF174D91),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      const Text(
+                        'DUT Campus Streak',
+                        style: TextStyle(
+                          color: Colors.white54,
                           fontSize: 12,
-                          color: Colors.grey,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
-
-// ============================================================
-// SIGN UP
-// ============================================================
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -1071,6 +1353,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 if (!mounted) return;
 
+                // Mất focus trước khi đóng dialog để tránh lỗi
+                // '_dependents.isEmpty' khi TextField đang active.
+                FocusManager.instance.primaryFocus?.unfocus();
                 Navigator.of(dialogContext).pop(true);
               } on AuthException catch (e) {
                 setDialogState(() {
@@ -1150,7 +1435,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 TextButton(
                   onPressed: changing
                       ? null
-                      : () => Navigator.of(dialogContext).pop(false),
+                      : () {
+                          // Đảm bảo TextField mất focus trước khi
+                          // route của dialog bị tháo khỏi widget tree.
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          Navigator.of(dialogContext).pop(false);
+                        },
                   child: const Text('Hủy'),
                 ),
                 FilledButton(
@@ -1173,8 +1463,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
     );
 
-    newPasswordController.dispose();
-    confirmPasswordController.dispose();
+    // Không dispose controller ngay tại đây. showDialog() vừa trả về
+    // nhưng route/TextField có thể chưa teardown xong.
+    // Dispose sau frame kế tiếp để tránh lỗi Flutter:
+    // '_dependents.isEmpty': is not true.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      newPasswordController.dispose();
+      confirmPasswordController.dispose();
+    });
 
     if (result == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1537,19 +1833,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final classData = await supabase
         .from('class_sessions')
-        .select('id, day_of_week, subjects!inner(subject_code)')
+        .select('''
+          id,
+          day_of_week,
+          room,
+          subjects (
+            name,
+            subject_code
+          )
+        ''')
         .eq('user_id', user.id);
 
     final classes = (classData as List)
         .map((row) => Map<String, dynamic>.from(row))
-        .where((row) {
-          final subject = row['subjects'];
-          final code = subject is Map ? subject['subject_code']?.toString() : null;
-          return code != '0130011.2610.26.17';
+        .where((classItem) {
+          final room = classItem['room']?.toString() ?? '';
+          final subjectData = classItem['subjects'];
+          final subjectName = subjectData is Map
+              ? subjectData['name']?.toString() ?? ''
+              : '';
+
+          return room.trim().toUpperCase() != 'MSTEAM' &&
+              !subjectName.toUpperCase().contains('GDTC');
         })
         .toList();
 
-    // Nếu user chưa có lịch học
+    // Nếu user chưa có lịch học sau khi loại các lớp
+    // không yêu cầu Check-in.
     if (classes.isEmpty) {
       return 0;
     }
@@ -1907,19 +2217,1075 @@ Future<void> _loadStreakData() async {
         throw Exception('Chưa đăng nhập.');
       }
 
-      // Dart:
-      // 1 = Thứ Hai
-      // 2 = Thứ Ba
-      // 3 = Thứ Tư
-      // ...
-      // 7 = Chủ Nhật
       final today = DateTime.now().weekday;
 
       final data = await supabase
           .from('class_sessions')
           .select('''
             id,
-            subject_id,
+            room,
+            start_time,
+            end_time,
+            teacher,
+            day_of_week,
+            subjects (
+              name,
+              subject_code,
+              teacher
+            )
+          ''')
+          .eq('user_id', user.id)
+          .eq('day_of_week', today)
+          .order('start_time');
+
+      final rawClasses = (data as List)
+          .map(
+            (item) => ClassSession.fromMap(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList();
+
+      // Đồng bộ nhắc lịch học trên điện thoại.
+      // MSTEAM/GDTC vẫn được nhắc vì đây vẫn là tiết học thật.
+      await NotificationService.syncSchedule(rawClasses);
+
+      // Đồng bộ trạng thái đã VERIFIED hôm nay.
+      final now = DateTime.now();
+      final startOfToday = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      );
+      final startOfTomorrow =
+          startOfToday.add(const Duration(days: 1));
+
+      final checkInData = await supabase
+          .from('check_ins')
+          .select('class_session_id')
+          .eq('user_id', user.id)
+          .eq('verification_status', 'verified')
+          .gte(
+            'checked_in_at',
+            startOfToday.toUtc().toIso8601String(),
+          )
+          .lt(
+            'checked_in_at',
+            startOfTomorrow.toUtc().toIso8601String(),
+          );
+
+      final verifiedTodayIds = (checkInData as List)
+          .map(
+            (row) => row['class_session_id']?.toString(),
+          )
+          .whereType<String>()
+          .toSet();
+
+      final classes = rawClasses
+          .map(
+            (item) => item.copyWith(
+              completed:
+                  !item.isCheckInExcluded &&
+                  verifiedTodayIds.contains(item.id),
+            ),
+          )
+          .toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        todayClasses = classes;
+        isLoadingClasses = false;
+        classError = null;
+      });
+
+      debugPrint(
+        'Loaded ${classes.length} classes for weekday $today. '
+        'Verified today: ${verifiedTodayIds.length}',
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingClasses = false;
+        classError = e.toString();
+      });
+
+      debugPrint('Load classes error: $e');
+    }
+  }
+
+  // ==========================================================
+  // BUILD CLASS LIST
+  // ==========================================================
+
+  Widget _buildTodayClasses() {
+    if (isLoadingClasses) {
+      return const Padding(
+        padding: EdgeInsets.all(28),
+        child: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (classError != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Không thể tải lịch học.',
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              classError!,
+              style: const TextStyle(
+                color: Colors.red,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton(
+              onPressed: _loadTodayClasses,
+              child: const Text('Thử lại'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (todayClasses.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 28,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: const Column(
+          children: [
+            Icon(
+              Icons.event_available_rounded,
+              size: 42,
+              color: Color(0xFF2876C7),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Hôm nay không có lịch học.',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: todayClasses.map((classSession) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () async {
+                if (classSession.isCheckInExcluded) {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Không cần Check-in'),
+                      content: Text(
+                        '${classSession.subject} chỉ hiển thị '
+                        'để bạn theo dõi lịch học.\n\n'
+                        'Môn này không tính vào Check-in và streak.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Đã hiểu'),
+                        ),
+                      ],
+                    ),
+                  );
+                } else {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MissionScreen(
+                        classSession: classSession,
+                      ),
+                    ),
+                  );
+                }
+
+                // Check-in success quay về Home bằng popUntil.
+                // Cập nhật card ngay mà không cần mở lại app.
+                if (!mounted) return;
+                await _loadTodayClasses();
+                await _loadStreakData();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    // Giữ nguyên logo/mốc nhận diện bên trái.
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF4FF),
+                        borderRadius:
+                            BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.school_rounded,
+                        color: Color(0xFF005BAC),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            classSession.subject,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${classSession.time} • ${classSession.room}',
+                            style: const TextStyle(
+                              color: Colors.black54,
+                              fontSize: 13,
+                            ),
+                          ),
+                          if (classSession.teacher.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              classSession.teacher,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.black45,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    if (classSession.isCheckInExcluded)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'Không Check-in',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      )
+                    else if (classSession.completed)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 6),
+                        child: Icon(
+                          Icons.check_circle_rounded,
+                          color: Colors.green,
+                          size: 23,
+                        ),
+                      ),
+
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.black38,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // ==========================================================
+  // BUILD
+  // ==========================================================
+
+  Widget _menuTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: SizedBox(
+          height: 128,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 34,
+                  color: const Color(0xFF2474BE),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF2469A9),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _weekdayLabel(int weekday) {
+    const names = [
+      'Thứ Hai',
+      'Thứ Ba',
+      'Thứ Tư',
+      'Thứ Năm',
+      'Thứ Sáu',
+      'Thứ Bảy',
+      'Chủ Nhật',
+    ];
+    return names[(weekday - 1).clamp(0, 6)];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoadingProfile) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (profileError != null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFEAF4FF),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.cloud_off_rounded,
+                  size: 52,
+                  color: Color(0xFF005BAC),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Không thể tải thông tin sinh viên.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  profileError!,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: _loadProfile,
+                  child: const Text('Thử lại'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final displayName =
+        profile?['display_name'] ??
+        profile?['name'] ??
+        'Sinh viên';
+
+    final avatarUrl =
+        profile?['avatar_url']?.toString();
+
+    final studentCode =
+        profile?['student_code'] ?? '';
+
+    final className =
+        profile?['class_name'] ?? '';
+
+    final now = DateTime.now();
+    final weekday = _weekdayLabel(now.weekday);
+    final monthName = now.month.toString();
+    final dayNumber = now.day.toString();
+
+    final nextClass =
+        todayClasses.isEmpty ? null : todayClasses.first;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFEAF4FF),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+          child: Container(
+            height: 62,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(32),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF4FF),
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: const Icon(
+                      Icons.home_rounded,
+                      color: Color(0xFF2474BE),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ProfileScreen(),
+                        ),
+                      );
+                      if (mounted) {
+                        await _loadProfile();
+                      }
+                    },
+                    child: const Icon(
+                      Icons.person_outline_rounded,
+                      color: Colors.black45,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await Future.wait([
+              _loadProfile(),
+              _loadTodayClasses(),
+              _loadStreakData(),
+            ]);
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    14,
+                    16,
+                    8,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF1877C9),
+                          Color(0xFF0756A9),
+                        ],
+                      ),
+                      borderRadius:
+                          BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF005BAC)
+                              .withOpacity(0.22),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        InkWell(
+                          borderRadius:
+                              BorderRadius.circular(30),
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const ProfileScreen(),
+                              ),
+                            );
+                            if (mounted) {
+                              await _loadProfile();
+                            }
+                          },
+                          child: CircleAvatar(
+                            radius: 27,
+                            backgroundColor: Colors.white,
+                            backgroundImage:
+                                avatarUrl != null &&
+                                        avatarUrl!.isNotEmpty
+                                    ? NetworkImage(
+                                        avatarUrl!,
+                                      )
+                                    : null,
+                            child: avatarUrl == null ||
+                                    avatarUrl!.isEmpty
+                                ? const Icon(
+                                    Icons.person_rounded,
+                                    color: Color(0xFF6E7F95),
+                                    size: 30,
+                                  )
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                displayName.toString(),
+                                maxLines: 1,
+                                overflow:
+                                    TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 19,
+                                  fontWeight:
+                                      FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                (profile?['email']?.toString().trim().isNotEmpty == true)
+                                    ? profile!['email'].toString()
+                                    : (studentCode.toString().isEmpty
+                                        ? className.toString()
+                                        : '$studentCode${className.toString().isEmpty ? '' : ' • $className'}'),
+                                maxLines: 1,
+                                overflow:
+                                    TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Colors.white
+                                .withOpacity(0.14),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.notifications_none_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Date + next class card.
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    10,
+                    16,
+                    8,
+                  ),
+                  child: Container(
+                    height: 152,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius:
+                          BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black
+                              .withOpacity(0.05),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 112,
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.fromLTRB(
+                              20,
+                              18,
+                              12,
+                              18,
+                            ),
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  weekday,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight:
+                                        FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  'Tháng $monthName',
+                                  style: const TextStyle(
+                                    color: Colors.black45,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  dayNumber,
+                                  style: const TextStyle(
+                                    color:
+                                        Color(0xFF2474BE),
+                                    fontSize: 42,
+                                    height: 0.95,
+                                    fontWeight:
+                                        FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Container(
+                          width: 1,
+                          margin: const EdgeInsets.symmetric(
+                            vertical: 20,
+                          ),
+                          color: const Color(0xFFE3E8EF),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.all(18),
+                            child: nextClass == null
+                                ? const Column(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Không có lớp hôm nay',
+                                        style: TextStyle(
+                                          fontSize: 17,
+                                          fontWeight:
+                                              FontWeight.w800,
+                                        ),
+                                      ),
+                                      SizedBox(height: 6),
+                                      Text(
+                                        'Bạn có thể nghỉ ngơi hoặc xem lịch học.',
+                                        style: TextStyle(
+                                          color: Colors.black45,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        nextClass.subject,
+                                        maxLines: 1,
+                                        overflow:
+                                            TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 17,
+                                          fontWeight:
+                                              FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 7),
+                                      Text(
+                                        nextClass.time,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Phòng ${nextClass.room}',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.black45,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Lịch học hôm nay.
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    10,
+                    16,
+                    4,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Lịch học hôm nay',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildTodayClasses(),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Streak summary.
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    10,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 15,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF005BAC),
+                      borderRadius:
+                          BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.local_fire_department_rounded,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Streak hiện tại',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '$streak ngày',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 21,
+                                  fontWeight:
+                                      FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          streak == 0
+                              ? 'Bắt đầu ngay'
+                              : 'Tiếp tục nhé!',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    10,
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Truy cập nhanh',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const ScheduleScreen(),
+                            ),
+                          );
+                        },
+                        child: const Text('Lịch học'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  10,
+                ),
+                sliver: SliverGrid(
+                  delegate: SliverChildListDelegate([
+                    _menuTile(
+                      icon: Icons.calendar_month_rounded,
+                      title: 'Thời khóa biểu',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const ScheduleScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _menuTile(
+                      icon: Icons.leaderboard_rounded,
+                      title: 'Xếp hạng',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const LeaderboardScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _menuTile(
+                      icon: Icons.emoji_events_rounded,
+                      title: 'Thành tích',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const AchievementsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _menuTile(
+                      icon: Icons.camera_alt_rounded,
+                      title: 'Check-in hôm nay',
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const TodayCheckInsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ]),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 1.12,
+                  ),
+                ),
+              ),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    24,
+                  ),
+                  child: Text(
+                    'DUT Campus Streak • Học đều mỗi ngày',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.black38,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+}
+
+// ============================================================
+// TODAY CHECK-INS
+// ============================================================
+
+class TodayCheckInsScreen extends StatefulWidget {
+  const TodayCheckInsScreen({super.key});
+
+  @override
+  State<TodayCheckInsScreen> createState() =>
+      _TodayCheckInsScreenState();
+}
+
+class _TodayCheckInsScreenState
+    extends State<TodayCheckInsScreen> {
+  List<ClassSession> checkedInClasses = [];
+  bool isLoading = true;
+  String? errorMessage;
+  bool hasClassesToday = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCheckedInToday();
+  }
+
+  Future<void> _loadCheckedInToday() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('Chưa đăng nhập.');
+      }
+
+      final today = DateTime.now().weekday;
+
+      final data = await supabase
+          .from('class_sessions')
+          .select('''
+            id,
             room,
             start_time,
             end_time,
@@ -1943,490 +3309,301 @@ Future<void> _loadStreakData() async {
           )
           .toList();
 
+      final now = DateTime.now();
+      final startOfToday = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      );
+      final startOfTomorrow =
+          startOfToday.add(const Duration(days: 1));
+
+      final checkInData = await supabase
+          .from('check_ins')
+          .select('class_session_id')
+          .eq('user_id', user.id)
+          .eq('verification_status', 'verified')
+          .gte(
+            'checked_in_at',
+            startOfToday.toUtc().toIso8601String(),
+          )
+          .lt(
+            'checked_in_at',
+            startOfTomorrow.toUtc().toIso8601String(),
+          );
+
+      final verifiedIds = (checkInData as List)
+          .map(
+            (row) => row['class_session_id']?.toString(),
+          )
+          .whereType<String>()
+          .toSet();
+
+      final result = classes
+          .where((item) => verifiedIds.contains(item.id))
+          .map((item) => item.copyWith(completed: true))
+          .toList();
+
       if (!mounted) return;
 
       setState(() {
-        todayClasses = classes;
-        isLoadingClasses = false;
-        classError = null;
+        hasClassesToday = classes.isNotEmpty;
+        checkedInClasses = result;
+        isLoading = false;
+        errorMessage = null;
       });
-
-      debugPrint(
-        'Loaded ${classes.length} classes for weekday $today',
-      );
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
-        isLoadingClasses = false;
-        classError = e.toString();
+        isLoading = false;
+        errorMessage = e.toString();
       });
 
-      debugPrint(
-        'Load classes error: $e',
-      );
+      debugPrint('Load today check-ins error: $e');
     }
   }
 
-  // ==========================================================
-  // BUILD CLASS LIST
-  // ==========================================================
+  Widget _buildContent() {
+    if (isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
 
-  Widget _buildTodayClasses() {
-    if (isLoadingClasses) {
+    if (errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 46,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Không thể tải dữ liệu Check-in.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black54,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton(
+                onPressed: _loadCheckedInToday,
+                child: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!hasClassesToday) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    if (classError != null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.08),
-          borderRadius:
-              BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Không thể tải lịch học.',
-              style: TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              classError!,
-              style: const TextStyle(
-                color: Colors.red,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: _loadTodayClasses,
-              child: const Text('Thử lại'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (todayClasses.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius:
-              BorderRadius.circular(16),
-        ),
-        child: const Text(
-          'Hôm nay không có lịch học.',
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    return Column(
-      children: todayClasses.map(
-        (classSession) {
-          return Card(
-            margin:
-                const EdgeInsets.only(bottom: 12),
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.all(12),
-
-              leading: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color:
-                      const Color(0xFFEAF4FF),
-                  borderRadius:
-                      BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.school,
-                  color:
-                      Color(0xFF005BAC),
-                ),
-              ),
-
-              title: Text(
-                classSession.subject,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              subtitle: Padding(
-                padding:
-                    const EdgeInsets.only(top: 6),
-                child: Text(
-                  '${classSession.time} • '
-                  '${classSession.room}\n'
-                  '${classSession.teacher}',
-                ),
-              ),
-
-              isThreeLine: true,
-
-              trailing: const Icon(
-                Icons.chevron_right,
-              ),
-
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        MissionScreen(
-                      classSession:
-                          classSession,
-                    ),
-                  ),
-                );
-              },
-            ),
-          );
-        },
-      ).toList(),
-    );
-  }
-
-  // ==========================================================
-  // BUILD
-  // ==========================================================
-
-  @override
-  Widget build(BuildContext context) {
-    if (isLoadingProfile) {
-      return const Scaffold(
-        body: Center(
-          child:
-              CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    if (profileError != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title:
-              const Text('DUT Campus Streak'),
-        ),
-        body: Center(
-          child: Padding(
-            padding:
-                const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
-              children: [
-                const Text(
-                  'Không thể tải thông tin sinh viên.',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                  textAlign:
-                      TextAlign.center,
-                ),
-
-                const SizedBox(height: 12),
-
-                Text(
-                  profileError!,
-                  textAlign:
-                      TextAlign.center,
-                ),
-
-                const SizedBox(height: 20),
-
-                ElevatedButton(
-                  onPressed: _loadProfile,
-                  child:
-                      const Text('Thử lại'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    final displayName =
-        profile?['display_name'] ?? profile?['name'] ?? 'Sinh viên';
-
-    final avatarUrl = profile?['avatar_url']?.toString();
-
-    final studentCode =
-        profile?['student_code'] ?? '';
-
-    final className =
-        profile?['class_name'] ?? '';
-
-    return Scaffold(
-      backgroundColor:
-          const Color(0xFFEAF4FF),
-
-      appBar: AppBar(
-        title: const Text('DUT Campus Streak'),
-        backgroundColor: Colors.transparent,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(24),
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ProfileScreen(),
-                  ),
-                );
-                if (mounted) {
-                  await _loadProfile();
-                }
-              },
-              child: CircleAvatar(
-                radius: 20,
-                backgroundImage: avatarUrl != null && avatarUrl!.isNotEmpty
-                    ? NetworkImage(avatarUrl!)
-                    : null,
-                child: avatarUrl == null || avatarUrl!.isEmpty
-                    ? const Icon(Icons.person)
-                    : null,
-              ),
-            ),
-          ),
-        ],
-      ),
-
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await Future.wait([
-            _loadProfile(),
-            _loadTodayClasses(),
-            _loadStreakData(),
-          ]);
-        },
-
-        child: SingleChildScrollView(
-          physics:
-              const AlwaysScrollableScrollPhysics(),
-
-          padding:
-              const EdgeInsets.all(16),
-
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-
+            mainAxisSize: MainAxisSize.min,
             children: [
+              Icon(
+                Icons.event_available_rounded,
+                size: 56,
+                color: Color(0xFF2876C7),
+              ),
+              SizedBox(height: 14),
               Text(
-                'Xin chào, $displayName 👋',
-                style:
-                    const TextStyle(
-                  fontSize: 24,
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                '$studentCode • $className',
-                style: TextStyle(
-                  fontSize: 14,
-                  color:
-                      Colors.grey[600],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ==================================================
-              // STREAK - TẠM THỜI
-              // ==================================================
-
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.all(20),
-
-                decoration:
-                    BoxDecoration(
-                  borderRadius:
-                      BorderRadius.circular(16),
-                  color:
-                      const Color(0xFF005BAC),
-                ),
-
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '🔥 Streak',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                      ),
-                    ),
-
-                    SizedBox(height: 8),
-
-                    Text(
-                      '$streak ngày',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 32,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    Text(
-                      streak == 0 ? 'Hãy hoàn thành Check-in để bắt đầu streak': 'Tiếp tục Check-in để duy trì streak',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              const Text(
-                'Lớp học hôm nay',
+                'Hôm nay không có môn học',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 20,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-
-              const SizedBox(height: 12),
-
-              _buildTodayClasses(),
-
-              const SizedBox(height: 24),
-
-              // ==================================================
-              // MENU
-              // ==================================================
-
-              Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.calendar_month,
-                    color:
-                        Color(0xFF005BAC),
-                  ),
-                  title:
-                      const Text('Lịch học'),
-                  subtitle: const Text(
-                    'Xem toàn bộ lịch học',
-                  ),
-                  trailing:
-                      const Icon(
-                    Icons.chevron_right,
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            const ScheduleScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.leaderboard,
-                  ),
-                  title:
-                      const Text('Xếp hạng'),
-                  trailing:
-                      const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const LeaderboardScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.emoji_events,
-                  ),
-                  title:
-                      const Text('Thành tích'),
-                  trailing:
-                      const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AchievementsScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.person,
-                  ),
-                  title: const Text('Hồ sơ'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                    );
-                    if (mounted) {
-                      await _loadProfile();
-                    }
-                  },
+              SizedBox(height: 7),
+              Text(
+                'Không có lớp nào trong lịch học hôm nay.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.black45,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
         ),
+      );
+    }
+
+    if (checkedInClasses.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_outline_rounded,
+                size: 56,
+                color: Colors.black26,
+              ),
+              SizedBox(height: 14),
+              Text(
+                'Chưa có môn nào được Check-in',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(height: 7),
+              Text(
+                'Các môn chưa Check-in sẽ không xuất hiện ở đây.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.black45,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadCheckedInToday,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        itemCount: checkedInClasses.length,
+        separatorBuilder: (_, __) =>
+            const SizedBox(height: 10),
+        itemBuilder: (_, index) {
+          final classSession = checkedInClasses[index];
+
+          return Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MissionScreen(
+                      classSession: classSession,
+                    ),
+                  ),
+                );
+
+                if (mounted) {
+                  await _loadCheckedInToday();
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF4FF),
+                        borderRadius:
+                            BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.school_rounded,
+                        color: Color(0xFF005BAC),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            classSession.subject,
+                            maxLines: 1,
+                            overflow:
+                                TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${classSession.time} • ${classSession.room}',
+                            style: const TextStyle(
+                              color: Colors.black54,
+                              fontSize: 13,
+                            ),
+                          ),
+                          if (classSession.teacher.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              classSession.teacher,
+                              maxLines: 1,
+                              overflow:
+                                  TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.black45,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.check_circle_rounded,
+                      color: Colors.green,
+                      size: 23,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFEAF4FF),
+      appBar: AppBar(
+        title: const Text('Check-in hôm nay'),
+        backgroundColor: const Color(0xFFEAF4FF),
+        surfaceTintColor: Colors.transparent,
+      ),
+      body: SafeArea(
+        child: _buildContent(),
       ),
     );
   }
 }
-
 
 // ============================================================
 // ACHIEVEMENTS
@@ -2484,17 +3661,35 @@ Future<AchievementStats> loadAchievementStats() async {
 
   final classData = await supabase
       .from('class_sessions')
-      .select('id, day_of_week, subjects!inner(subject_code)')
+      .select('''
+        id,
+        day_of_week,
+        room,
+        subjects (
+          name,
+          subject_code
+        )
+      ''')
       .eq('user_id', user.id);
 
   final classes = (classData as List)
-        .map((row) => Map<String, dynamic>.from(row))
-        .where((row) {
-          final subject = row['subjects'];
-          final code = subject is Map ? subject['subject_code']?.toString() : null;
-          return code != '0130011.2610.26.17';
-        })
-        .toList();
+      .map((row) => Map<String, dynamic>.from(row))
+      .where((classItem) {
+        final room = classItem['room']?.toString() ?? '';
+        final subjectData = classItem['subjects'];
+        final subjectName = subjectData is Map
+            ? subjectData['name']?.toString() ?? ''
+            : '';
+
+        return room.trim().toUpperCase() != 'MSTEAM' &&
+            !subjectName.toUpperCase().contains('GDTC');
+      })
+      .toList();
+
+  final validClassIds = classes
+      .map((row) => row['id']?.toString())
+      .whereType<String>()
+      .toSet();
 
   final checkInData = await supabase
       .from('check_ins')
@@ -2507,9 +3702,14 @@ Future<AchievementStats> loadAchievementStats() async {
       .map((row) => Map<String, dynamic>.from(row))
       .toList();
 
-  final totalCheckIns = checkIns.length;
+  final validCheckIns = checkIns.where((checkIn) {
+    final id = checkIn['class_session_id']?.toString();
+    return id != null && validClassIds.contains(id);
+  }).toList();
 
-  if (classes.isEmpty || checkIns.isEmpty) {
+  final totalCheckIns = validCheckIns.length;
+
+  if (classes.isEmpty || validCheckIns.isEmpty) {
     return AchievementStats(
       totalCheckIns: totalCheckIns,
       longestStreak: 0,
@@ -2518,7 +3718,7 @@ Future<AchievementStats> loadAchievementStats() async {
 
   final Map<DateTime, Set<String>> checkedClassesByDate = {};
 
-  for (final checkIn in checkIns) {
+  for (final checkIn in validCheckIns) {
     final rawDate = checkIn['checked_in_at'];
     final classSessionId = checkIn['class_session_id']?.toString();
 
@@ -3568,15 +4768,17 @@ List<ParsedScheduleCourse> _parsePastedSchedule(String text) {
     // Trang sinh viên có một số dòng đặc biệt như GDTC:
     // mã môn -> mã lớp (B26-GDTC1-17) -> tín chỉ -> ... -> tên đơn vị.
     // Với các dòng bình thường, phần tử đầu tiên sau mã môn là tên môn.
-    final isGdtc = RegExp(r'^[A-Z]\d{2}-.+', caseSensitive: false)
-        .hasMatch(beforeSchedule.first);
+    String subjectName = beforeSchedule.first;
+    if (RegExp(r'^[A-Z]\d{2}-.+', caseSensitive: false)
+        .hasMatch(subjectName) &&
+        beforeSchedule.length >= 2) {
+      subjectName = beforeSchedule.last;
+    }
 
-    // Dòng GDTC có mã lớp B26-GDTC1-17 ngay sau mã môn.
-    // Đây là tên muốn hiển thị trong app.
-    final subjectName = beforeSchedule.first;
-
+    // Giáo viên thường là ô ngay trước ô lịch. Nếu ô đó chính là
+    // tên môn/đơn vị thì để trống (trường hợp GDTC trong dữ liệu mẫu).
     final teacherCandidate = beforeSchedule.last;
-    final teacher = isGdtc || teacherCandidate == subjectName
+    final teacher = teacherCandidate == subjectName
         ? ''
         : teacherCandidate;
 
@@ -3611,12 +4813,16 @@ class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
 
   @override
-  State<ScheduleScreen> createState() => _ScheduleScreenState();
+  State<ScheduleScreen> createState() =>
+      _ScheduleScreenState();
 }
 
-class _ScheduleScreenState extends State<ScheduleScreen> {
+class _ScheduleScreenState
+    extends State<ScheduleScreen> {
   List<ClassSession> classes = [];
+
   bool isLoading = true;
+
   String? errorMessage;
 
   @override
@@ -3625,30 +4831,117 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     _loadClasses();
   }
 
+  // ==========================================================
+  // LOAD ALL CLASSES
+  // ==========================================================
+
   Future<void> _loadClasses() async {
     try {
-      if (mounted) setState(() { isLoading = true; errorMessage = null; });
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+
       final user = supabase.auth.currentUser;
-      if (user == null) throw Exception('Chưa đăng nhập.');
-      final data = await supabase.from('class_sessions').select('id, subject_id, room, start_time, end_time, teacher, day_of_week, subjects(id, name, subject_code, teacher)').eq('user_id', user.id).order('day_of_week').order('start_time');
-      final loaded = (data as List).map((item) => ClassSession.fromMap(Map<String, dynamic>.from(item))).toList();
+
+      if (user == null) {
+        throw Exception('Chưa đăng nhập.');
+      }
+
+      final data = await supabase
+          .from('class_sessions')
+          .select('''
+            id,
+            room,
+            start_time,
+            end_time,
+            teacher,
+            day_of_week,
+            subjects (
+              name,
+              subject_code,
+              teacher
+            )
+          ''')
+          .eq('user_id', user.id)
+          .order('day_of_week')
+          .order('start_time');
+
+      final loadedClasses = (data as List)
+          .map(
+            (item) => ClassSession.fromMap(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList();
+
       if (!mounted) return;
-      setState(() { classes = loaded; isLoading = false; });
+
+      setState(() {
+        classes = loadedClasses;
+        isLoading = false;
+      });
+
+      debugPrint(
+        'Loaded total classes: '
+        '${loadedClasses.length}',
+      );
     } catch (e) {
-      debugPrint('Load schedule error: $e');
       if (!mounted) return;
-      setState(() { isLoading = false; errorMessage = e.toString(); });
+
+      setState(() {
+        isLoading = false;
+        errorMessage = e.toString();
+      });
+
+      debugPrint(
+        'Load schedule error: $e',
+      );
     }
   }
 
-  String _dayName(int day) => const {
-    1: 'Thứ Hai', 2: 'Thứ Ba', 3: 'Thứ Tư', 4: 'Thứ Năm',
-    5: 'Thứ Sáu', 6: 'Thứ Bảy', 7: 'Chủ Nhật',
-  }[day] ?? 'Không xác định';
+  // ==========================================================
+  // DAY NAME
+  // ==========================================================
+
+  String _dayName(int day) {
+    switch (day) {
+      case 1:
+        return 'Thứ Hai';
+
+      case 2:
+        return 'Thứ Ba';
+
+      case 3:
+        return 'Thứ Tư';
+
+      case 4:
+        return 'Thứ Năm';
+
+      case 5:
+        return 'Thứ Sáu';
+
+      case 6:
+        return 'Thứ Bảy';
+
+      case 7:
+        return 'Chủ Nhật';
+
+      default:
+        return 'Không xác định';
+    }
+  }
+
+  // ==========================================================
+  // IMPORT SCHEDULE FROM STUDENT PORTAL
+  // ==========================================================
 
   Future<ScheduleImportResult> _importScheduleText(String text) async {
     final user = supabase.auth.currentUser;
-    if (user == null) throw Exception('Chưa đăng nhập.');
+    if (user == null) {
+      throw Exception('Chưa đăng nhập.');
+    }
+
     final courses = _parsePastedSchedule(text);
     var insertedSessions = 0;
     var skippedSessions = 0;
@@ -3656,62 +4949,83 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
     for (final course in courses) {
       Map<String, dynamic>? subject;
-      final existing = await supabase.from('subjects').select('id, name, teacher, subject_code')
-          .eq('user_id', user.id).eq('subject_code', course.subjectCode).limit(1);
-      if (existing.isNotEmpty) {
-        subject = Map<String, dynamic>.from(existing.first);
-        await supabase.from('subjects').update({
-          'name': course.subjectName,
-          'teacher': course.teacher.isEmpty ? null : course.teacher,
-        }).eq('id', subject['id']);
+
+      final existingSubjects = await supabase
+          .from('subjects')
+          .select('id, name, teacher')
+          .eq('user_id', user.id)
+          .eq('subject_code', course.subjectCode)
+          .limit(1);
+
+      if (existingSubjects.isNotEmpty) {
+        subject = Map<String, dynamic>.from(existingSubjects.first);
       } else {
-        final inserted = await supabase.from('subjects').insert({
-          'user_id': user.id, 'subject_code': course.subjectCode,
-          'name': course.subjectName, 'teacher': course.teacher.isEmpty ? null : course.teacher,
-        }).select('id, name, teacher, subject_code').single();
-        subject = Map<String, dynamic>.from(inserted);
+        final insertedSubject = await supabase
+            .from('subjects')
+            .insert({
+              'user_id': user.id,
+              'subject_code': course.subjectCode,
+              'name': course.subjectName,
+              'teacher': course.teacher.isEmpty ? null : course.teacher,
+            })
+            .select('id, name, teacher')
+            .single();
+
+        subject = Map<String, dynamic>.from(insertedSubject);
       }
+
       final subjectId = subject['id']?.toString();
-      if (subjectId == null || subjectId.isEmpty) throw Exception('Không lấy được ID môn ${course.subjectName}.');
+      if (subjectId == null || subjectId.isEmpty) {
+        throw Exception(
+          'Không lấy được ID môn ${course.subjectName}.',
+        );
+      }
+
       for (final meeting in course.meetings) {
         final startTime = _periodStartTime(meeting.startPeriod);
         final endTime = _periodEndTime(meeting.endPeriod);
-        final existingSessions = await supabase.from('class_sessions').select('id')
-            .eq('user_id', user.id).eq('subject_id', subjectId)
-            .eq('day_of_week', meeting.dayOfWeek).eq('room', meeting.room)
-            .eq('start_time', startTime).eq('end_time', endTime).limit(1);
-        if (existingSessions.isNotEmpty) { skippedSessions++; continue; }
+
+        final existingSessions = await supabase
+            .from('class_sessions')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('subject_id', subjectId)
+            .eq('day_of_week', meeting.dayOfWeek)
+            .eq('room', meeting.room)
+            .eq('start_time', startTime)
+            .eq('end_time', endTime)
+            .limit(1);
+
+        if (existingSessions.isNotEmpty) {
+          skippedSessions++;
+          continue;
+        }
+
         await supabase.from('class_sessions').insert({
-          'user_id': user.id, 'subject_id': subjectId, 'room': meeting.room,
-          'start_time': startTime, 'end_time': endTime,
+          'user_id': user.id,
+          'subject_id': subjectId,
+          'room': meeting.room,
+          'start_time': startTime,
+          'end_time': endTime,
           'teacher': course.teacher.isEmpty ? null : course.teacher,
           'day_of_week': meeting.dayOfWeek,
         });
+
         insertedSessions++;
       }
     }
-    if (skippedSessions > 0) warnings.add('$skippedSessions buổi đã có sẵn nên được bỏ qua, không tạo trùng.');
-    return ScheduleImportResult(courseCount: courses.length, sessionCount: insertedSessions, skippedLineCount: 0, warnings: warnings);
-  }
 
-  Future<void> _showAddMenu() async {
-    await showModalBottomSheet<void>(
-      context: context, showDragHandle: true,
-      builder: (sheetContext) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(
-          leading: const Icon(Icons.content_paste_rounded),
-          title: const Text('Dán từ trang sinh viên'),
-          subtitle: const Text('Copy nguyên bảng rồi dán vào app'),
-          onTap: () { Navigator.pop(sheetContext); _showImportScheduleDialog(); },
-        ),
-        ListTile(
-          leading: const Icon(Icons.edit_calendar_rounded),
-          title: const Text('Thêm lịch thủ công'),
-          subtitle: const Text('Tự nhập môn, thứ, tiết, phòng, giảng viên'),
-          onTap: () { Navigator.pop(sheetContext); _showManualScheduleDialog(); },
-        ),
-        const SizedBox(height: 8),
-      ])),
+    if (skippedSessions > 0) {
+      warnings.add(
+        '$skippedSessions buổi đã có sẵn nên được bỏ qua, không tạo trùng.',
+      );
+    }
+
+    return ScheduleImportResult(
+      courseCount: courses.length,
+      sessionCount: insertedSessions,
+      skippedLineCount: 0,
+      warnings: warnings,
     );
   }
 
@@ -3719,210 +5033,730 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final controller = TextEditingController();
     bool importing = false;
     String? dialogError;
+
     final result = await showDialog<ScheduleImportResult>(
-      context: context, barrierDismissible: !importing,
-      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) {
-        Future<void> submit() async {
-          final text = controller.text.trim();
-          if (text.isEmpty) { setDialogState(() => dialogError = 'Hãy dán bảng lịch học vào ô bên trên.'); return; }
-          setDialogState(() { importing = true; dialogError = null; });
-          try {
-            final result = await _importScheduleText(text);
-            if (!mounted) return;
-            Navigator.of(dialogContext).pop(result);
-          } catch (e) {
-            setDialogState(() { importing = false; dialogError = e is FormatException ? e.message : 'Không thể thêm lịch học: $e'; });
-          }
-        }
-        return AlertDialog(
-          title: const Text('Dán lịch từ trang sinh viên'),
-          content: SizedBox(width: 600, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Text('Copy nguyên bảng lịch học từ trang sinh viên rồi dán vào đây.'),
-            const SizedBox(height: 14),
-            TextField(controller: controller, enabled: !importing, minLines: 10, maxLines: 18, keyboardType: TextInputType.multiline,
-              decoration: InputDecoration(hintText: 'Dán bảng lịch học vào đây...', alignLabelWithHint: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)))),
-            if (dialogError != null) ...[const SizedBox(height: 12), Text(dialogError!, style: const TextStyle(color: Colors.red, fontSize: 13))],
-            const SizedBox(height: 10),
-            const Text('Lưu ý: tuần học hiện chưa được lưu vào class_sessions.', style: TextStyle(color: Colors.black45, fontSize: 12)),
-          ]))),
-          actions: [
-            TextButton(onPressed: importing ? null : () => Navigator.pop(dialogContext), child: const Text('Hủy')),
-            FilledButton.icon(onPressed: importing ? null : submit,
-              icon: importing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.download_rounded),
-              label: Text(importing ? 'Đang thêm...' : 'Thêm lịch')),
-          ],
-        );
-      }),
-    );
-    controller.dispose();
-    if (result == null || !mounted) return;
-    await _loadClasses();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đã xử lý ${result.courseCount} môn, thêm ${result.sessionCount} buổi học.${result.warnings.isEmpty ? '' : ' ${result.warnings.join(' ')}'}')));
-  }
-
-  Future<void> _showManualScheduleDialog({ClassSession? editing}) async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
-    final codeController = TextEditingController(text: editing?.subjectCode ?? '');
-    final nameController = TextEditingController(text: editing?.subject ?? '');
-    final teacherController = TextEditingController(text: editing?.teacher ?? '');
-    final roomController = TextEditingController(text: editing?.room ?? '');
-    int day = editing?.dayOfWeek ?? 1;
-    int startPeriod = editing == null ? 1 : _timeToStartPeriod(editing.startTime) ?? 1;
-    int endPeriod = editing == null ? 1 : _timeToEndPeriod(editing.endTime) ?? startPeriod;
-    bool saving = false;
-    String? error;
-
-    final result = await showDialog<bool>(
-      context: context, barrierDismissible: !saving,
-      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) {
-        Future<void> save() async {
-          final code = codeController.text.trim();
-          final name = nameController.text.trim();
-          final teacher = teacherController.text.trim();
-          final room = roomController.text.trim();
-          if (code.isEmpty || name.isEmpty || room.isEmpty) { setDialogState(() => error = 'Mã môn, tên môn và phòng không được để trống.'); return; }
-          if (startPeriod > endPeriod) { setDialogState(() => error = 'Tiết bắt đầu phải nhỏ hơn hoặc bằng tiết kết thúc.'); return; }
-          setDialogState(() { saving = true; error = null; });
-          try {
-            final startTime = _periodStartTime(startPeriod);
-            final endTime = _periodEndTime(endPeriod);
-            if (editing != null) {
-              if (code != editing.subjectCode) {
-                final duplicate = await supabase.from('subjects').select('id').eq('user_id', user.id).eq('subject_code', code).neq('id', editing.subjectId).limit(1);
-                if (duplicate.isNotEmpty) throw Exception('Mã môn này đã tồn tại trong lịch học của bạn.');
-              }
-              await supabase.from('subjects').update({'subject_code': code, 'name': name, 'teacher': teacher.isEmpty ? null : teacher}).eq('id', editing.subjectId).eq('user_id', user.id);
-              await supabase.from('class_sessions').update({'room': room, 'start_time': startTime, 'end_time': endTime, 'teacher': teacher.isEmpty ? null : teacher, 'day_of_week': day}).eq('id', editing.id).eq('user_id', user.id);
-            } else {
-              final existing = await supabase.from('subjects').select('id').eq('user_id', user.id).eq('subject_code', code).limit(1);
-              String subjectId;
-              if (existing.isNotEmpty) {
-                subjectId = existing.first['id'].toString();
-                await supabase.from('subjects').update({'name': name, 'teacher': teacher.isEmpty ? null : teacher}).eq('id', subjectId).eq('user_id', user.id);
-              } else {
-                final inserted = await supabase.from('subjects').insert({'user_id': user.id, 'subject_code': code, 'name': name, 'teacher': teacher.isEmpty ? null : teacher}).select('id').single();
-                subjectId = inserted['id'].toString();
-              }
-              await supabase.from('class_sessions').insert({'user_id': user.id, 'subject_id': subjectId, 'room': room, 'start_time': startTime, 'end_time': endTime, 'teacher': teacher.isEmpty ? null : teacher, 'day_of_week': day});
-            }
-            if (!mounted) return;
-            Navigator.pop(dialogContext, true);
-          } catch (e) {
-            setDialogState(() { saving = false; error = 'Không thể lưu lịch học: $e'; });
-          }
-        }
-        return AlertDialog(
-          title: Text(editing == null ? 'Thêm lịch thủ công' : 'Chỉnh sửa lịch học'),
-          content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: codeController, enabled: !saving, decoration: const InputDecoration(labelText: 'Mã môn', prefixIcon: Icon(Icons.code), border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            TextField(controller: nameController, enabled: !saving, decoration: const InputDecoration(labelText: 'Tên môn', prefixIcon: Icon(Icons.menu_book_outlined), border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            TextField(controller: teacherController, enabled: !saving, decoration: const InputDecoration(labelText: 'Giảng viên', prefixIcon: Icon(Icons.person_outline), border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            TextField(controller: roomController, enabled: !saving, decoration: const InputDecoration(labelText: 'Phòng', prefixIcon: Icon(Icons.room_outlined), border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(value: day, decoration: const InputDecoration(labelText: 'Thứ', border: OutlineInputBorder()), items: List.generate(7, (i) => DropdownMenuItem(value: i + 1, child: Text(_dayName(i + 1)))), onChanged: saving ? null : (v) => setDialogState(() => day = v ?? 1)),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: DropdownButtonFormField<int>(value: startPeriod, decoration: const InputDecoration(labelText: 'Tiết bắt đầu', border: OutlineInputBorder()), items: List.generate(14, (i) => DropdownMenuItem(value: i + 1, child: Text('Tiết ${i + 1}'))), onChanged: saving ? null : (v) => setDialogState(() { startPeriod = v ?? 1; if (endPeriod < startPeriod) endPeriod = startPeriod; }))),
-              const SizedBox(width: 12),
-              Expanded(child: DropdownButtonFormField<int>(value: endPeriod, decoration: const InputDecoration(labelText: 'Tiết kết thúc', border: OutlineInputBorder()), items: List.generate(14, (i) => DropdownMenuItem(value: i + 1, child: Text('Tiết ${i + 1}'))), onChanged: saving ? null : (v) => setDialogState(() => endPeriod = v ?? startPeriod))),
-            ]),
-            if (error != null) ...[const SizedBox(height: 12), Align(alignment: Alignment.centerLeft, child: Text(error!, style: const TextStyle(color: Colors.red, fontSize: 13)))],
-          ]))),
-          actions: [
-            TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text('Hủy')),
-            FilledButton.icon(onPressed: saving ? null : save, icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_outlined), label: Text(saving ? 'Đang lưu...' : 'Lưu')),
-          ],
-        );
-      }),
-    );
-    codeController.dispose(); nameController.dispose(); teacherController.dispose(); roomController.dispose();
-    if (result == true && mounted) { await _loadClasses(); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(editing == null ? 'Đã thêm lịch học.' : 'Đã cập nhật lịch học.'))); }
-  }
-
-  int? _timeToStartPeriod(String value) => const {
-    '07:00:00': 1, '08:00:00': 2, '09:00:00': 3, '10:00:00': 4, '11:00:00': 5,
-    '12:30:00': 6, '13:30:00': 7, '14:30:00': 8, '15:30:00': 9, '16:30:00': 10,
-    '17:30:00': 11, '18:15:00': 12, '19:10:00': 13, '19:55:00': 14,
-  }[value.trim()];
-
-  int? _timeToEndPeriod(String value) => const {
-    '07:50:00': 1, '08:50:00': 2, '09:50:00': 3, '10:50:00': 4, '11:50:00': 5,
-    '13:20:00': 6, '14:20:00': 7, '15:20:00': 8, '16:20:00': 9, '17:20:00': 10,
-    '18:15:00': 11, '19:00:00': 12, '19:50:00': 13, '20:40:00': 14,
-  }[value.trim()];
-
-  Future<void> _showSessionActions(ClassSession session) async {
-    final action = await showModalBottomSheet<String>(
-      context: context, showDragHandle: true,
-      builder: (sheetContext) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Chỉnh sửa'), subtitle: const Text('Đổi tên môn, giảng viên, phòng, thứ hoặc tiết'), onTap: () => Navigator.pop(sheetContext, 'edit')),
-        ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Xóa buổi học', style: TextStyle(color: Colors.red)), onTap: () => Navigator.pop(sheetContext, 'delete')),
-        const SizedBox(height: 8),
-      ])),
-    );
-    if (action == 'edit' && mounted) await _showManualScheduleDialog(editing: session);
-    if (action == 'delete' && mounted) await _deleteSession(session);
-  }
-
-  Future<void> _deleteSession(ClassSession session) async {
-    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Xóa buổi học?'),
-        content: Text('Xóa "${session.subject}" vào ${_dayName(session.dayOfWeek)}, ${session.time}, phòng ${session.room}?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Hủy')),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Xóa')),
-        ],
+      barrierDismissible: !importing,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> submit() async {
+              final text = controller.text.trim();
+              if (text.isEmpty) {
+                setDialogState(() {
+                  dialogError = 'Hãy dán bảng lịch học vào ô bên trên.';
+                });
+                return;
+              }
+
+              setDialogState(() {
+                importing = true;
+                dialogError = null;
+              });
+
+              try {
+                final importResult = await _importScheduleText(text);
+                if (!mounted) return;
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.of(dialogContext).pop(importResult);
+              } catch (e) {
+                debugPrint('Import schedule error: $e');
+                setDialogState(() {
+                  importing = false;
+                  dialogError = e is FormatException
+                      ? e.message
+                      : 'Không thể thêm lịch học: $e';
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Thêm lịch học'),
+              content: SizedBox(
+                width: 600,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Copy nguyên bảng lịch học từ trang sinh viên rồi dán vào đây. App sẽ tự nhận diện mã môn, thứ, tiết, phòng và giảng viên.',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: controller,
+                        enabled: !importing,
+                        minLines: 10,
+                        maxLines: 18,
+                        keyboardType: TextInputType.multiline,
+                        decoration: InputDecoration(
+                          hintText:
+                              'Dán bảng lịch học vào đây...\n\nVí dụ: 3190320.2610.26.10 | Giải tích | ... | Trần Chín | Thứ 3,1-3,F106; Thứ 5,6-8,H106 | ...',
+                          alignLabelWithHint: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                      if (dialogError != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          dialogError!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Lưu ý: dữ liệu hiện tại chưa lưu tuần học (ví dụ 4-8;13-14;16-20) trong class_sessions. Phần tuần sẽ được bỏ qua khi import.',
+                        style: TextStyle(
+                          color: Colors.black45,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: importing
+                      ? null
+                      : () {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          Navigator.of(dialogContext).pop();
+                        },
+                  child: const Text('Hủy'),
+                ),
+                FilledButton.icon(
+                  onPressed: importing ? null : submit,
+                  icon: importing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.download_rounded),
+                  label: Text(importing ? 'Đang thêm...' : 'Thêm lịch'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    // Let the dialog/focus tree finish deactivating before disposing the controller.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
+
+    if (result == null || !mounted) return;
+
+    await _loadClasses();
+
+    if (!mounted) return;
+
+    final warning = result.warnings.isEmpty
+        ? ''
+        : ' ${result.warnings.join(' ')}';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Đã xử lý ${result.courseCount} môn, thêm ${result.sessionCount} buổi học.$warning',
+        ),
+        duration: const Duration(seconds: 4),
       ),
     );
-    if (confirmed != true) return;
-    try {
-      final user = supabase.auth.currentUser;
-      if (user == null) throw Exception('Chưa đăng nhập.');
-      await supabase.from('class_sessions').delete().eq('id', session.id).eq('user_id', user.id);
-      final remaining = await supabase.from('class_sessions').select('id').eq('subject_id', session.subjectId).limit(1);
-      if (remaining.isEmpty && session.subjectId.isNotEmpty) await supabase.from('subjects').delete().eq('id', session.subjectId).eq('user_id', user.id);
+  }
+
+  String _periodLabel(int period) {
+    return 'Tiết $period (${_periodStartTime(period).substring(0, 5)}–${_periodEndTime(period).substring(0, 5)})';
+  }
+
+  int? _periodFromTime(String time) {
+    final normalized = time.length >= 5 ? time.substring(0, 5) : time;
+    for (int i = 1; i <= 14; i++) {
+      if (_periodStartTime(i).substring(0, 5) == normalized) return i;
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _loadSubjectForClass(ClassSession classSession) async {
+    final data = await supabase
+        .from('class_sessions')
+        .select('subject_id, subjects(id, name, subject_code, teacher)')
+        .eq('id', classSession.id)
+        .single();
+    final row = Map<String, dynamic>.from(data);
+    final raw = row['subjects'];
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw)..['id'] = row['subject_id']?.toString();
+    }
+    return null;
+  }
+
+  Future<String> _findOrCreateSubject({
+    required String subjectName,
+    required String subjectCode,
+    required String teacher,
+    String? existingSubjectId,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) throw Exception('Chưa đăng nhập.');
+
+    if (existingSubjectId != null && existingSubjectId.isNotEmpty) {
+      await supabase.from('subjects').update({
+        'name': subjectName,
+        'subject_code': subjectCode.isEmpty ? null : subjectCode,
+        'teacher': teacher.isEmpty ? null : teacher,
+      }).eq('id', existingSubjectId).eq('user_id', user.id);
+      return existingSubjectId;
+    }
+
+    final existing = await supabase
+        .from('subjects')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('name', subjectName)
+        .limit(1);
+
+    if (existing.isNotEmpty) {
+      final id = existing.first['id'].toString();
+      await supabase.from('subjects').update({
+        'subject_code': subjectCode.isEmpty ? null : subjectCode,
+        'teacher': teacher.isEmpty ? null : teacher,
+      }).eq('id', id).eq('user_id', user.id);
+      return id;
+    }
+
+    final inserted = await supabase.from('subjects').insert({
+      'user_id': user.id,
+      'subject_code': subjectCode.isEmpty ? null : subjectCode,
+      'name': subjectName,
+      'teacher': teacher.isEmpty ? null : teacher,
+    }).select('id').single();
+    return inserted['id'].toString();
+  }
+
+  Future<void> _showScheduleForm({ClassSession? editing}) async {
+    final isEditing = editing != null;
+    String? subjectId;
+    String? error;
+    bool saving = false;
+
+    final name = TextEditingController(text: editing?.subject ?? '');
+    final code = TextEditingController();
+    final teacher = TextEditingController(text: editing?.teacher ?? '');
+    final room = TextEditingController(text: editing?.room ?? '');
+
+    int day = editing?.dayOfWeek ?? DateTime.now().weekday;
+    int startPeriod = _periodFromTime(editing?.startTime ?? '') ?? 1;
+    int endPeriod = _periodFromTime(editing?.endTime ?? '') ?? startPeriod;
+
+    if (editing != null) {
+      try {
+        final subject = await _loadSubjectForClass(editing);
+        if (subject != null) {
+          subjectId = subject['id']?.toString();
+          code.text = subject['subject_code']?.toString() ?? '';
+          if (teacher.text.trim().isEmpty) {
+            teacher.text = subject['teacher']?.toString() ?? '';
+          }
+        }
+      } catch (e) {
+        debugPrint('Load subject for edit error: $e');
+      }
+    }
+
+    if (!mounted) return;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> save() async {
+            final subjectName = name.text.trim();
+            final subjectCode = code.text.trim();
+            final subjectTeacher = teacher.text.trim();
+            final subjectRoom = room.text.trim();
+
+            if (subjectName.isEmpty) {
+              setDialogState(() => error = 'Vui lòng nhập tên môn học.');
+              return;
+            }
+            if (subjectRoom.isEmpty) {
+              setDialogState(() => error = 'Vui lòng nhập phòng học.');
+              return;
+            }
+            if (startPeriod > endPeriod) {
+              setDialogState(() => error = 'Tiết bắt đầu phải nhỏ hơn hoặc bằng tiết kết thúc.');
+              return;
+            }
+
+            setDialogState(() { saving = true; error = null; });
+            try {
+              final user = supabase.auth.currentUser;
+              if (user == null) throw Exception('Chưa đăng nhập.');
+
+              final sid = await _findOrCreateSubject(
+                subjectName: subjectName,
+                subjectCode: subjectCode,
+                teacher: subjectTeacher,
+                existingSubjectId: subjectId,
+              );
+
+              final startTime = _periodStartTime(startPeriod);
+              final endTime = _periodEndTime(endPeriod);
+              var duplicateQuery = supabase
+                  .from('class_sessions')
+                  .select('id')
+                  .eq('user_id', user.id)
+                  .eq('subject_id', sid)
+                  .eq('day_of_week', day)
+                  .eq('room', subjectRoom)
+                  .eq('start_time', startTime)
+                  .eq('end_time', endTime);
+              if (editing != null) duplicateQuery = duplicateQuery.neq('id', editing.id);
+
+              final duplicate = await duplicateQuery.limit(1);
+              if (duplicate.isNotEmpty) throw Exception('Lịch học này đã tồn tại.');
+
+              final payload = {
+                'subject_id': sid,
+                'room': subjectRoom,
+                'start_time': startTime,
+                'end_time': endTime,
+                'teacher': subjectTeacher.isEmpty ? null : subjectTeacher,
+                'day_of_week': day,
+              };
+
+              if (editing != null) {
+                await supabase.from('class_sessions').update(payload)
+                    .eq('id', editing.id).eq('user_id', user.id);
+              } else {
+                await supabase.from('class_sessions').insert({
+                  'user_id': user.id,
+                  ...payload,
+                });
+              }
+
+              if (dialogContext.mounted) {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.of(dialogContext).pop(true);
+              }
+            } catch (e) {
+              setDialogState(() {
+                saving = false;
+                error = 'Không thể ${isEditing ? 'cập nhật' : 'thêm'} lịch học: $e';
+              });
+            }
+          }
+
+          return AlertDialog(
+            title: Text(isEditing ? 'Chỉnh sửa lịch học' : 'Thêm lịch học thủ công'),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(controller: name, decoration: const InputDecoration(labelText: 'Tên môn học *', prefixIcon: Icon(Icons.book_outlined))),
+                    const SizedBox(height: 12),
+                    TextField(controller: code, decoration: const InputDecoration(labelText: 'Mã môn học', prefixIcon: Icon(Icons.tag_rounded))),
+                    const SizedBox(height: 12),
+                    TextField(controller: teacher, decoration: const InputDecoration(labelText: 'Giảng viên', prefixIcon: Icon(Icons.person_outline))),
+                    const SizedBox(height: 12),
+                    TextField(controller: room, decoration: const InputDecoration(labelText: 'Phòng học *', prefixIcon: Icon(Icons.location_on_outlined))),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      value: day,
+                      decoration: const InputDecoration(labelText: 'Thứ', prefixIcon: Icon(Icons.calendar_today_outlined)),
+                      items: List.generate(7, (i) => DropdownMenuItem(value: i + 1, child: Text(_dayName(i + 1)))),
+                      onChanged: saving ? null : (v) { if (v != null) setDialogState(() => day = v); },
+                    ),
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      Expanded(child: DropdownButtonFormField<int>(
+                        value: startPeriod,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Tiết bắt đầu'),
+                        items: List.generate(14, (i) => DropdownMenuItem(value: i + 1, child: Text('Tiết ${i + 1}'))),
+                        onChanged: saving ? null : (v) { if (v != null) setDialogState(() { startPeriod = v; if (endPeriod < v) endPeriod = v; }); },
+                      )),
+                      const SizedBox(width: 12),
+                      Expanded(child: DropdownButtonFormField<int>(
+                        value: endPeriod,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Tiết kết thúc'),
+                        items: List.generate(14, (i) => DropdownMenuItem(value: i + 1, child: Text('Tiết ${i + 1}'))),
+                        onChanged: saving ? null : (v) { if (v != null) setDialogState(() => endPeriod = v); },
+                      )),
+                    ]),
+                    if (error != null) ...[
+                      const SizedBox(height: 12),
+                      Align(alignment: Alignment.centerLeft, child: Text(error!, style: const TextStyle(color: Colors.red, fontSize: 13))),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving
+                    ? null
+                    : () {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        Navigator.of(dialogContext).pop(false);
+                      },
+                child: const Text('Hủy'),
+              ),
+              FilledButton.icon(
+                onPressed: saving ? null : save,
+                icon: saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_outlined),
+                label: Text(isEditing ? 'Lưu thay đổi' : 'Thêm lịch'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      name.dispose();
+      code.dispose();
+      teacher.dispose();
+      room.dispose();
+    });
+
+    if (saved == true && mounted) {
       await _loadClasses();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa buổi học.')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể xóa buổi học: $e')));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEditing ? 'Đã cập nhật lịch học.' : 'Đã thêm lịch học.')));
     }
   }
 
-  Widget _buildDaySection(int day) {
-    final dayClasses = classes.where((item) => item.dayOfWeek == day).toList();
-    if (dayClasses.isEmpty) return const SizedBox.shrink();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(_dayName(day), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 16),
-      ...dayClasses.map((session) => Padding(padding: const EdgeInsets.only(bottom: 14), child: ScheduleCard(classSession: session, onTap: () => _showSessionActions(session)))),
-      const SizedBox(height: 12),
-    ]);
+  Future<void> _showScheduleActions(ClassSession classSession) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFEAF4FF),
+                child: Icon(Icons.edit_outlined, color: Color(0xFF005BAC)),
+              ),
+              title: const Text('Chỉnh sửa'),
+              subtitle: const Text('Thay đổi thông tin tiết học'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _showScheduleForm(editing: classSession);
+              },
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFFFEEEE),
+                child: Icon(Icons.delete_outline, color: Colors.red),
+              ),
+              title: const Text('Xóa'),
+              subtitle: const Text('Xóa tiết học này khỏi lịch'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _deleteClass(classSession);
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
   }
+
+  Future<void> _deleteClass(ClassSession classSession) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xóa lịch học?'),
+        content: Text('Bạn có chắc muốn xóa "${classSession.subject}" vào ${_dayName(classSession.dayOfWeek)} (${classSession.time}) không?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Hủy')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Xóa')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) throw Exception('Chưa đăng nhập.');
+      await supabase.from('class_sessions').delete().eq('id', classSession.id).eq('user_id', user.id);
+      await _loadClasses();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa lịch học.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể xóa lịch học. Nếu buổi này đã có check-in, hãy giữ lại để bảo toàn lịch sử.\n$e'), duration: const Duration(seconds: 5)));
+    }
+  }
+
+  Future<void> _showAddMenu() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const CircleAvatar(backgroundColor: Color(0xFFEAF4FF), child: Icon(Icons.edit_calendar_rounded, color: Color(0xFF005BAC))),
+            title: const Text('Thêm lịch thủ công'),
+            subtitle: const Text('Tự nhập môn, thứ, tiết, phòng, giảng viên'),
+            onTap: () { Navigator.of(sheetContext).pop(); _showScheduleForm(); },
+          ),
+          ListTile(
+            leading: const CircleAvatar(backgroundColor: Color(0xFFEAF4FF), child: Icon(Icons.content_paste_rounded, color: Color(0xFF005BAC))),
+            title: const Text('Nhập từ bảng lịch DUT'),
+            subtitle: const Text('Dán nguyên bảng lịch học từ cổng sinh viên'),
+            onTap: () { Navigator.of(sheetContext).pop(); _showImportScheduleDialog(); },
+          ),
+          const SizedBox(height: 12),
+        ]),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // BUILD DAY SECTION
+  // ==========================================================
+
+  Widget _buildDaySection(int day) {
+    final dayClasses = classes
+        .where(
+          (item) =>
+              item.dayOfWeek == day,
+        )
+        .toList();
+
+    if (dayClasses.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+
+      children: [
+        Text(
+          _dayName(day),
+          style:
+              const TextStyle(
+            fontSize: 22,
+            fontWeight:
+                FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        ...dayClasses.map(
+          (classSession) => Padding(
+            padding:
+                const EdgeInsets.only(
+              bottom: 14,
+            ),
+            child: ScheduleCard(
+              classSession: classSession,
+              onTap: () => _showScheduleActions(classSession),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // BUILD
+  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (errorMessage != null) return Scaffold(appBar: AppBar(title: const Text('Lịch học')), body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.error_outline, color: Colors.red, size: 48), const SizedBox(height: 16),
-      const Text('Không thể tải lịch học.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 10),
-      Text(errorMessage!, textAlign: TextAlign.center), const SizedBox(height: 20), ElevatedButton(onPressed: _loadClasses, child: const Text('Thử lại')),
-    ]))));
+    if (isLoading) {
+      return Scaffold(
+        backgroundColor:
+            const Color(0xFFEAF4FF),
+
+        appBar: AppBar(
+          title:
+              const Text('Lịch học'),
+          backgroundColor:
+              Colors.transparent,
+        ),
+
+        body: const Center(
+          child:
+              CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (errorMessage != null) {
+      return Scaffold(
+        backgroundColor:
+            const Color(0xFFEAF4FF),
+
+        appBar: AppBar(
+          title:
+              const Text('Lịch học'),
+          backgroundColor:
+              Colors.transparent,
+        ),
+
+        body: Center(
+          child: Padding(
+            padding:
+                const EdgeInsets.all(24),
+
+            child: Column(
+              mainAxisSize:
+                  MainAxisSize.min,
+
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.red,
+                  size: 48,
+                ),
+
+                const SizedBox(height: 16),
+
+                const Text(
+                  'Không thể tải lịch học.',
+                  style:
+                      TextStyle(
+                    fontSize: 18,
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                Text(
+                  errorMessage!,
+                  textAlign:
+                      TextAlign.center,
+                ),
+
+                const SizedBox(height: 20),
+
+                ElevatedButton(
+                  onPressed:
+                      _loadClasses,
+                  child:
+                      const Text(
+                    'Thử lại',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF4FF),
-      appBar: AppBar(title: const Text('Lịch học', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.transparent, actions: [IconButton(tooltip: 'Thêm lịch học', onPressed: _showAddMenu, icon: const Icon(Icons.add_circle_outline))]),
+      backgroundColor:
+          const Color(0xFFEAF4FF),
+
+      appBar: AppBar(
+        title: const Text(
+          'Lịch học',
+          style: TextStyle(
+            fontWeight:
+                FontWeight.bold,
+          ),
+        ),
+        backgroundColor:
+            Colors.transparent,
+        actions: [
+          IconButton(
+            tooltip: 'Thêm lịch học',
+            onPressed: _showAddMenu,
+            icon: const Icon(Icons.add_circle_outline),
+          ),
+        ],
+      ),
+
       body: classes.isEmpty
-          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Text('Chưa có lịch học.'), const SizedBox(height: 12), FilledButton.icon(onPressed: _showAddMenu, icon: const Icon(Icons.add), label: const Text('Thêm lịch học'))]))
-          : RefreshIndicator(onRefresh: _loadClasses, child: ListView(padding: const EdgeInsets.all(20), children: [
-              for (int day = 1; day <= 7; day++) _buildDaySection(day),
-              Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), child: const Row(children: [Icon(Icons.info_outline, color: Color(0xFF005BAC)), SizedBox(width: 12), Expanded(child: Text('Chạm vào một buổi học để chỉnh sửa hoặc xóa.'))])),
-            ])),
+          ? const Center(
+              child: Text(
+                'Chưa có lịch học.',
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadClasses,
+
+              child: ListView(
+                padding:
+                    const EdgeInsets.all(20),
+
+                children: [
+                  for (
+                    int day = 1;
+                    day <= 7;
+                    day++
+                  )
+                    _buildDaySection(day),
+
+                  Container(
+                    padding:
+                        const EdgeInsets.all(18),
+
+                    decoration:
+                        BoxDecoration(
+                      color: Colors.white,
+                      borderRadius:
+                          BorderRadius.circular(
+                        20,
+                      ),
+                    ),
+
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color:
+                              Color(0xFF005BAC),
+                        ),
+
+                        SizedBox(width: 12),
+
+                        Expanded(
+                          child: Text(
+                            'Mỗi lớp học sẽ tự động tạo một nhiệm vụ check-in.',
+                            style:
+                                TextStyle(
+                              color:
+                                  Colors.black54,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }
@@ -4057,114 +5891,45 @@ class ScheduleCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-      padding:
-          const EdgeInsets.all(18),
-
-      decoration:
-          BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
-      ),
-
-      child: Row(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        child: Row(
         children: [
           Container(
             width: 60,
-            padding:
-                const EdgeInsets.symmetric(
-              vertical: 10,
-            ),
-
-            decoration:
-                BoxDecoration(
-              color:
-                  const Color(0xFFEAF4FF),
-              borderRadius:
-                  BorderRadius.circular(14),
-            ),
-
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.access_time,
-                  color:
-                      Color(0xFF005BAC),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  classSession.startTime,
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(color: const Color(0xFFEAF4FF), borderRadius: BorderRadius.circular(14)),
+            child: Column(children: [
+              const Icon(Icons.access_time, color: Color(0xFF005BAC)),
+              const SizedBox(height: 4),
+              Text(classSession.startTime, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            ]),
           ),
-
           const SizedBox(width: 16),
-
           Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-
-              children: [
-                Text(
-                  classSession.subject,
-                  style:
-                      const TextStyle(
-                    fontSize: 17,
-                    fontWeight:
-                        FontWeight.bold,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: Text(classSession.subject, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold))),
+                if (classSession.isCheckInExcluded)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
+                    child: const Text('Không Check-in', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black54)),
                   ),
-                ),
-
-                const SizedBox(height: 6),
-
-                Text(
-                  '${classSession.startTime} – '
-                  '${classSession.endTime}',
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.black54,
-                  ),
-                ),
-
+              ]),
+              const SizedBox(height: 6),
+              Text('${classSession.startTime} – ${classSession.endTime}', style: const TextStyle(color: Colors.black54)),
+              const SizedBox(height: 4),
+              Text('Phòng ${classSession.room}', style: const TextStyle(color: Colors.black54)),
+              if (classSession.teacher.trim().isNotEmpty) ...[
                 const SizedBox(height: 4),
-
-                Text(
-                  'Phòng ${classSession.room}',
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.black54,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  classSession.teacher,
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.black45,
-                    fontSize: 13,
-                  ),
-                ),
+                Text(classSession.teacher, style: const TextStyle(color: Colors.black45, fontSize: 13)),
               ],
-            ),
+            ]),
           ),
         ],
       ),
-      ),
+    ),
     );
   }
 }
@@ -4329,36 +6094,91 @@ class MissionScreen extends StatelessWidget {
 
             SizedBox(
               width: double.infinity,
-              height: 54,
-              child: FilledButton.icon(
-                onPressed: () {
-                  if (!isCheckInAllowed(classSession)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Chưa đến thời gian Check-in hoặc lớp đã kết thúc.',
+              child: classSession.isCheckInExcluded
+                  ? Container(
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            color: Colors.black54,
+                          ),
+                          SizedBox(width: 9),
+                          Text(
+                            'Môn này không tính Check-in',
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : classSession.completed
+                  ? Container(
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.green.withOpacity(0.30),
                         ),
                       ),
-                    );
-                    return;
-                  }
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            color: Colors.green,
+                          ),
+                          SizedBox(width: 9),
+                          Text(
+                            'Bạn đã Check-in hôm nay',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : SizedBox(
+                      height: 54,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          if (!isCheckInAllowed(classSession)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Chưa đến thời gian Check-in hoặc lớp đã kết thúc.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
 
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CameraCheckInScreen(
-                        classSession: classSession,
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CameraCheckInScreen(
+                                classSession: classSession,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.camera_alt,
+                        ),
+                        label: const Text(
+                          'Check-in ngay',
+                        ),
                       ),
                     ),
-                  );
-                },
-                icon: const Icon(
-                  Icons.camera_alt,
-                ),
-                label: const Text(
-                  'Check-in ngay',
-                ),
-              ),
             ),
           ],
         ),
