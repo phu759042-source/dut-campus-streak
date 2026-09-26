@@ -30,7 +30,7 @@ class NotificationService {
   static const String _channelId = 'class_reminders';
   static const String _channelName = 'Nhắc lịch học';
   static const String _channelDescription =
-      'Nhắc trước 10 phút khi tiết học sắp bắt đầu.';
+      'Nhắc trước 15 phút khi tiết học sắp bắt đầu.';
 
   static Future<void> initialize() async {
     tz.initializeTimeZones();
@@ -96,7 +96,7 @@ class NotificationService {
         now.day,
         hour,
         minute,
-      ).subtract(const Duration(minutes: 10));
+      ).subtract(const Duration(minutes: 15));
 
       final daysUntil =
           (classSession.dayOfWeek - now.weekday + 7) % 7;
@@ -107,27 +107,39 @@ class NotificationService {
         scheduled = scheduled.add(const Duration(days: 7));
       }
 
-      await localNotifications.zonedSchedule(
-        id: _notificationId(classSession.id),
-        title: 'Sắp đến giờ học',
-        body: 'Tiết học sẽ bắt đầu lúc ${classSession.startTime} '
-            'tại phòng ${classSession.room}.',
-        scheduledDate: scheduled,
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDescription,
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
+      // Schedule the reminder as a real Android alarm. It is independent
+    // of the Flutter UI, so it can fire while the user is on the Home
+    // screen, inside another app, or with DUT Campus Streak closed.
+    //
+    // We intentionally use inexactAllowWhileIdle here so Android does not
+    // require the special exact-alarm permission. The reminder is targeted
+    // at 15 minutes before class and may be delivered with a small system
+    // scheduling delay.
+    await localNotifications.zonedSchedule(
+      id: _notificationId(classSession.id),
+      title: 'Sắp đến giờ học',
+      body: 'Tiết học sẽ bắt đầu lúc ${_formatTimeHHmm(classSession.startTime)} '
+          'tại phòng ${classSession.room}.',
+      scheduledDate: scheduled,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
         ),
-        androidScheduleMode:
-            AndroidScheduleMode.inexactAllowWhileIdle,
-        matchDateTimeComponents:
-            DateTimeComponents.dayOfWeekAndTime,
-      );
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
     }
+  }
+
+  static Future<int> pendingCount() async {
+    final pending = await localNotifications.pendingNotificationRequests();
+    return pending.length;
   }
 }
 
@@ -153,6 +165,17 @@ class DUTCampusStreakApp extends StatelessWidget {
       home: const AuthGate(),
     );
   }
+}
+
+// ============================================================
+// TIME DISPLAY
+// ============================================================
+
+String _formatTimeHHmm(String value) {
+  final parts = value.split(':');
+  final hour = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0;
+  final minute = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+  return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 }
 
 // ============================================================
@@ -183,7 +206,7 @@ class ClassSession {
     this.completed = false,
   });
 
-  String get time => '$startTime – $endTime';
+  String get time => '${_formatTimeHHmm(startTime)} – ${_formatTimeHHmm(endTime)}';
 
   bool get isCheckInExcluded {
     final normalizedRoom = room.trim().toUpperCase();
@@ -1760,6 +1783,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 12),
 
             OutlinedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AboutContactScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.info_outline_rounded),
+              label: const Text('Liên hệ & Giới thiệu'),
+            ),
+
+            const SizedBox(height: 10),
+
+            OutlinedButton.icon(
               onPressed: _saving ? null : _changePassword,
               icon: const Icon(Icons.lock_reset_outlined),
               label: const Text('Đổi mật khẩu'),
@@ -1796,6 +1834,177 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 // ============================================================
+// ABOUT & CONTACT
+// ============================================================
+
+class AboutContactScreen extends StatelessWidget {
+  const AboutContactScreen({super.key});
+
+  static const Color _blue = Color(0xFF005BAC);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFEAF4FF),
+      appBar: AppBar(
+        title: const Text('Liên hệ & Giới thiệu'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        children: [
+          Center(
+            child: Container(
+              width: 96,
+              height: 96,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: _blue.withOpacity(0.12),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.asset(
+                  'assets/icon/dut_campus_streak.png',
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Center(
+            child: Text(
+              'DUT Campus Streak',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: _blue,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          _infoCard(
+            icon: Icons.person_outline_rounded,
+            title: 'Tác giả / Nhóm phát triển',
+            children: const [
+              Text(
+                'Nguyễn Tấn Phú',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Sinh viên phát triển sản phẩm DUT Campus Streak.',
+                style: TextStyle(color: Colors.black54, height: 1.4),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _infoCard(
+            icon: Icons.mail_outline_rounded,
+            title: 'Liên hệ',
+            children: const [
+              Text(
+                '102260032@sv1.dut.udn.vn',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Email liên hệ về sản phẩm, góp ý và báo lỗi.',
+                style: TextStyle(color: Colors.black54, height: 1.4),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _infoCard(
+            icon: Icons.copyright_rounded,
+            title: 'Bản quyền & sở hữu trí tuệ',
+            children: const [
+              Text(
+                'DUT Campus Streak © 2026',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Mã nguồn, giao diện, thiết kế và nội dung do tác giả tự phát triển được bảo lưu quyền sở hữu trí tuệ trong phạm vi pháp luật áp dụng. Các thư viện, SDK và thành phần của bên thứ ba tuân theo giấy phép riêng của chúng.',
+                style: TextStyle(color: Colors.black54, height: 1.5),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _infoCard(
+            icon: Icons.info_outline_rounded,
+            title: 'Về sản phẩm',
+            children: const [
+              Text(
+                'DUT Campus Streak hỗ trợ sinh viên theo dõi lịch học, check-in lớp học, xác minh phòng, duy trì streak và xem thành tích.',
+                style: TextStyle(color: Colors.black54, height: 1.5),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _infoCard({
+    required IconData icon,
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF4FF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: _blue),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                ...children,
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// ============================================================
 // HOME
 // ============================================================
 
@@ -1812,315 +2021,42 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool isLoadingClasses = true;
   String? classError;
+  DateTime? _loadedClassesDate;
 
   Map<String, dynamic>? profile;
 
   bool isLoadingProfile = true;
   String? profileError;
   int streak = 0;
+  bool todayStreakCompleted = false;
 
   Future<int> _loadStreak() async {
     final user = supabase.auth.currentUser;
-
-    if (user == null) {
-    return 0;
-    }
+    if (user == null) return 0;
 
     try {
-    // ============================================================
-    // 1. LẤY TOÀN BỘ LỊCH HỌC CỦA USER
-    // ============================================================
+      // Home and Leaderboard intentionally use the same RPC source of truth.
+      // The RPC implements the rule: an incomplete TODAY is still in
+      // progress and keeps the previous streak; only a finished school
+      // day below 75% breaks the streak on the following day.
+      final data = await supabase.rpc('get_leaderboard');
+      final rows = (data as List)
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
 
-    final classData = await supabase
-        .from('class_sessions')
-        .select('''
-          id,
-          day_of_week,
-          room,
-          subjects (
-            name,
-            subject_code
-          )
-        ''')
-        .eq('user_id', user.id);
-
-    final classes = (classData as List)
-        .map((row) => Map<String, dynamic>.from(row))
-        .where((classItem) {
-          final room = classItem['room']?.toString() ?? '';
-          final subjectData = classItem['subjects'];
-          final subjectName = subjectData is Map
-              ? subjectData['name']?.toString() ?? ''
-              : '';
-
-          return room.trim().toUpperCase() != 'MSTEAM' &&
-              !subjectName.toUpperCase().contains('GDTC');
-        })
-        .toList();
-
-    // Nếu user chưa có lịch học sau khi loại các lớp
-    // không yêu cầu Check-in.
-    if (classes.isEmpty) {
-      return 0;
-    }
-
-    // ============================================================
-    // 2. LẤY TOÀN BỘ CHECK-IN ĐÃ VERIFIED
-    // ============================================================
-
-    final checkInData = await supabase
-        .from('check_ins')
-        .select(
-          'class_session_id, checked_in_at, verification_status',
-        )
-        .eq('user_id', user.id)
-        .eq('verification_status', 'verified')
-        .order('checked_in_at', ascending: false);
-
-    final checkIns = (checkInData as List)
-        .map((row) => Map<String, dynamic>.from(row))
-        .toList();
-
-    // ============================================================
-    // 3. TẠO MAP:
-    //
-    // Date -> tổng số lớp học trong ngày
-    //
-    // Ví dụ:
-    // 2026-09-15 -> 2 lớp
-    // 2026-09-16 -> 3 lớp
-    // ============================================================
-
-    final Map<DateTime, int> totalClassesByDate = {};
-
-    final now = DateTime.now();
-
-    // Chỉ xét các ngày đã xảy ra cho đến hôm nay.
-    //
-    // Vì class_sessions chỉ có day_of_week (1-7),
-    // ta cần suy ra ngày gần nhất tương ứng với từng thứ.
-    //
-    // Để tránh việc một lịch học của "thứ Hai" bị tính
-    // cho tất cả các thứ Hai trong lịch sử, ta sẽ xét
-    // streak theo các ngày gần đây dựa trên lịch tuần hiện tại.
-    //
-    // Lấy ngày hôm nay làm mốc và xét 365 ngày gần nhất.
-    for (int offset = 0; offset <= 365; offset++) {
-      final date = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(
-        Duration(days: offset),
-      );
-
-      final weekday = date.weekday;
-
-      final totalClasses = classes.where((classItem) {
-        final dayOfWeek =
-            (classItem['day_of_week'] as num?)?.toInt();
-
-        return dayOfWeek == weekday;
-      }).length;
-
-      if (totalClasses > 0) {
-        totalClassesByDate[date] = totalClasses;
-      }
-    }
-
-    // ============================================================
-    // 4. ĐẾM SỐ LỚP ĐÃ CHECK-IN THEO NGÀY
-    //
-    // Date -> số lớp đã check-in
-    // ============================================================
-
-    final Map<DateTime, Set<String>> checkedClassesByDate = {};
-
-    for (final checkIn in checkIns) {
-      final rawDate = checkIn['checked_in_at'];
-
-      final classSessionId =
-          checkIn['class_session_id']?.toString();
-
-      if (rawDate == null || classSessionId == null) {
-        continue;
-      }
-
-      final date =
-          DateTime.parse(rawDate.toString()).toLocal();
-
-      final dateOnly = DateTime(
-    date.year,
-        date.month,
-        date.day,
-      );
-
-      checkedClassesByDate
-          .putIfAbsent(dateOnly, () => <String>{})
-          .add(classSessionId);
-    }
-
-    // ============================================================
-    // 5. XÁC ĐỊNH NHỮNG NGÀY ĐẠT >= 75%
-    //
-    // Ví dụ:
-    //
-    // 4 lớp, check-in 3
-    // 3 / 4 = 75% -> ĐẠT
-    //
-    // 4 lớp, check-in 2
-    // 2 / 4 = 50% -> KHÔNG ĐẠT
-    //
-    // 1 lớp, check-in 1
-    // 1 / 1 = 100% -> ĐẠT
-    // ============================================================
-
-    final Set<DateTime> completedDates = {};
-
-    for (final entry in totalClassesByDate.entries) {
-      final date = entry.key;
-      final totalClasses = entry.value;
-
-      final checkedClasses =
-          checkedClassesByDate[date] ?? <String>{};
-
-      final checkedCount = checkedClasses.length;
-
-      final completionRate =
-          checkedCount / totalClasses;
-
-      debugPrint(
-        'STREAK DATE: $date | '
-        'CHECKED: $checkedCount/$totalClasses | '
-        'RATE: ${(completionRate * 100).toStringAsFixed(1)}%',
-      );
-
-      if (completionRate >= 0.75) {
-        completedDates.add(date);
-      }
-    }
-
-    // ============================================================
-    // 6. TÍNH STREAK LIÊN TIẾP
-    // ============================================================
-
-    if (completedDates.isEmpty) {
-      return 0;
-    }
-
-    final today = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    );
-
-    final yesterday = today.subtract(
-      const Duration(days: 1),
-    );
-
-    // ============================================================
-    // QUAN TRỌNG:
-    //
-    // Nếu hôm nay chưa đạt 75%, KHÔNG ĐƯỢC TÍNH HÔM NAY.
-    //
-    // Nhưng nếu hôm qua đạt thì streak vẫn còn.
-    //
-    // Ví dụ:
-    //
-    // Hôm qua: 100%  -> streak
-    // Hôm nay: 0%    -> streak vẫn = 1
-    //
-    // Nhưng:
-    //
-    // Hôm qua: 50%   -> streak = 0
-    // ============================================================
-
-    DateTime? streakStartDate;
-
-    if (completedDates.contains(today)) {
-      streakStartDate = today;
-    } else if (completedDates.contains(yesterday)) {
-      streakStartDate = yesterday;
-    } else {
-      return 0;
-    }
-
-    // ============================================================
-    // 7. ĐẾM NGƯỢC CÁC NGÀY ĐẠT 75% LIÊN TIẾP
-    // ============================================================
-
-    int streak = 1;
-
-    DateTime currentDate = streakStartDate;
-
-    while (true) {
-      final previousDate = currentDate.subtract(
-        const Duration(days: 1),
-      );
-
-      // Nếu ngày trước đó không có lớp học,
-      // thì đó không phải là ngày cần check-in.
-      //
-      // Ta bỏ qua ngày không có lớp và tiếp tục tìm
-      // ngày học trước đó.
-      if (!totalClassesByDate.containsKey(previousDate)) {
-        currentDate = previousDate;
-
-        // Tìm ngày học gần nhất trước đó.
-        DateTime searchDate = previousDate;
-
-        bool foundPreviousClassDay = false;
-
-        for (int i = 0; i < 7; i++) {
-          if (totalClassesByDate.containsKey(searchDate)) {
-            foundPreviousClassDay = true;
-            break;
-          }
-
-          searchDate = searchDate.subtract(
-    const Duration(days: 1),
-          );
+      for (final row in rows) {
+        if (row['user_id']?.toString() == user.id) {
+          todayStreakCompleted = row['today_completed'] == true;
+          return (row['current_streak'] as num?)?.toInt() ?? 0;
         }
-
-        if (!foundPreviousClassDay) {
-          break;
-        }
-
-        if (completedDates.contains(searchDate)) {
-          streak++;
-          currentDate = searchDate;
-          continue;
-        }
-
-        break;
       }
 
-      // Nếu ngày trước đó có lớp nhưng không đạt 75%,
-      // streak bị ngắt.
-      if (!completedDates.contains(previousDate)) {
-        break;
-      }
-
-      streak++;
-
-      currentDate = previousDate;
-    }
-
-    debugPrint(
-      'FINAL STREAK: $streak',
-    );
-
-    return streak;
-
+      return 0;
     } catch (e) {
-    debugPrint(
-    'Load streak error: $e',
-    );
-
-    return 0;
-
+      debugPrint('Load streak error: $e');
+      return 0;
     }
-}
+  }
 
   @override
 void initState() {
@@ -2246,9 +2182,36 @@ Future<void> _loadStreakData() async {
           )
           .toList();
 
-      // Đồng bộ nhắc lịch học trên điện thoại.
+      // Đồng bộ nhắc lịch học cho TOÀN BỘ tuần, không chỉ lịch hôm nay.
       // MSTEAM/GDTC vẫn được nhắc vì đây vẫn là tiết học thật.
-      await NotificationService.syncSchedule(rawClasses);
+      final allScheduleData = await supabase
+          .from('class_sessions')
+          .select('''
+            id,
+            room,
+            start_time,
+            end_time,
+            teacher,
+            day_of_week,
+            subjects (
+              name,
+              subject_code,
+              teacher
+            )
+          ''')
+          .eq('user_id', user.id);
+
+      final allScheduleClasses = (allScheduleData as List)
+          .map(
+            (item) => ClassSession.fromMap(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList();
+
+      await NotificationService.syncSchedule(allScheduleClasses);
+      final pendingCount = await NotificationService.pendingCount();
+      debugPrint('Scheduled class notifications: $pendingCount');
 
       // Đồng bộ trạng thái đã VERIFIED hôm nay.
       final now = DateTime.now();
@@ -2289,12 +2252,15 @@ Future<void> _loadStreakData() async {
                   verifiedTodayIds.contains(item.id),
             ),
           )
-          .toList();
+          .toList()
+        ..sort((a, b) => _timeToMinutes(a.startTime)
+            .compareTo(_timeToMinutes(b.startTime)));
 
       if (!mounted) return;
 
       setState(() {
         todayClasses = classes;
+        _loadedClassesDate = DateTime.now();
         isLoadingClasses = false;
         classError = null;
       });
@@ -2318,6 +2284,33 @@ Future<void> _loadStreakData() async {
   // ==========================================================
   // BUILD CLASS LIST
   // ==========================================================
+
+  bool get _isTodayStreakComplete {
+    final loadedDate = _loadedClassesDate;
+    final now = DateTime.now();
+
+    // Nếu đã sang ngày mới nhưng Home chưa reload lịch, ngọn lửa vẫn
+    // phải trở về màu xám ngay lập tức.
+    if (loadedDate == null ||
+        loadedDate.year != now.year ||
+        loadedDate.month != now.month ||
+        loadedDate.day != now.day) {
+      return false;
+    }
+
+    final checkInClasses = todayClasses
+        .where((item) => !item.isCheckInExcluded)
+        .toList();
+
+    // Nếu hôm nay có lịch nhưng toàn bộ đều là môn không cần check-in
+    // (MSTEAM/GDTC), ngày này vẫn được tính là một ngày hoàn thành streak.
+    if (checkInClasses.isEmpty) return todayClasses.isNotEmpty;
+
+    final completedCount =
+        checkInClasses.where((item) => item.completed).length;
+
+    return completedCount / checkInClasses.length >= 0.75;
+  }
 
   Widget _buildTodayClasses() {
     if (isLoadingClasses) {
@@ -2592,6 +2585,13 @@ Future<void> _loadStreakData() async {
     );
   }
 
+  int _timeToMinutes(String value) {
+    final parts = value.split(':');
+    final hour = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0;
+    final minute = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    return hour * 60 + minute;
+  }
+
   String _weekdayLabel(int weekday) {
     const names = [
       'Thứ Hai',
@@ -2674,8 +2674,24 @@ Future<void> _loadStreakData() async {
     final monthName = now.month.toString();
     final dayNumber = now.day.toString();
 
-    final nextClass =
-        todayClasses.isEmpty ? null : todayClasses.first;
+    final currentMinutes = now.hour * 60 + now.minute;
+
+    // Chọn môn hiển thị chính theo trạng thái thực tế trong ngày:
+    // - Trước khi môn đầu tiên bắt đầu: hiển thị môn đầu tiên.
+    // - Đang trong một môn: giữ nguyên môn đang học cho tới khi kết thúc.
+    // - Đang ở khoảng nghỉ giữa hai môn: hiển thị môn kế tiếp.
+    // - Đã kết thúc môn cuối: vẫn giữ môn cuối cùng, không quay lại môn đầu.
+    ClassSession? nextClass;
+    if (todayClasses.isNotEmpty) {
+      final sortedTodayClasses = List<ClassSession>.from(todayClasses)
+        ..sort((a, b) => _timeToMinutes(a.startTime)
+            .compareTo(_timeToMinutes(b.startTime)));
+
+      nextClass = sortedTodayClasses.firstWhere(
+        (item) => _timeToMinutes(item.endTime) > currentMinutes,
+        orElse: () => sortedTodayClasses.last,
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFEAF4FF),
@@ -3066,9 +3082,11 @@ Future<void> _loadStreakData() async {
                     ),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.local_fire_department_rounded,
-                          color: Colors.white,
+                          color: todayStreakCompleted
+                              ? const Color(0xFFFF8A00)
+                              : Colors.grey.shade400,
                           size: 32,
                         ),
                         const SizedBox(width: 12),
@@ -4218,6 +4236,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return value == null || value.isEmpty ? null : value;
   }
 
+  String _studentCode(Map<String, dynamic> row) {
+    final value = row['student_code']?.toString().trim();
+    return value == null || value.isEmpty ? 'Chưa có MSSV' : value;
+  }
+
+  String _className(Map<String, dynamic> row) {
+    final value = row['class_name']?.toString().trim();
+    return value == null || value.isEmpty ? 'Chưa có lớp' : value;
+  }
+
   int _streak(Map<String, dynamic> row) {
     return (row['current_streak'] as num?)?.toInt() ?? 0;
   }
@@ -4293,6 +4321,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
               ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              _className(row),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 10, color: Colors.black54),
+            ),
+            Text(
+              _studentCode(row),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 10, color: Colors.black45),
             ),
             const SizedBox(height: 4),
             Text(
@@ -4372,9 +4415,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(left: 52, top: 3),
-          child: Text(
-            '${_totalCheckIns(row)} check-in đã xác minh',
-            style: const TextStyle(fontSize: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${_className(row)} • ${_studentCode(row)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${_totalCheckIns(row)} check-in đã xác minh',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
           ),
         ),
         trailing: Text(
@@ -4875,6 +4930,10 @@ class _ScheduleScreenState
           )
           .toList();
 
+      // Mỗi lần mở/làm mới trang Lịch học, đồng bộ lại toàn bộ
+      // thông báo của tuần để lịch mới thêm/sửa/xóa được cập nhật ngay.
+      await NotificationService.syncSchedule(loadedClasses);
+
       if (!mounted) return;
 
       setState(() {
@@ -5189,6 +5248,14 @@ class _ScheduleScreenState
     return null;
   }
 
+  int? _periodFromEndTime(String time) {
+    final normalized = time.length >= 5 ? time.substring(0, 5) : time;
+    for (int i = 1; i <= 14; i++) {
+      if (_periodEndTime(i).substring(0, 5) == normalized) return i;
+    }
+    return null;
+  }
+
   Future<Map<String, dynamic>?> _loadSubjectForClass(ClassSession classSession) async {
     final data = await supabase
         .from('class_sessions')
@@ -5258,8 +5325,12 @@ class _ScheduleScreenState
     final room = TextEditingController(text: editing?.room ?? '');
 
     int day = editing?.dayOfWeek ?? DateTime.now().weekday;
-    int startPeriod = _periodFromTime(editing?.startTime ?? '') ?? 1;
-    int endPeriod = _periodFromTime(editing?.endTime ?? '') ?? startPeriod;
+    final parsedStartPeriod =
+        _periodFromTime(editing?.startTime ?? '');
+    final parsedEndPeriod =
+        _periodFromEndTime(editing?.endTime ?? '');
+    int startPeriod = parsedStartPeriod ?? 1;
+    int endPeriod = parsedEndPeriod ?? startPeriod;
 
     if (editing != null) {
       try {
@@ -5537,13 +5608,27 @@ class _ScheduleScreenState
   // BUILD DAY SECTION
   // ==========================================================
 
+  int _timeToMinutes(String value) {
+    final parts = value.split(':');
+    final hour = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0;
+    final minute = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    return hour * 60 + minute;
+  }
+
+  List<int> _orderedDaysFromToday() {
+    final today = DateTime.now().weekday;
+    return List<int>.generate(7, (index) => ((today - 1 + index) % 7) + 1);
+  }
+
   Widget _buildDaySection(int day) {
     final dayClasses = classes
         .where(
           (item) =>
               item.dayOfWeek == day,
         )
-        .toList();
+        .toList()
+      ..sort((a, b) => _timeToMinutes(a.startTime)
+          .compareTo(_timeToMinutes(b.startTime)));
 
     if (dayClasses.isEmpty) {
       return const SizedBox.shrink();
@@ -5711,11 +5796,7 @@ class _ScheduleScreenState
                     const EdgeInsets.all(20),
 
                 children: [
-                  for (
-                    int day = 1;
-                    day <= 7;
-                    day++
-                  )
+                  for (final day in _orderedDaysFromToday())
                     _buildDaySection(day),
 
                   Container(
@@ -5902,7 +5983,7 @@ class ScheduleCard extends StatelessWidget {
             child: Column(children: [
               const Icon(Icons.access_time, color: Color(0xFF005BAC)),
               const SizedBox(height: 4),
-              Text(classSession.startTime, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              Text(_formatTimeHHmm(classSession.startTime), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
             ]),
           ),
           const SizedBox(width: 16),
@@ -5918,7 +5999,7 @@ class ScheduleCard extends StatelessWidget {
                   ),
               ]),
               const SizedBox(height: 6),
-              Text('${classSession.startTime} – ${classSession.endTime}', style: const TextStyle(color: Colors.black54)),
+              Text(classSession.time, style: const TextStyle(color: Colors.black54)),
               const SizedBox(height: 4),
               Text('Phòng ${classSession.room}', style: const TextStyle(color: Colors.black54)),
               if (classSession.teacher.trim().isNotEmpty) ...[
