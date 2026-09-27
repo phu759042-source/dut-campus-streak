@@ -1961,7 +1961,7 @@ class AboutContactScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color.fromARGB(255, 171, 16, 16),
+        color: const Color.fromARGB(255, 255, 255, 255),
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
