@@ -14,9 +14,9 @@ workflows:
         script: |
           flutter pub get
 
-      - name: Build signed Android APK
+      - name: Build signed Android App Bundle
         script: |
-          flutter build apk --release
+          flutter build appbundle --release
 
     artifacts:
-      - build/app/outputs/flutter-apk/*.apk
+      - build/app/outputs/bundle/release/*.aab
