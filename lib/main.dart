@@ -1911,7 +1911,7 @@ class AboutContactScreen extends StatelessWidget {
             title: 'Liên hệ',
             children: const [
               Text(
-                '102260032@sv1.dut.udn.vn',
+                'phu759042@gmail.com',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
               SizedBox(height: 6),
@@ -1961,7 +1961,7 @@ class AboutContactScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color.fromARGB(255, 171, 16, 16),
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
