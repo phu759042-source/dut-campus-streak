@@ -23,6 +23,10 @@ Future<void> main() async {
 
 final supabase = Supabase.instance.client;
 
+// Giao diện sáng/tối dùng chung cho toàn app.
+final ValueNotifier<ThemeMode> appThemeMode =
+    ValueNotifier<ThemeMode>(ThemeMode.light);
+
 final FlutterLocalNotificationsPlugin localNotifications =
     FlutterLocalNotificationsPlugin();
 
@@ -157,16 +161,35 @@ class DUTCampusStreakApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'DUT Campus Streak',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF005BAC),
-        ),
-      ),
-      home: const AuthGate(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: appThemeMode,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'DUT Campus Streak',
+          themeMode: mode,
+          theme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.light,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF005BAC),
+              brightness: Brightness.light,
+            ),
+            scaffoldBackgroundColor: const Color(0xFFEAF4FF),
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.dark,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF4EA1FF),
+              brightness: Brightness.dark,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF0F1720),
+            cardColor: const Color(0xFF182331),
+          ),
+          home: const AuthGate(),
+        );
+      },
     );
   }
 }
@@ -594,11 +617,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       const SizedBox(height: 4),
 
-                      const Text(
+                      Text(
                         'DUT Campus Streak',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.surface,
                           fontSize: 30,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.5,
@@ -1786,7 +1809,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
 
-            const SizedBox(height: 28),
+            const SizedBox(height: 22),
+            Card(
+              elevation: 0,
+              child: ValueListenableBuilder<ThemeMode>(
+                valueListenable: appThemeMode,
+                builder: (context, mode, _) {
+                  final isDark = mode == ThemeMode.dark;
+                  return SwitchListTile.adaptive(
+                    secondary: Icon(
+                      isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                    ),
+                    title: const Text(
+                      'Giao diện tối',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(isDark ? 'Đang dùng giao diện tối' : 'Đang dùng giao diện sáng'),
+                    value: isDark,
+                    onChanged: (value) {
+                      appThemeMode.value = value ? ThemeMode.dark : ThemeMode.light;
+                    },
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 12),
 
@@ -1852,8 +1900,10 @@ class AboutContactScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF4FF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Liên hệ & Giới thiệu'),
         backgroundColor: Colors.transparent,
@@ -1867,7 +1917,7 @@ class AboutContactScreen extends StatelessWidget {
               height: 96,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: colorScheme.surface,
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
@@ -1887,7 +1937,7 @@ class AboutContactScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          const Center(
+          Center(
             child: Text(
               'DUT Campus Streak',
               style: TextStyle(
@@ -1899,9 +1949,10 @@ class AboutContactScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           _infoCard(
+            colorScheme: colorScheme,
             icon: Icons.person_outline_rounded,
             title: 'Tác giả / Nhóm phát triển',
-            children: const [
+            children: [
               Text(
                 'Nguyễn Tấn Phú',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
@@ -1909,15 +1960,16 @@ class AboutContactScreen extends StatelessWidget {
               SizedBox(height: 6),
               Text(
                 'Sinh viên phát triển sản phẩm DUT Campus Streak.',
-                style: TextStyle(color: Colors.black54, height: 1.4),
+                style: TextStyle(color: colorScheme.onSurfaceVariant, height: 1.4),
               ),
             ],
           ),
           const SizedBox(height: 14),
           _infoCard(
+            colorScheme: colorScheme,
             icon: Icons.mail_outline_rounded,
             title: 'Liên hệ',
-            children: const [
+            children: [
               Text(
                 'phu759042@gmail.com',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
@@ -1925,15 +1977,16 @@ class AboutContactScreen extends StatelessWidget {
               SizedBox(height: 6),
               Text(
                 'Email liên hệ về sản phẩm, góp ý và báo lỗi.',
-                style: TextStyle(color: Colors.black54, height: 1.4),
+                style: TextStyle(color: colorScheme.onSurfaceVariant, height: 1.4),
               ),
             ],
           ),
           const SizedBox(height: 14),
           _infoCard(
+            colorScheme: colorScheme,
             icon: Icons.copyright_rounded,
             title: 'Bản quyền & sở hữu trí tuệ',
-            children: const [
+            children: [
               Text(
                 'DUT Campus Streak © 2026',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
@@ -1941,18 +1994,19 @@ class AboutContactScreen extends StatelessWidget {
               SizedBox(height: 8),
               Text(
                 'Mã nguồn, giao diện, thiết kế và nội dung do tác giả tự phát triển được bảo lưu quyền sở hữu trí tuệ trong phạm vi pháp luật áp dụng. Các thư viện, SDK và thành phần của bên thứ ba tuân theo giấy phép riêng của chúng.',
-                style: TextStyle(color: Colors.black54, height: 1.5),
+                style: TextStyle(color: colorScheme.onSurfaceVariant, height: 1.5),
               ),
             ],
           ),
           const SizedBox(height: 14),
           _infoCard(
+            colorScheme: colorScheme,
             icon: Icons.info_outline_rounded,
             title: 'Về sản phẩm',
-            children: const [
+            children: [
               Text(
                 'DUT Campus Streak hỗ trợ sinh viên theo dõi lịch học, check-in lớp học, xác minh phòng, duy trì streak và xem thành tích.',
-                style: TextStyle(color: Colors.black54, height: 1.5),
+                style: TextStyle(color: colorScheme.onSurfaceVariant, height: 1.5),
               ),
             ],
           ),
@@ -1961,7 +2015,8 @@ class AboutContactScreen extends StatelessWidget {
     );
   }
 
-  static Widget _infoCard({
+  Widget _infoCard({
+    required ColorScheme colorScheme,
     required IconData icon,
     required String title,
     required List<Widget> children,
@@ -1969,7 +2024,7 @@ class AboutContactScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color.fromARGB(255, 255, 255, 255),
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
@@ -1986,10 +2041,10 @@ class AboutContactScreen extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF4FF),
+              color: colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: _blue),
+            child: Icon(icon, color: colorScheme.primary),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -1998,7 +2053,7 @@ class AboutContactScreen extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.onSurface),
                 ),
                 const SizedBox(height: 8),
                 ...children,
@@ -2377,10 +2432,10 @@ Future<void> _loadStreakData() async {
           vertical: 28,
         ),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(22),
         ),
-        child: const Column(
+        child: Column(
           children: [
             Icon(
               Icons.event_available_rounded,
@@ -2404,7 +2459,7 @@ Future<void> _loadStreakData() async {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Material(
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(18),
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
@@ -2456,7 +2511,7 @@ Future<void> _loadStreakData() async {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEAF4FF),
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
                         borderRadius:
                             BorderRadius.circular(14),
                       ),
@@ -2485,8 +2540,8 @@ Future<void> _loadStreakData() async {
                           const SizedBox(height: 5),
                           Text(
                             '${classSession.time} • ${classSession.room}',
-                            style: const TextStyle(
-                              color: Colors.black54,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               fontSize: 13,
                             ),
                           ),
@@ -2496,8 +2551,8 @@ Future<void> _loadStreakData() async {
                               classSession.teacher,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.black45,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
@@ -2515,15 +2570,15 @@ Future<void> _loadStreakData() async {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.06),
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Không Check-in',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: Colors.black54,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       )
@@ -2537,9 +2592,9 @@ Future<void> _loadStreakData() async {
                         ),
                       ),
 
-                    const Icon(
+                    Icon(
                       Icons.chevron_right_rounded,
-                      color: Colors.black38,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ],
                 ),
@@ -2561,7 +2616,7 @@ Future<void> _loadStreakData() async {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).cardColor,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -2576,14 +2631,14 @@ Future<void> _loadStreakData() async {
                 Icon(
                   icon,
                   size: 34,
-                  color: const Color(0xFF2474BE),
+                  color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(height: 10),
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF2469A9),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
@@ -2705,7 +2760,7 @@ Future<void> _loadStreakData() async {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF4FF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
@@ -2713,7 +2768,7 @@ Future<void> _loadStreakData() async {
           child: Container(
             height: 62,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(32),
               boxShadow: [
                 BoxShadow(
@@ -2729,12 +2784,12 @@ Future<void> _loadStreakData() async {
                   child: Container(
                     margin: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEAF4FF),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(28),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.home_rounded,
-                      color: Color(0xFF2474BE),
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                 ),
@@ -2752,9 +2807,9 @@ Future<void> _loadStreakData() async {
                         await _loadProfile();
                       }
                     },
-                    child: const Icon(
+                    child: Icon(
                       Icons.person_outline_rounded,
-                      color: Colors.black45,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -2860,17 +2915,23 @@ Future<void> _loadStreakData() async {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                (profile?['email']?.toString().trim().isNotEmpty == true)
-                                    ? profile!['email'].toString()
-                                    : (studentCode.toString().isEmpty
-                                        ? className.toString()
-                                        : '$studentCode${className.toString().isEmpty ? '' : ' • $className'}'),
+                                profile?['email']?.toString() ?? '',
                                 maxLines: 1,
-                                overflow:
-                                    TextOverflow.ellipsis,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${studentCode.toString().isEmpty ? 'Chưa có MSSV' : studentCode}${className.toString().isEmpty ? '' : ' • $className'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -2907,7 +2968,7 @@ Future<void> _loadStreakData() async {
                   child: Container(
                     height: 152,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).cardColor,
                       borderRadius:
                           BorderRadius.circular(22),
                       boxShadow: [
@@ -2946,8 +3007,8 @@ Future<void> _loadStreakData() async {
                                 const SizedBox(height: 7),
                                 Text(
                                   'Tháng $monthName',
-                                  style: const TextStyle(
-                                    color: Colors.black45,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     fontSize: 14,
                                   ),
                                 ),
@@ -2979,7 +3040,7 @@ Future<void> _loadStreakData() async {
                             padding:
                                 const EdgeInsets.all(18),
                             child: nextClass == null
-                                ? const Column(
+                                ? Column(
                                     mainAxisAlignment:
                                         MainAxisAlignment.center,
                                     crossAxisAlignment:
@@ -2997,7 +3058,7 @@ Future<void> _loadStreakData() async {
                                       Text(
                                         'Bạn có thể nghỉ ngơi hoặc xem lịch học.',
                                         style: TextStyle(
-                                          color: Colors.black45,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                                           fontSize: 12,
                                         ),
                                       ),
@@ -3023,17 +3084,17 @@ Future<void> _loadStreakData() async {
                                       const SizedBox(height: 7),
                                       Text(
                                         nextClass.time,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 14,
-                                          color: Colors.black87,
+                                          color: Theme.of(context).colorScheme.onSurface,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         'Phòng ${nextClass.room}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 13,
-                                          color: Colors.black45,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     ],
@@ -3161,18 +3222,6 @@ Future<void> _loadStreakData() async {
                           ),
                         ),
                       ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  const ScheduleScreen(),
-                            ),
-                          );
-                        },
-                        child: const Text('Lịch học'),
-                      ),
                     ],
                   ),
                 ),
@@ -3187,19 +3236,6 @@ Future<void> _loadStreakData() async {
                 ),
                 sliver: SliverGrid(
                   delegate: SliverChildListDelegate([
-                    _menuTile(
-                      icon: Icons.calendar_month_rounded,
-                      title: 'Thời khóa biểu',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                const ScheduleScreen(),
-                          ),
-                        );
-                      },
-                    ),
                     _menuTile(
                       icon: Icons.leaderboard_rounded,
                       title: 'Xếp hạng',
@@ -3239,6 +3275,18 @@ Future<void> _loadStreakData() async {
                         );
                       },
                     ),
+                    _menuTile(
+                      icon: Icons.calendar_month_rounded,
+                      title: 'Thời khóa biểu',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ScheduleScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ]),
                   gridDelegate:
                       const SliverGridDelegateWithFixedCrossAxisCount(
@@ -3262,7 +3310,7 @@ Future<void> _loadStreakData() async {
                     'DUT Campus Streak • Học đều mỗi ngày',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.black38,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
@@ -3427,8 +3475,8 @@ class _TodayCheckInsScreenState
               Text(
                 errorMessage!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.black54,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 13,
                 ),
               ),
@@ -3444,9 +3492,9 @@ class _TodayCheckInsScreenState
     }
 
     if (!hasClassesToday) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -3469,7 +3517,7 @@ class _TodayCheckInsScreenState
                 'Không có lớp nào trong lịch học hôm nay.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.black45,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 13,
                 ),
               ),
@@ -3480,16 +3528,16 @@ class _TodayCheckInsScreenState
     }
 
     if (checkedInClasses.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.check_circle_outline_rounded,
                 size: 56,
-                color: Colors.black26,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               SizedBox(height: 14),
               Text(
@@ -3505,7 +3553,7 @@ class _TodayCheckInsScreenState
                 'Các môn chưa Check-in sẽ không xuất hiện ở đây.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.black45,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 13,
                 ),
               ),
@@ -3526,7 +3574,7 @@ class _TodayCheckInsScreenState
           final classSession = checkedInClasses[index];
 
           return Material(
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(18),
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
@@ -3555,7 +3603,7 @@ class _TodayCheckInsScreenState
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEAF4FF),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         borderRadius:
                             BorderRadius.circular(14),
                       ),
@@ -3583,8 +3631,8 @@ class _TodayCheckInsScreenState
                           const SizedBox(height: 5),
                           Text(
                             '${classSession.time} • ${classSession.room}',
-                            style: const TextStyle(
-                              color: Colors.black54,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               fontSize: 13,
                             ),
                           ),
@@ -3595,8 +3643,8 @@ class _TodayCheckInsScreenState
                               maxLines: 1,
                               overflow:
                                   TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.black45,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
@@ -3623,10 +3671,10 @@ class _TodayCheckInsScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF4FF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Check-in hôm nay'),
-        backgroundColor: const Color(0xFFEAF4FF),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         surfaceTintColor: Colors.transparent,
       ),
       body: SafeArea(
@@ -3858,9 +3906,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
               width: 58,
               height: 58,
               decoration: BoxDecoration(
-                color: unlocked
-                    ? const Color(0xFFEAF4FF)
-                    : Colors.grey.shade100,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(
@@ -3884,9 +3930,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: unlocked
-                                ? Colors.black87
-                                : Colors.black54,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                       ),
@@ -3904,9 +3948,9 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                   const SizedBox(height: 4),
                   Text(
                     achievement.description,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: Colors.black54,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -3915,7 +3959,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                     child: LinearProgressIndicator(
                       value: achievement.progressRatio,
                       minHeight: 7,
-                      backgroundColor: Colors.grey.shade200,
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                       color: unlocked
                           ? Colors.green
                           : const Color(0xFF005BAC),
@@ -3929,7 +3973,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                       fontWeight: FontWeight.w600,
                       color: unlocked
                           ? Colors.green.shade700
-                          : Colors.black45,
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -3947,7 +3991,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
     final unlockedCount = achievements.where((item) => item.unlocked).length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF4FF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Thành tích'),
         backgroundColor: Colors.transparent,
@@ -4072,19 +4116,32 @@ class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
 
   @override
-  State<LeaderboardScreen> createState() =>
-      _LeaderboardScreenState();
+  State<LeaderboardScreen> createState() => _LeaderboardScreenState();
 }
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
   bool isLoading = true;
   String? errorMessage;
   List<Map<String, dynamic>> leaderboard = [];
+  Map<String, dynamic>? myProfile;
+  final ScrollController _scrollController = ScrollController();
+  int currentPage = 1;
+  static const int pageSize = 50;
+
+  int get totalPages => leaderboard.isEmpty ? 1 : (leaderboard.length + pageSize - 1) ~/ pageSize;
+  int get startIndex => (currentPage - 1) * pageSize;
+  List<Map<String, dynamic>> get currentRows => leaderboard.skip(startIndex).take(pageSize).toList();
 
   @override
   void initState() {
     super.initState();
     _loadLeaderboard();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadLeaderboard() async {
@@ -4095,44 +4152,50 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       });
 
       final data = await supabase.rpc('get_leaderboard');
-
       final rows = (data as List)
           .map((row) => Map<String, dynamic>.from(row as Map))
           .toList();
 
       rows.sort((a, b) {
-        final streakCompare =
-            ((b['current_streak'] as num?)?.toInt() ?? 0)
-                .compareTo((a['current_streak'] as num?)?.toInt() ?? 0);
-
-        if (streakCompare != 0) {
-          return streakCompare;
-        }
-
-        final checkInCompare =
-            ((b['total_check_ins'] as num?)?.toInt() ?? 0)
-                .compareTo((a['total_check_ins'] as num?)?.toInt() ?? 0);
-
-        if (checkInCompare != 0) {
-          return checkInCompare;
-        }
-
-        return _displayName(a).toLowerCase().compareTo(
-              _displayName(b).toLowerCase(),
-            );
+        final streakCompare = ((b['current_streak'] as num?)?.toInt() ?? 0)
+            .compareTo((a['current_streak'] as num?)?.toInt() ?? 0);
+        if (streakCompare != 0) return streakCompare;
+        final checkInCompare = ((b['total_check_ins'] as num?)?.toInt() ?? 0)
+            .compareTo((a['total_check_ins'] as num?)?.toInt() ?? 0);
+        if (checkInCompare != 0) return checkInCompare;
+        return _displayName(a).toLowerCase().compareTo(_displayName(b).toLowerCase());
       });
 
-      if (!mounted) return;
+      final user = supabase.auth.currentUser;
+      Map<String, dynamic>? profile;
+      if (user != null) {
+        final userData = await supabase
+            .from('users')
+            .select('student_code, name, email, class_name')
+            .eq('id', user.id)
+            .maybeSingle();
+        final profileData = await supabase
+            .from('profiles')
+            .select('display_name, avatar_url')
+            .eq('id', user.id)
+            .maybeSingle();
+        profile = {
+          if (userData != null) ...Map<String, dynamic>.from(userData),
+          if (profileData != null) ...Map<String, dynamic>.from(profileData),
+          'email': userData?['email'] ?? user.email ?? '',
+        };
+      }
 
+      if (!mounted) return;
       setState(() {
         leaderboard = rows;
+        myProfile = profile;
+        currentPage = 1;
         isLoading = false;
       });
     } catch (e) {
       debugPrint('Load leaderboard error: $e');
-
       if (!mounted) return;
-
       setState(() {
         isLoading = false;
         errorMessage = e.toString();
@@ -4145,9 +4208,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return value == null || value.isEmpty ? 'Sinh viên' : value;
   }
 
-  String? _avatarUrl(Map<String, dynamic> row) {
-    final value = row['avatar_url']?.toString().trim();
-    return value == null || value.isEmpty ? null : value;
+  String _avatarUrl(Map<String, dynamic> row) {
+    return row['avatar_url']?.toString().trim() ?? '';
   }
 
   String _studentCode(Map<String, dynamic> row) {
@@ -4160,25 +4222,208 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return value == null || value.isEmpty ? 'Chưa có lớp' : value;
   }
 
-  int _streak(Map<String, dynamic> row) {
-    return (row['current_streak'] as num?)?.toInt() ?? 0;
-  }
+  int _streak(Map<String, dynamic> row) => (row['current_streak'] as num?)?.toInt() ?? 0;
+  int _totalCheckIns(Map<String, dynamic> row) => (row['total_check_ins'] as num?)?.toInt() ?? 0;
 
-  int _totalCheckIns(Map<String, dynamic> row) {
-    return (row['total_check_ins'] as num?)?.toInt() ?? 0;
-  }
-
-  Widget _buildAvatar(Map<String, dynamic> row, {double radius = 24}) {
-    final avatarUrl = _avatarUrl(row);
-
+  Widget _avatar(Map<String, dynamic> row, {double radius = 22}) {
+    final url = _avatarUrl(row);
     return CircleAvatar(
       radius: radius,
-      backgroundImage: avatarUrl != null
-          ? NetworkImage(avatarUrl)
-          : null,
-      child: avatarUrl == null
-          ? Icon(Icons.person, size: radius)
-          : null,
+      backgroundImage: url.isNotEmpty ? NetworkImage(url) : null,
+      child: url.isEmpty ? Icon(Icons.person, size: radius) : null,
+    );
+  }
+
+  void _showStudentDetails(Map<String, dynamic> row) {
+    final rank = _rankOf(row);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 620),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.18),
+                  blurRadius: 24,
+                  offset: const Offset(0, -6),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 18),
+                    decoration: BoxDecoration(
+                      color: theme.dividerColor,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  _avatar(row, radius: 52),
+                  const SizedBox(height: 14),
+                  Text(
+                    _displayName(row),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Hạng #$rank',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _detailStatCard(
+                          icon: Icons.local_fire_department_rounded,
+                          label: 'Streak',
+                          value: '${_streak(row)} ngày',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _detailStatCard(
+                          icon: Icons.check_circle_outline_rounded,
+                          label: 'Check-in',
+                          value: '${_totalCheckIns(row)} lần',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _detailInfoTile(
+                    icon: Icons.school_outlined,
+                    label: 'Lớp',
+                    value: _className(row),
+                  ),
+                  const SizedBox(height: 10),
+                  _detailInfoTile(
+                    icon: Icons.badge_outlined,
+                    label: 'MSSV',
+                    value: _studentCode(row),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      child: const Text('Đóng'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _detailStatCard({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: colorScheme.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: colorScheme.primary, size: 25),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailInfoTile({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: colorScheme.primary, size: 23),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -4186,21 +4431,22 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     required Map<String, dynamic> row,
     required int rank,
   }) {
-    final streak = _streak(row);
-
     return Expanded(
-      child: Container(
-        margin: EdgeInsets.only(
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _showStudentDetails(row),
+          child: Container(
+            margin: EdgeInsets.only(
           left: rank == 1 ? 6 : 4,
           right: rank == 3 ? 6 : 4,
           top: rank == 1 ? 0 : 28,
         ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 8,
-          vertical: 14,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
@@ -4217,24 +4463,18 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               style: TextStyle(
                 fontSize: rank == 1 ? 22 : 18,
                 fontWeight: FontWeight.bold,
-                color: const Color(0xFF005BAC),
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(height: 8),
-            _buildAvatar(
-              row,
-              radius: rank == 1 ? 34 : 28,
-            ),
+            _avatar(row, radius: rank == 1 ? 34 : 28),
             const SizedBox(height: 8),
             Text(
               _displayName(row),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             ),
             const SizedBox(height: 3),
             Text(
@@ -4242,116 +4482,146 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 10, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 10,
+                color: Theme.of(context).textTheme.bodySmall?.color,
+              ),
             ),
             Text(
               _studentCode(row),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 10, color: Colors.black45),
+              style: TextStyle(
+                fontSize: 10,
+                color: Theme.of(context).textTheme.bodySmall?.color,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
-              '🔥 $streak ngày',
-              style: const TextStyle(
+              '🔥 ${_streak(row)} ngày',
+              style: TextStyle(
                 fontSize: 12,
-                color: Colors.black54,
+                color: Theme.of(context).textTheme.bodySmall?.color,
               ),
             ),
           ],
         ),
       ),
+        ),
+      ),
     );
   }
 
-  Widget _buildRow(Map<String, dynamic> row, int index) {
-    final rank = index + 1;
-    final currentUserId = supabase.auth.currentUser?.id;
-    final isMe = row['user_id']?.toString() == currentUserId;
+  int _rankOf(Map<String, dynamic> row) {
+    final userId = row['user_id']?.toString();
+    final index = leaderboard.indexWhere((r) => r['user_id']?.toString() == userId);
+    return index < 0 ? 0 : index + 1;
+  }
 
+  Map<String, dynamic>? get _meRow {
+    final id = supabase.auth.currentUser?.id;
+    if (id == null) return null;
+    for (final row in leaderboard) {
+      if (row['user_id']?.toString() == id) return row;
+    }
+    return null;
+  }
+
+  void _scrollByPage(int delta) {
+    final target = (currentPage + delta).clamp(1, totalPages);
+    if (target == currentPage) return;
+    setState(() => currentPage = target);
+    _scrollController.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  }
+
+  void _jumpToMe() {
+    final me = _meRow;
+    if (me == null) return;
+    final rank = _rankOf(me);
+    final page = ((rank - 1) ~/ pageSize) + 1;
+    setState(() => currentPage = page);
+    _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+  }
+
+  void _fastScroll() {
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    final next = (_scrollController.offset + MediaQuery.of(context).size.height * 1.8).clamp(0.0, max);
+    _scrollController.animateTo(next, duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
+  }
+
+  Widget _buildRow(Map<String, dynamic> row) {
+    final rank = _rankOf(row);
+    final me = row['user_id']?.toString() == supabase.auth.currentUser?.id;
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 9),
       elevation: 0,
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 4,
-        ),
+        onTap: () => _showStudentDetails(row),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         leading: SizedBox(
-          width: 42,
-          child: Text(
-            '#$rank',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          width: 40,
+          child: Text('#$rank', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
         ),
         title: Row(
           children: [
-            _buildAvatar(row, radius: 20),
-            const SizedBox(width: 12),
+            _avatar(row, radius: 20),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                _displayName(row),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: isMe
-                      ? FontWeight.bold
-                      : FontWeight.w600,
-                ),
-              ),
+              child: Text(_displayName(row), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: me ? FontWeight.w800 : FontWeight.w600)),
             ),
-            if (isMe)
-              Container(
-                margin: const EdgeInsets.only(left: 6),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 7,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF4FF),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Bạn',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF005BAC),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+            if (me) const Chip(label: Text('Bạn', style: TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact),
           ],
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(left: 52, top: 3),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${_className(row)} • ${_studentCode(row)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '${_totalCheckIns(row)} check-in đã xác minh',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.only(left: 50, top: 3),
+          child: Text('${_className(row)} • ${_studentCode(row)} • ${_totalCheckIns(row)} check-in', maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
-        trailing: Text(
-          '🔥 ${_streak(row)}',
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+        trailing: Text('🔥 ${_streak(row)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+      ),
+    );
+  }
+
+  Widget _buildMyCard() {
+    final me = _meRow;
+    final rank = me == null ? null : _rankOf(me);
+    final profile = myProfile ?? {};
+    final name = profile['display_name']?.toString().trim().isNotEmpty == true
+        ? profile['display_name'].toString()
+        : (profile['name']?.toString() ?? 'Bạn');
+    final email = profile['email']?.toString() ?? supabase.auth.currentUser?.email ?? 'Chưa có email';
+    final code = profile['student_code']?.toString().trim().isNotEmpty == true ? profile['student_code'].toString() : 'Chưa có MSSV';
+    final cls = profile['class_name']?.toString().trim().isNotEmpty == true ? profile['class_name'].toString() : 'Chưa có lớp';
+
+    return Card(
+      elevation: 4,
+      margin: const EdgeInsets.only(top: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            _avatar(me ?? profile, radius: 25),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  const SizedBox(height: 2),
+                  Text('Rank ${rank ?? '—'} • ${me == null ? 0 : _totalCheckIns(me)} check-in • 🔥 ${me == null ? 0 : _streak(me)}', style: const TextStyle(fontSize: 12)),
+                  const SizedBox(height: 2),
+                  Text('$code • $cls', style: const TextStyle(fontSize: 11)),
+                  Text(email, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Định vị tôi trên bảng xếp hạng',
+              onPressed: me == null ? null : _jumpToMe,
+              icon: const Icon(Icons.my_location_rounded),
+            ),
+          ],
         ),
       ),
     );
@@ -4359,129 +4629,223 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final rows = currentRows;
+    final showPodium = currentPage == 1 && rows.length >= 3;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF4FF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Xếp hạng'),
+        title: const Text(
+          'Xếp hạng',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadLeaderboard,
-        child: isLoading
-            ? ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  SizedBox(
-                    height: 300,
-                    child: Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  ),
-                ],
-              )
-            : errorMessage != null
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(24),
-                    children: [
-                      const SizedBox(height: 100),
-                      const Icon(
-                        Icons.error_outline,
-                        size: 48,
-                        color: Colors.red,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Không thể tải bảng xếp hạng.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+      body: Column(
+        children: [
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadLeaderboard,
+              child: isLoading
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(
+                          height: 320,
+                          child: Center(
+                            child: CircularProgressIndicator(),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      const SizedBox(height: 16),
-                      Center(
-                        child: OutlinedButton(
-                          onPressed: _loadLeaderboard,
-                          child: const Text('Thử lại'),
-                        ),
-                      ),
-                    ],
-                  )
-                : leaderboard.isEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: const [
-                          SizedBox(
-                            height: 300,
-                            child: Center(
-                              child: Text('Chưa có dữ liệu xếp hạng.'),
+                      ],
+                    )
+                  : errorMessage != null
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(24),
+                          children: [
+                            const SizedBox(height: 100),
+                            const Icon(
+                              Icons.error_outline,
+                              size: 48,
+                              color: Colors.red,
                             ),
-                          ),
-                        ],
-                      )
-                    : ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          const Text(
-                            'Leaderboard',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Không thể tải bảng xếp hạng.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Xếp theo streak hiện tại',
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontSize: 13,
+                            const SizedBox(height: 10),
+                            Text(
+                              errorMessage!,
+                              textAlign: TextAlign.center,
                             ),
-                          ),
-                          const SizedBox(height: 18),
-                          if (leaderboard.length >= 3)
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            const SizedBox(height: 16),
+                            Center(
+                              child: OutlinedButton(
+                                onPressed: _loadLeaderboard,
+                                child: const Text('Thử lại'),
+                              ),
+                            ),
+                          ],
+                        )
+                      : leaderboard.isEmpty
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              children: const [
+                                SizedBox(
+                                  height: 320,
+                                  child: Center(
+                                    child: Text('Chưa có dữ liệu xếp hạng.'),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Stack(
                               children: [
-                                _buildPodiumCard(
-                                  row: leaderboard[1],
-                                  rank: 2,
+                                ListView(
+                                  controller: _scrollController,
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    10,
+                                    52,
+                                    18,
+                                  ),
+                                  children: [
+                                    const Text(
+                                      'Leaderboard',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Xếp theo streak hiện tại • '
+                                      '${leaderboard.length} sinh viên • '
+                                      'tối đa $pageSize người/trang',
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.color,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 18),
+
+                                    if (showPodium)
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _buildPodiumCard(
+                                            row: rows[1],
+                                            rank: 2,
+                                          ),
+                                          _buildPodiumCard(
+                                            row: rows[0],
+                                            rank: 1,
+                                          ),
+                                          _buildPodiumCard(
+                                            row: rows[2],
+                                            rank: 3,
+                                          ),
+                                        ],
+                                      ),
+
+                                    if (showPodium)
+                                      const SizedBox(height: 22),
+
+                                    ...rows.map(_buildRow),
+
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        IconButton(
+                                          tooltip: 'Trang trước',
+                                          onPressed: currentPage > 1
+                                              ? () => _scrollByPage(-1)
+                                              : null,
+                                          icon: const Icon(
+                                            Icons.chevron_left_rounded,
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                                .withOpacity(0.08),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            '$currentPage / $totalPages',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Trang sau',
+                                          onPressed: currentPage < totalPages
+                                              ? () => _scrollByPage(1)
+                                              : null,
+                                          icon: const Icon(
+                                            Icons.chevron_right_rounded,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
-                                _buildPodiumCard(
-                                  row: leaderboard[0],
-                                  rank: 1,
-                                ),
-                                _buildPodiumCard(
-                                  row: leaderboard[2],
-                                  rank: 3,
+                                Positioned(
+                                  right: 6,
+                                  top: 0,
+                                  bottom: 0,
+                                  child: Center(
+                                    child: FloatingActionButton.small(
+                                      heroTag: 'fast_rank_scroll',
+                                      tooltip: 'Cuộn nhanh',
+                                      onPressed: _fastScroll,
+                                      child: const Icon(
+                                        Icons.keyboard_double_arrow_down_rounded,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
-                          const SizedBox(height: 22),
-                          ...List.generate(
-                            leaderboard.length >= 3
-                                ? leaderboard.length - 3
-                                : leaderboard.length,
-                            (i) => _buildRow(
-                              leaderboard.length >= 3
-                                  ? leaderboard[i + 3]
-                                  : leaderboard[i],
-                              leaderboard.length >= 3 ? i + 3 : i,
-                            ),
-                          ),
-                        ],
-                      ),
+            ),
+          ),
+
+          // Fixed "my rank" section. Explicit height prevents it from
+          // expanding to fill the whole screen.
+          SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 132,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                child: _buildMyCard(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
-  }
-}
+  }}
 
 // ============================================================
 // SCHEDULE IMPORT
@@ -5066,9 +5430,9 @@ class _ScheduleScreenState
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
+                      Text(
                         'Copy nguyên bảng lịch học từ trang sinh viên rồi dán vào đây. App sẽ tự nhận diện mã môn, thứ, tiết, phòng và giảng viên.',
-                        style: TextStyle(color: Colors.black54),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 14),
                       TextField(
@@ -5542,6 +5906,55 @@ class _ScheduleScreenState
     }
   }
 
+  Future<void> _clearAllSchedule() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xóa toàn bộ lịch học?'),
+        content: const Text(
+          'Tất cả lịch học hiện tại sẽ được đưa về trạng thái trống. Lịch sử check-in đã có vẫn được giữ lại và bạn có thể nhập/thêm lịch mới sau đó.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Xóa tất cả'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) throw Exception('Chưa đăng nhập.');
+
+      await supabase
+          .from('class_sessions')
+          .update({'is_active': false})
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+      await NotificationService.syncSchedule(const []);
+      await _loadClasses();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã xóa toàn bộ lịch học. Lịch sử check-in vẫn được giữ lại.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể xóa toàn bộ lịch học.\n$e')),
+      );
+    }
+  }
+
   Future<void> _showAddMenu() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -5723,7 +6136,7 @@ class _ScheduleScreenState
 
     return Scaffold(
       backgroundColor:
-          const Color(0xFFEAF4FF),
+          Theme.of(context).scaffoldBackgroundColor,
 
       appBar: AppBar(
         title: const Text(
@@ -5736,6 +6149,11 @@ class _ScheduleScreenState
         backgroundColor:
             Colors.transparent,
         actions: [
+          IconButton(
+            tooltip: 'Xóa toàn bộ lịch học',
+            onPressed: classes.isEmpty ? null : _clearAllSchedule,
+            icon: const Icon(Icons.delete_outline_rounded),
+          ),
           IconButton(
             tooltip: 'Thêm lịch học',
             onPressed: _showAddMenu,
@@ -5767,16 +6185,16 @@ class _ScheduleScreenState
 
                     decoration:
                         BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).cardColor,
                       borderRadius:
                           BorderRadius.circular(
                         20,
                       ),
                     ),
 
-                    child: const Row(
+                    child: Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.info_outline,
                           color:
                               Color(0xFF005BAC),
@@ -5790,7 +6208,7 @@ class _ScheduleScreenState
                             style:
                                 TextStyle(
                               color:
-                                  Colors.black54,
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -5841,7 +6259,7 @@ class MissionCard extends StatelessWidget {
 
         decoration:
             BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius:
               BorderRadius.circular(20),
         ),
@@ -5855,7 +6273,7 @@ class MissionCard extends StatelessWidget {
               decoration:
                   BoxDecoration(
                 color:
-                    const Color(0xFFEAF4FF),
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius:
                     BorderRadius.circular(15),
               ),
@@ -5891,9 +6309,9 @@ class MissionCard extends StatelessWidget {
                     '${classSession.time} • '
                     '${classSession.room}',
                     style:
-                        const TextStyle(
+                        TextStyle(
                       color:
-                          Colors.black54,
+                          Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 13,
                     ),
                   ),
@@ -5935,13 +6353,13 @@ class ScheduleCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(20)),
         child: Row(
         children: [
           Container(
             width: 60,
             padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(color: const Color(0xFFEAF4FF), borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
             child: Column(children: [
               const Icon(Icons.access_time, color: Color(0xFF005BAC)),
               const SizedBox(height: 4),
@@ -5956,17 +6374,17 @@ class ScheduleCard extends StatelessWidget {
                 if (classSession.isCheckInExcluded)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
-                    child: const Text('Không Check-in', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black54)),
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
+                    child: Text('Không Check-in', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   ),
               ]),
               const SizedBox(height: 6),
-              Text(classSession.time, style: const TextStyle(color: Colors.black54)),
+              Text(classSession.time, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               const SizedBox(height: 4),
-              Text('Phòng ${classSession.room}', style: const TextStyle(color: Colors.black54)),
+              Text('Phòng ${classSession.room}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               if (classSession.teacher.trim().isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text(classSession.teacher, style: const TextStyle(color: Colors.black45, fontSize: 13)),
+                Text(classSession.teacher, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
               ],
             ]),
           ),
@@ -5993,7 +6411,7 @@ class MissionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor:
-          const Color(0xFFEAF4FF),
+          Theme.of(context).colorScheme.surfaceContainerHighest,
 
       appBar: AppBar(
         title:
@@ -6018,7 +6436,7 @@ class MissionScreen extends StatelessWidget {
 
               decoration:
                   BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).cardColor,
                 borderRadius:
                     BorderRadius.circular(24),
               ),
@@ -6032,7 +6450,7 @@ class MissionScreen extends StatelessWidget {
                     decoration:
                         BoxDecoration(
                       color:
-                          const Color(0xFFEAF4FF),
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius:
                           BorderRadius.circular(24),
                     ),
@@ -6065,10 +6483,10 @@ class MissionScreen extends StatelessWidget {
                   Text(
                     classSession.time,
                     style:
-                        const TextStyle(
+                        TextStyle(
                       fontSize: 16,
                       color:
-                          Colors.black54,
+                          Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
 
@@ -6077,10 +6495,10 @@ class MissionScreen extends StatelessWidget {
                   Text(
                     'Phòng ${classSession.room}',
                     style:
-                        const TextStyle(
+                        TextStyle(
                       fontSize: 16,
                       color:
-                          Colors.black54,
+                          Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -6096,12 +6514,12 @@ class MissionScreen extends StatelessWidget {
 
               decoration:
                   BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).cardColor,
                 borderRadius:
                     BorderRadius.circular(20),
               ),
 
-              child: const Column(
+              child: Column(
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
 
@@ -6126,7 +6544,7 @@ class MissionScreen extends StatelessWidget {
                         TextStyle(
                       height: 1.6,
                       color:
-                          Colors.black54,
+                          Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -6141,21 +6559,21 @@ class MissionScreen extends StatelessWidget {
                   ? Container(
                       height: 54,
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.06),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
                             Icons.info_outline_rounded,
-                            color: Colors.black54,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
-                          SizedBox(width: 9),
+                          const SizedBox(width: 9),
                           Text(
                             'Môn này không tính Check-in',
                             style: TextStyle(
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -6262,7 +6680,7 @@ class MenuCard extends StatelessWidget {
 
         decoration:
             BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius:
               BorderRadius.circular(20),
         ),
