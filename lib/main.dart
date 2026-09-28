@@ -74,6 +74,10 @@ class NotificationService {
     await localNotifications.cancelAll();
 
     for (final classSession in classes) {
+      // Inactive sessions are soft-deleted: keep their check-in history,
+      // but never schedule reminders for them.
+      if (!classSession.isActive) continue;
+
       final parts = classSession.startTime.split(':');
 
       if (classSession.id.isEmpty ||
@@ -190,6 +194,7 @@ class ClassSession {
   final String endTime;
   final String teacher;
   final int dayOfWeek;
+  final bool isActive;
 
   // Tạm thời dùng cho UI.
   // Sau này sẽ lấy trạng thái từ check_ins.
@@ -203,6 +208,7 @@ class ClassSession {
     required this.endTime,
     required this.teacher,
     required this.dayOfWeek,
+    this.isActive = true,
     this.completed = false,
   });
 
@@ -227,6 +233,7 @@ class ClassSession {
       endTime: endTime,
       teacher: teacher,
       dayOfWeek: dayOfWeek,
+      isActive: isActive,
       completed: completed ?? this.completed,
     );
   }
@@ -253,6 +260,7 @@ class ClassSession {
           '',
       dayOfWeek:
           (map['day_of_week'] as num?)?.toInt() ?? 0,
+      isActive: map['is_active'] != false,
     );
   }
 }
@@ -2046,7 +2054,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       for (final row in rows) {
         if (row['user_id']?.toString() == user.id) {
-          todayStreakCompleted = row['today_completed'] == true;
           return (row['current_streak'] as num?)?.toInt() ?? 0;
         }
       }
@@ -2164,6 +2171,7 @@ Future<void> _loadStreakData() async {
             end_time,
             teacher,
             day_of_week,
+            is_active,
             subjects (
               name,
               subject_code,
@@ -2172,6 +2180,7 @@ Future<void> _loadStreakData() async {
           ''')
           .eq('user_id', user.id)
           .eq('day_of_week', today)
+          .eq('is_active', true)
           .order('start_time');
 
       final rawClasses = (data as List)
@@ -2193,13 +2202,15 @@ Future<void> _loadStreakData() async {
             end_time,
             teacher,
             day_of_week,
+            is_active,
             subjects (
               name,
               subject_code,
               teacher
             )
           ''')
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .eq('is_active', true);
 
       final allScheduleClasses = (allScheduleData as List)
           .map(
@@ -3084,7 +3095,7 @@ Future<void> _loadStreakData() async {
                       children: [
                         Icon(
                           Icons.local_fire_department_rounded,
-                          color: todayStreakCompleted
+                          color: _isTodayStreakComplete
                               ? const Color(0xFFFF8A00)
                               : Colors.grey.shade400,
                           size: 32,
@@ -3309,6 +3320,7 @@ class _TodayCheckInsScreenState
             end_time,
             teacher,
             day_of_week,
+            is_active,
             subjects (
               name,
               subject_code,
@@ -3317,6 +3329,7 @@ class _TodayCheckInsScreenState
           ''')
           .eq('user_id', user.id)
           .eq('day_of_week', today)
+          .eq('is_active', true)
           .order('start_time');
 
       final classes = (data as List)
@@ -3673,137 +3686,38 @@ class AchievementStats {
 
 Future<AchievementStats> loadAchievementStats() async {
   final user = supabase.auth.currentUser;
+
   if (user == null) {
-    return const AchievementStats(totalCheckIns: 0, longestStreak: 0);
-  }
-
-  final classData = await supabase
-      .from('class_sessions')
-      .select('''
-        id,
-        day_of_week,
-        room,
-        subjects (
-          name,
-          subject_code
-        )
-      ''')
-      .eq('user_id', user.id);
-
-  final classes = (classData as List)
-      .map((row) => Map<String, dynamic>.from(row))
-      .where((classItem) {
-        final room = classItem['room']?.toString() ?? '';
-        final subjectData = classItem['subjects'];
-        final subjectName = subjectData is Map
-            ? subjectData['name']?.toString() ?? ''
-            : '';
-
-        return room.trim().toUpperCase() != 'MSTEAM' &&
-            !subjectName.toUpperCase().contains('GDTC');
-      })
-      .toList();
-
-  final validClassIds = classes
-      .map((row) => row['id']?.toString())
-      .whereType<String>()
-      .toSet();
-
-  final checkInData = await supabase
-      .from('check_ins')
-      .select('class_session_id, checked_in_at')
-      .eq('user_id', user.id)
-      .eq('verification_status', 'verified')
-      .order('checked_in_at');
-
-  final checkIns = (checkInData as List)
-      .map((row) => Map<String, dynamic>.from(row))
-      .toList();
-
-  final validCheckIns = checkIns.where((checkIn) {
-    final id = checkIn['class_session_id']?.toString();
-    return id != null && validClassIds.contains(id);
-  }).toList();
-
-  final totalCheckIns = validCheckIns.length;
-
-  if (classes.isEmpty || validCheckIns.isEmpty) {
-    return AchievementStats(
-      totalCheckIns: totalCheckIns,
+    return const AchievementStats(
+      totalCheckIns: 0,
       longestStreak: 0,
     );
   }
 
-  final Map<DateTime, Set<String>> checkedClassesByDate = {};
+  final response = await supabase.rpc(
+    'get_my_achievement_stats',
+  );
 
-  for (final checkIn in validCheckIns) {
-    final rawDate = checkIn['checked_in_at'];
-    final classSessionId = checkIn['class_session_id']?.toString();
-
-    if (rawDate == null || classSessionId == null) continue;
-
-    final localDate = DateTime.parse(rawDate.toString()).toLocal();
-    final dateOnly = DateTime(
-      localDate.year,
-      localDate.month,
-      localDate.day,
+  if (response is! List || response.isEmpty) {
+    return const AchievementStats(
+      totalCheckIns: 0,
+      longestStreak: 0,
     );
-
-    checkedClassesByDate
-        .putIfAbsent(dateOnly, () => <String>{})
-        .add(classSessionId);
   }
 
-  final Map<DateTime, int> totalClassesByDate = {};
-  final Set<DateTime> completedDates = {};
-  final now = DateTime.now();
+  final row = Map<String, dynamic>.from(response.first as Map);
 
-  for (int offset = 0; offset <= 365; offset++) {
-    final date = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(Duration(days: offset));
+  final totalCheckIns =
+      (row['total_check_ins'] as num?)?.toInt() ?? 0;
 
-    final totalClasses = classes.where((classItem) {
-      final dayOfWeek = (classItem['day_of_week'] as num?)?.toInt();
-      return dayOfWeek == date.weekday;
-    }).length;
+  final longestStreak =
+      (row['longest_streak'] as num?)?.toInt() ?? 0;
 
-    if (totalClasses == 0) continue;
-
-    totalClassesByDate[date] = totalClasses;
-
-    final checkedCount = checkedClassesByDate[date]?.length ?? 0;
-
-    if (checkedCount / totalClasses >= 0.75) {
-      completedDates.add(date);
-    }
-  }
-
-  int longestStreak = 0;
-  int currentStreak = 0;
-
-  for (int offset = 365; offset >= 0; offset--) {
-    final date = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(Duration(days: offset));
-
-    if (!totalClassesByDate.containsKey(date)) {
-      continue;
-    }
-
-    if (completedDates.contains(date)) {
-      currentStreak++;
-      if (currentStreak > longestStreak) {
-        longestStreak = currentStreak;
-      }
-    } else {
-      currentStreak = 0;
-    }
-  }
+  debugPrint(
+    'Achievement stats: '
+    'check-ins=$totalCheckIns, '
+    'longest-streak=$longestStreak',
+  );
 
   return AchievementStats(
     totalCheckIns: totalCheckIns,
@@ -4912,6 +4826,7 @@ class _ScheduleScreenState
             end_time,
             teacher,
             day_of_week,
+            is_active,
             subjects (
               name,
               subject_code,
@@ -4919,6 +4834,7 @@ class _ScheduleScreenState
             )
           ''')
           .eq('user_id', user.id)
+          .eq('is_active', true)
           .order('day_of_week')
           .order('start_time');
 
@@ -5046,7 +4962,7 @@ class _ScheduleScreenState
 
         final existingSessions = await supabase
             .from('class_sessions')
-            .select('id')
+            .select('id, is_active')
             .eq('user_id', user.id)
             .eq('subject_id', subjectId)
             .eq('day_of_week', meeting.dayOfWeek)
@@ -5056,7 +4972,19 @@ class _ScheduleScreenState
             .limit(1);
 
         if (existingSessions.isNotEmpty) {
-          skippedSessions++;
+          final existing = Map<String, dynamic>.from(existingSessions.first);
+          if (existing['is_active'] == false) {
+            // Re-activate a previously soft-deleted session instead of
+            // creating a new class_session_id and losing its history link.
+            await supabase
+                .from('class_sessions')
+                .update({'is_active': true})
+                .eq('id', existing['id'])
+                .eq('user_id', user.id);
+            insertedSessions++;
+          } else {
+            skippedSessions++;
+          }
           continue;
         }
 
@@ -5386,9 +5314,10 @@ class _ScheduleScreenState
 
               final startTime = _periodStartTime(startPeriod);
               final endTime = _periodEndTime(endPeriod);
+              var reactivatedExisting = false;
               var duplicateQuery = supabase
                   .from('class_sessions')
-                  .select('id')
+                  .select('id, is_active')
                   .eq('user_id', user.id)
                   .eq('subject_id', sid)
                   .eq('day_of_week', day)
@@ -5398,7 +5327,27 @@ class _ScheduleScreenState
               if (editing != null) duplicateQuery = duplicateQuery.neq('id', editing.id);
 
               final duplicate = await duplicateQuery.limit(1);
-              if (duplicate.isNotEmpty) throw Exception('Lịch học này đã tồn tại.');
+              if (duplicate.isNotEmpty) {
+                final duplicateRow = Map<String, dynamic>.from(duplicate.first);
+                if (duplicateRow['is_active'] == false) {
+                  reactivatedExisting = true;
+                  await supabase
+                      .from('class_sessions')
+                      .update({
+                        'subject_id': sid,
+                        'room': subjectRoom,
+                        'start_time': startTime,
+                        'end_time': endTime,
+                        'teacher': subjectTeacher.isEmpty ? null : subjectTeacher,
+                        'day_of_week': day,
+                        'is_active': true,
+                      })
+                      .eq('id', duplicateRow['id'])
+                      .eq('user_id', user.id);
+                } else {
+                  throw Exception('Lịch học này đã tồn tại.');
+                }
+              }
 
               final payload = {
                 'subject_id': sid,
@@ -5410,12 +5359,15 @@ class _ScheduleScreenState
               };
 
               if (editing != null) {
-                await supabase.from('class_sessions').update(payload)
-                    .eq('id', editing.id).eq('user_id', user.id);
-              } else {
+                await supabase.from('class_sessions').update({
+                  ...payload,
+                  'is_active': true,
+                }).eq('id', editing.id).eq('user_id', user.id);
+              } else if (!reactivatedExisting) {
                 await supabase.from('class_sessions').insert({
                   'user_id': user.id,
                   ...payload,
+                  'is_active': true,
                 });
               }
 
@@ -5558,7 +5510,9 @@ class _ScheduleScreenState
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Xóa lịch học?'),
-        content: Text('Bạn có chắc muốn xóa "${classSession.subject}" vào ${_dayName(classSession.dayOfWeek)} (${classSession.time}) không?'),
+        content: Text(
+          'Lịch "${classSession.subject}" vào ${_dayName(classSession.dayOfWeek)} (${classSession.time}) sẽ được ẩn khỏi lịch học. Nếu đã có check-in, lịch sử check-in vẫn được giữ lại.',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Hủy')),
           FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Xóa')),
@@ -5570,13 +5524,21 @@ class _ScheduleScreenState
     try {
       final user = supabase.auth.currentUser;
       if (user == null) throw Exception('Chưa đăng nhập.');
-      await supabase.from('class_sessions').delete().eq('id', classSession.id).eq('user_id', user.id);
+      await supabase
+          .from('class_sessions')
+          .update({'is_active': false})
+          .eq('id', classSession.id)
+          .eq('user_id', user.id);
       await _loadClasses();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa lịch học.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã xóa lịch học. Lịch sử check-in vẫn được giữ lại.')),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể xóa lịch học. Nếu buổi này đã có check-in, hãy giữ lại để bảo toàn lịch sử.\n$e'), duration: const Duration(seconds: 5)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể xóa lịch học.\n$e'), duration: const Duration(seconds: 5)),
+      );
     }
   }
 
