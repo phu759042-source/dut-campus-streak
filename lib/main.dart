@@ -27,11 +27,6 @@ final supabase = Supabase.instance.client;
 final ValueNotifier<ThemeMode> appThemeMode =
     ValueNotifier<ThemeMode>(ThemeMode.light);
 
-// Theo dõi việc quay lại Home sau khi người dùng thay đổi dữ liệu
-// ở các màn hình khác (đặc biệt là Thời khóa biểu).
-final RouteObserver<ModalRoute<void>> appRouteObserver =
-    RouteObserver<ModalRoute<void>>();
-
 Future<void> loadUserThemePreference() async {
   final user = supabase.auth.currentUser;
   if (user == null) {
@@ -209,7 +204,6 @@ class DUTCampusStreakApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'DUT Campus Streak',
           themeMode: mode,
-          navigatorObservers: [appRouteObserver],
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
@@ -2148,10 +2142,8 @@ class HomeScreen extends StatefulWidget {
       _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with RouteAware {
+class _HomeScreenState extends State<HomeScreen> {
   List<ClassSession> todayClasses = [];
-  ModalRoute<void>? _homeRoute;
 
   bool isLoadingClasses = true;
   String? classError;
@@ -2190,47 +2182,15 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   @override
-  void initState() {
-    super.initState();
+void initState() {
+  super.initState();
 
-    _loadProfile();
-    _loadTodayClasses();
-    _loadStreakData();
-  }
+  _loadProfile();
+  _loadTodayClasses();
+  _loadStreakData();
+}
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    final route = ModalRoute.of(context);
-    if (route != null && route != _homeRoute) {
-      if (_homeRoute != null) {
-        appRouteObserver.unsubscribe(this);
-      }
-      _homeRoute = route;
-      appRouteObserver.subscribe(this, route);
-    }
-  }
-
-  @override
-  void didPopNext() {
-    // Home vẫn còn trong Navigator stack khi mở Schedule/Check-in/...
-    // nên initState() không chạy lại. Mỗi lần quay về Home, đọc lại
-    // lịch và streak từ Supabase để không giữ dữ liệu cũ trong state.
-    if (!mounted) return;
-    Future.wait([
-      _loadTodayClasses(),
-      _loadStreakData(),
-    ]);
-  }
-
-  @override
-  void dispose() {
-    appRouteObserver.unsubscribe(this);
-    super.dispose();
-  }
-
-  Future<void> _loadStreakData() async {
+Future<void> _loadStreakData() async {
   try {
     final loadedStreak = await _loadStreak();
 
@@ -4247,7 +4207,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<Map<String, dynamic>> leaderboard = [];
   Map<String, dynamic>? myProfile;
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey _myRowKey = GlobalKey();
   int currentPage = 1;
+  bool _isMeHighlighted = false;
   static const int pageSize = 50;
 
   int get totalPages => leaderboard.isEmpty ? 1 : (leaderboard.length + pageSize - 1) ~/ pageSize;
@@ -4656,13 +4618,38 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     _scrollController.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
-  void _jumpToMe() {
+  Future<void> _jumpToMe() async {
     final me = _meRow;
     if (me == null) return;
+
     final rank = _rankOf(me);
     final page = ((rank - 1) ~/ pageSize) + 1;
-    setState(() => currentPage = page);
-    _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+
+    if (mounted) {
+      setState(() {
+        currentPage = page;
+        _isMeHighlighted = true;
+      });
+    }
+
+    // Chờ trang mới render xong rồi cuộn thẳng tới Card của mình.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final targetContext = _myRowKey.currentContext;
+      if (targetContext == null || !mounted) return;
+
+      await Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeInOutCubic,
+        alignment: 0.5,
+      );
+
+      // Giữ hiệu ứng nổi bật một chút để người dùng dễ nhận ra vị trí.
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      if (mounted) {
+        setState(() => _isMeHighlighted = false);
+      }
+    });
   }
 
   void _fastScroll() {
@@ -4675,10 +4662,18 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Widget _buildRow(Map<String, dynamic> row) {
     final rank = _rankOf(row);
     final me = row['user_id']?.toString() == supabase.auth.currentUser?.id;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 9),
-      elevation: 0,
-      child: ListTile(
+    return AnimatedScale(
+      scale: me && _isMeHighlighted ? 1.025 : 1.0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutBack,
+      child: Card(
+        key: me ? _myRowKey : null,
+        margin: const EdgeInsets.only(bottom: 9),
+        elevation: me && _isMeHighlighted ? 6 : 0,
+        color: me && _isMeHighlighted
+            ? Theme.of(context).colorScheme.primaryContainer
+            : null,
+        child: ListTile(
         onTap: () => _showStudentDetails(row),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         leading: SizedBox(
@@ -4699,7 +4694,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           padding: const EdgeInsets.only(left: 50, top: 3),
           child: Text('${_className(row)} • ${_studentCode(row)} • ${_totalCheckIns(row)} check-in', maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
-        trailing: Text('🔥 ${_streak(row)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          trailing: Text('🔥 ${_streak(row)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        ),
       ),
     );
   }
