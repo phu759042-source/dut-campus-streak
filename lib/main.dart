@@ -27,6 +27,47 @@ final supabase = Supabase.instance.client;
 final ValueNotifier<ThemeMode> appThemeMode =
     ValueNotifier<ThemeMode>(ThemeMode.light);
 
+// Theo dõi việc quay lại Home sau khi người dùng thay đổi dữ liệu
+// ở các màn hình khác (đặc biệt là Thời khóa biểu).
+final RouteObserver<ModalRoute<void>> appRouteObserver =
+    RouteObserver<ModalRoute<void>>();
+
+Future<void> loadUserThemePreference() async {
+  final user = supabase.auth.currentUser;
+  if (user == null) {
+    appThemeMode.value = ThemeMode.light;
+    return;
+  }
+
+  try {
+    final result = await supabase.rpc('get_my_theme_mode');
+    final mode = result?.toString().toLowerCase();
+    appThemeMode.value =
+        mode == 'dark' ? ThemeMode.dark : ThemeMode.light;
+  } catch (e) {
+    // Nếu RPC chưa được cập nhật hoặc có lỗi mạng, giữ mặc định sáng.
+    debugPrint('Load theme preference error: $e');
+    appThemeMode.value = ThemeMode.light;
+  }
+}
+
+Future<void> saveUserThemePreference(ThemeMode mode) async {
+  final user = supabase.auth.currentUser;
+  if (user == null) return;
+
+  try {
+    await supabase.rpc(
+      'set_my_theme_mode',
+      params: {
+        'p_theme_mode':
+            mode == ThemeMode.dark ? 'dark' : 'light',
+      },
+    );
+  } catch (e) {
+    debugPrint('Save theme preference error: $e');
+  }
+}
+
 final FlutterLocalNotificationsPlugin localNotifications =
     FlutterLocalNotificationsPlugin();
 
@@ -168,6 +209,7 @@ class DUTCampusStreakApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'DUT Campus Streak',
           themeMode: mode,
+          navigatorObservers: [appRouteObserver],
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
@@ -369,6 +411,9 @@ class _AuthGateState extends State<AuthGate> {
 
       if (user != null) {
         await ensureCurrentUserData();
+        await loadUserThemePreference();
+      } else {
+        appThemeMode.value = ThemeMode.light;
       }
 
       if (!mounted) return;
@@ -495,6 +540,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       await ensureCurrentUserData();
+      await loadUserThemePreference();
 
       if (!mounted) return;
 
@@ -528,8 +574,22 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
 
-    return Scaffold(
-      body: Container(
+    // Login screen is intentionally theme-independent.
+    // It always uses the original light appearance, even if the user
+    // previously selected dark mode while inside the app.
+    return Theme(
+      data: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF005BAC),
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: Colors.white,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Container(
         width: double.infinity,
         height: double.infinity,
         decoration: const BoxDecoration(
@@ -881,6 +941,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -1575,6 +1636,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       await supabase.auth.signOut();
+      appThemeMode.value = ThemeMode.light;
 
       if (!mounted) return;
 
@@ -1607,6 +1669,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _logout() async {
     try {
       await supabase.auth.signOut();
+      appThemeMode.value = ThemeMode.light;
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
@@ -1826,8 +1889,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     subtitle: Text(isDark ? 'Đang dùng giao diện tối' : 'Đang dùng giao diện sáng'),
                     value: isDark,
-                    onChanged: (value) {
-                      appThemeMode.value = value ? ThemeMode.dark : ThemeMode.light;
+                    onChanged: (value) async {
+                      final newMode =
+                          value ? ThemeMode.dark : ThemeMode.light;
+
+                      // Đổi UI ngay lập tức. Sau đó lưu preference vào
+                      // profiles.theme_mode của đúng tài khoản đang đăng nhập.
+                      appThemeMode.value = newMode;
+                      await saveUserThemePreference(newMode);
                     },
                   );
                 },
@@ -2079,8 +2148,10 @@ class HomeScreen extends StatefulWidget {
       _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with RouteAware {
   List<ClassSession> todayClasses = [];
+  ModalRoute<void>? _homeRoute;
 
   bool isLoadingClasses = true;
   String? classError;
@@ -2098,10 +2169,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (user == null) return 0;
 
     try {
-      // Home and Leaderboard intentionally use the same RPC source of truth.
-      // The RPC implements the rule: an incomplete TODAY is still in
-      // progress and keeps the previous streak; only a finished school
-      // day below 75% breaks the streak on the following day.
       final data = await supabase.rpc('get_leaderboard');
       final rows = (data as List)
           .map((row) => Map<String, dynamic>.from(row as Map))
@@ -2109,6 +2176,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       for (final row in rows) {
         if (row['user_id']?.toString() == user.id) {
+          // Supabase RPC is the single source of truth.
+          // Do not add/subtract anything in Flutter.
           return (row['current_streak'] as num?)?.toInt() ?? 0;
         }
       }
@@ -2121,15 +2190,47 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
-void initState() {
-  super.initState();
+  void initState() {
+    super.initState();
 
-  _loadProfile();
-  _loadTodayClasses();
-  _loadStreakData();
-}
+    _loadProfile();
+    _loadTodayClasses();
+    _loadStreakData();
+  }
 
-Future<void> _loadStreakData() async {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final route = ModalRoute.of(context);
+    if (route != null && route != _homeRoute) {
+      if (_homeRoute != null) {
+        appRouteObserver.unsubscribe(this);
+      }
+      _homeRoute = route;
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // Home vẫn còn trong Navigator stack khi mở Schedule/Check-in/...
+    // nên initState() không chạy lại. Mỗi lần quay về Home, đọc lại
+    // lịch và streak từ Supabase để không giữ dữ liệu cũ trong state.
+    if (!mounted) return;
+    Future.wait([
+      _loadTodayClasses(),
+      _loadStreakData(),
+    ]);
+  }
+
+  @override
+  void dispose() {
+    appRouteObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  Future<void> _loadStreakData() async {
   try {
     final loadedStreak = await _loadStreak();
 
@@ -3684,6 +3785,27 @@ class _TodayCheckInsScreenState
   }
 }
 
+Future<String?> _getTodayOccurrenceId(String classSessionId) async {
+  try {
+    final result = await supabase.rpc(
+      'get_today_occurrence',
+      params: {
+        'p_class_session_id': classSessionId,
+      },
+    );
+
+    final occurrenceId = result?.toString();
+    if (occurrenceId == null || occurrenceId.isEmpty) {
+      return null;
+    }
+
+    return occurrenceId;
+  } catch (e) {
+    debugPrint('Get/create today occurrence error: $e');
+    rethrow;
+  }
+}
+
 // ============================================================
 // ACHIEVEMENTS
 // ============================================================
@@ -3758,7 +3880,7 @@ Future<AchievementStats> loadAchievementStats() async {
   final totalCheckIns =
       (row['total_check_ins'] as num?)?.toInt() ?? 0;
 
-  final longestStreak =
+  var longestStreak =
       (row['longest_streak'] as num?)?.toInt() ?? 0;
 
   debugPrint(
@@ -4155,7 +4277,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       final rows = (data as List)
           .map((row) => Map<String, dynamic>.from(row as Map))
           .toList();
-
       rows.sort((a, b) {
         final streakCompare = ((b['current_streak'] as num?)?.toInt() ?? 0)
             .compareTo((a['current_streak'] as num?)?.toInt() ?? 0);
@@ -5723,10 +5844,42 @@ class _ScheduleScreenState
               };
 
               if (editing != null) {
-                await supabase.from('class_sessions').update({
-                  ...payload,
-                  'is_active': true,
-                }).eq('id', editing.id).eq('user_id', user.id);
+                final scheduleChanged =
+                    editing.subject.trim() != subjectName.trim() ||
+                    editing.room.trim() != subjectRoom.trim() ||
+                    editing.startTime != startTime ||
+                    editing.endTime != endTime ||
+                    editing.dayOfWeek != day ||
+                    editing.teacher.trim() != subjectTeacher.trim();
+
+                if (scheduleChanged) {
+                  // Không sửa đè class_session cũ. Lịch cũ có thể đã có
+                  // occurrence/check-in lịch sử, nên phải giữ nguyên nó.
+                  // Tạo class_session mới cho lịch mới và soft-delete lịch cũ.
+                  await supabase
+                      .from('class_sessions')
+                      .update({'is_active': false})
+                      .eq('id', editing.id)
+                      .eq('user_id', user.id);
+
+                  if (!reactivatedExisting) {
+                    await supabase.from('class_sessions').insert({
+                      'user_id': user.id,
+                      ...payload,
+                      'is_active': true,
+                    });
+                  }
+                } else {
+                  // Chỉ cập nhật metadata khi lịch thực tế không thay đổi.
+                  await supabase
+                      .from('class_sessions')
+                      .update({
+                        'teacher': subjectTeacher.isEmpty ? null : subjectTeacher,
+                        'is_active': true,
+                      })
+                      .eq('id', editing.id)
+                      .eq('user_id', user.id);
+                }
               } else if (!reactivatedExisting) {
                 await supabase.from('class_sessions').insert({
                   'user_id': user.id,
@@ -7361,7 +7514,7 @@ class _RoomVerificationScreenState
 
       final existing = await supabase
           .from('check_ins')
-          .select('id')
+          .select('id, occurrence_id')
           .eq('user_id', user.id)
           .eq(
             'class_session_id',
@@ -7377,7 +7530,28 @@ class _RoomVerificationScreenState
           )
           .maybeSingle();
 
+      // Repair old check-ins that were saved before occurrence_id was used.
       if (existing != null) {
+        if (existing['occurrence_id'] == null) {
+          final occurrenceId =
+              await _getTodayOccurrenceId(widget.classSession.id);
+
+          if (occurrenceId == null) {
+            throw Exception(
+              'Không tìm thấy buổi học hôm nay trong hệ thống. Vui lòng tải lại lịch học rồi thử lại.',
+            );
+          }
+
+          await supabase
+              .from('check_ins')
+              .update({'occurrence_id': occurrenceId})
+              .eq('id', existing['id']);
+
+          debugPrint(
+            'REPAIRED CHECK-IN ${existing['id']} -> occurrence $occurrenceId',
+          );
+        }
+
         if (!mounted) return;
 
         Navigator.pushReplacement(
@@ -7392,6 +7566,16 @@ class _RoomVerificationScreenState
         return;
       }
 
+      // Every new streakable check-in must point to today's occurrence.
+      final occurrenceId =
+          await _getTodayOccurrenceId(widget.classSession.id);
+
+      if (occurrenceId == null) {
+        throw Exception(
+          'Không tìm thấy buổi học hôm nay trong hệ thống. Vui lòng tải lại lịch học rồi thử lại.',
+        );
+      }
+
       // ========================================================
       // INSERT CHECK-IN SAU KHI AI ĐÃ VERIFY
       // ========================================================
@@ -7401,12 +7585,12 @@ class _RoomVerificationScreenState
       await supabase.from('check_ins').insert({
         'user_id': user.id,
         'class_session_id': widget.classSession.id,
+        'occurrence_id': occurrenceId,
         'checked_in_at': now.toUtc().toIso8601String(),
         'room': widget.classSession.room,
         'image_url': uploadedImagePath,
         'verification_status': 'verified',
       });
-
       debugPrint('CHECK-IN INSERT SUCCESS');
       debugPrint(
         'IMAGE PATH SAVED TO DB: $uploadedImagePath',
@@ -7445,6 +7629,8 @@ class _RoomVerificationScreenState
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final confidencePercent =
         confidence == null
             ? null
@@ -7473,10 +7659,10 @@ class _RoomVerificationScreenState
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isSuccess
-                          ? Colors.green.shade50
+                          ? (isDark ? Colors.green.shade900.withOpacity(0.35) : Colors.green.shade50)
                           : errorMessage != null
-                              ? Colors.red.shade50
-                              : Colors.blue.shade50,
+                              ? (isDark ? Colors.red.shade900.withOpacity(0.35) : Colors.red.shade50)
+                              : (isDark ? colors.primaryContainer : Colors.blue.shade50),
                     ),
                     child: Icon(
                       isSuccess
@@ -7486,10 +7672,10 @@ class _RoomVerificationScreenState
                               : Icons.location_searching,
                       size: 64,
                       color: isSuccess
-                          ? Colors.green
+                          ? Colors.green.shade600
                           : errorMessage != null
-                              ? Colors.red
-                              : Colors.blue,
+                              ? Colors.red.shade600
+                              : colors.primary,
                     ),
                   ),
 
@@ -7520,7 +7706,7 @@ class _RoomVerificationScreenState
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
-                      color: Colors.grey.shade600,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
 
@@ -7530,10 +7716,10 @@ class _RoomVerificationScreenState
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
+                      color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.grey.shade200,
+                        color: colors.outline.withOpacity(0.35),
                       ),
                     ),
                     child: Column(
@@ -7640,13 +7826,15 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(
           icon,
           size: 22,
-          color: Colors.blue,
+          color: colors.primary,
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -7657,15 +7845,16 @@ class _InfoRow extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.grey.shade600,
+                  color: colors.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
+                  color: colors.onSurface,
                 ),
               ),
             ],

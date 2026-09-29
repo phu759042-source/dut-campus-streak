@@ -10,6 +10,15 @@ workflows:
         - dut_campusstreak_release
 
     scripts:
+      - name: Check Flutter environment
+        script: |
+          echo "===== FLUTTER VERSION ====="
+          flutter --version
+          echo "===== DART VERSION ====="
+          dart --version
+          echo "===== JAVA VERSION ====="
+          java -version
+
       - name: Get Flutter packages
         script: |
           flutter pub get
