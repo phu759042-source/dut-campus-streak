@@ -70,7 +70,7 @@ class NotificationService {
   static const String _channelId = 'class_reminders';
   static const String _channelName = 'Nhắc lịch học';
   static const String _channelDescription =
-      'Nhắc trước 15 phút khi tiết học sắp bắt đầu.';
+      'Nhắc trước 30 phút khi tiết học sắp bắt đầu.';
 
   static Future<void> initialize() async {
     tz.initializeTimeZones();
@@ -98,6 +98,15 @@ class NotificationService {
     );
 
     await android?.requestNotificationsPermission();
+
+    // Android 12+ requires special access for exact alarms. We request it
+    // so the reminder can fire at the exact scheduled minute, including
+    // while the device is idle.
+    try {
+      await android?.requestExactAlarmsPermission();
+    } catch (e) {
+      debugPrint('Request exact alarm permission error: $e');
+    }
   }
 
   static int _notificationId(String classId) {
@@ -133,6 +142,7 @@ class NotificationService {
 
       final now = tz.TZDateTime.now(tz.local);
 
+      // Always remind exactly 30 minutes before the class starts.
       var scheduled = tz.TZDateTime(
         tz.local,
         now.year,
@@ -140,7 +150,7 @@ class NotificationService {
         now.day,
         hour,
         minute,
-      ).subtract(const Duration(minutes: 15));
+      ).subtract(const Duration(minutes: 30));
 
       final daysUntil =
           (classSession.dayOfWeek - now.weekday + 7) % 7;
@@ -155,10 +165,8 @@ class NotificationService {
     // of the Flutter UI, so it can fire while the user is on the Home
     // screen, inside another app, or with DUT Campus Streak closed.
     //
-    // We intentionally use inexactAllowWhileIdle here so Android does not
-    // require the special exact-alarm permission. The reminder is targeted
-    // at 15 minutes before class and may be delivered with a small system
-    // scheduling delay.
+    // Use an exact alarm so the notification is targeted at the exact
+    // 30-minute-before-class time, including while the device is idle.
     await localNotifications.zonedSchedule(
       id: _notificationId(classSession.id),
       title: 'Sắp đến giờ học',
@@ -175,9 +183,58 @@ class NotificationService {
           playSound: true,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
+    }
+  }
+
+  static Future<void> syncCurrentUserSchedule() async {
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      await localNotifications.cancelAll();
+      return;
+    }
+
+    try {
+      final data = await supabase
+          .from('class_sessions')
+          .select('''
+            id,
+            room,
+            start_time,
+            end_time,
+            teacher,
+            day_of_week,
+            is_active,
+            subjects (
+              name,
+              subject_code,
+              teacher
+            )
+          ''')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('day_of_week')
+          .order('start_time');
+
+      final classes = (data as List)
+          .map(
+            (item) => ClassSession.fromMap(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList();
+
+      await syncSchedule(classes);
+
+      final pending = await pendingCount();
+      debugPrint(
+        'Startup/login schedule notifications synced: $pending',
+      );
+    } catch (e) {
+      debugPrint('Sync current user schedule notifications error: $e');
     }
   }
 
@@ -406,6 +463,9 @@ class _AuthGateState extends State<AuthGate> {
       if (user != null) {
         await ensureCurrentUserData();
         await loadUserThemePreference();
+        // Schedule reminders as soon as a saved session is restored.
+        // This does not depend on opening the Schedule screen.
+        await NotificationService.syncCurrentUserSchedule();
       } else {
         appThemeMode.value = ThemeMode.light;
       }
@@ -535,6 +595,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await ensureCurrentUserData();
       await loadUserThemePreference();
+      // Schedule reminders immediately after login so they work even if
+      // the user never opens the Schedule screen.
+      await NotificationService.syncCurrentUserSchedule();
 
       if (!mounted) return;
 
@@ -3843,6 +3906,30 @@ Future<AchievementStats> loadAchievementStats() async {
   var longestStreak =
       (row['longest_streak'] as num?)?.toInt() ?? 0;
 
+  // The achievement RPC keeps the historical longest streak.
+  // Also read the current streak from the leaderboard so streak
+  // achievements unlock immediately when the current streak becomes
+  // longer than the previously stored historical value.
+  try {
+    final leaderboardData = await supabase.rpc('get_leaderboard');
+    if (leaderboardData is List) {
+      for (final item in leaderboardData) {
+        final leaderboardRow = Map<String, dynamic>.from(item as Map);
+        if (leaderboardRow['user_id']?.toString() == user.id) {
+          final currentStreak =
+              (leaderboardRow['current_streak'] as num?)?.toInt() ?? 0;
+
+          if (currentStreak > longestStreak) {
+            longestStreak = currentStreak;
+          }
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    debugPrint('Load current streak for achievements error: $e');
+  }
+
   debugPrint(
     'Achievement stats: '
     'check-ins=$totalCheckIns, '
@@ -4206,20 +4293,35 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   String? errorMessage;
   List<Map<String, dynamic>> leaderboard = [];
   Map<String, dynamic>? myProfile;
+  List<String> availableClasses = [];
+
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey _myRowKey = GlobalKey();
+  final Map<String, GlobalKey> _rowKeys = {};
+
   int currentPage = 1;
-  bool _isMeHighlighted = false;
   static const int pageSize = 50;
 
-  int get totalPages => leaderboard.isEmpty ? 1 : (leaderboard.length + pageSize - 1) ~/ pageSize;
+  String _scope = 'all';
+  String _metric = 'daily';
+  String? _selectedClass;
+  String? _highlightedUserId;
+
+  bool get _isClassScope => _scope == 'class';
+
+  int get totalPages =>
+      leaderboard.isEmpty ? 1 : (leaderboard.length + pageSize - 1) ~/ pageSize;
+
   int get startIndex => (currentPage - 1) * pageSize;
-  List<Map<String, dynamic>> get currentRows => leaderboard.skip(startIndex).take(pageSize).toList();
+
+  List<Map<String, dynamic>> get currentRows =>
+      leaderboard.skip(startIndex).take(pageSize).toList();
+
+  String get _metricLabel => _metric == 'weekly' ? 'streak tuần' : 'streak hiện tại';
 
   @override
   void initState() {
     super.initState();
-    _loadLeaderboard();
+    _loadInitial();
   }
 
   @override
@@ -4228,25 +4330,96 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     super.dispose();
   }
 
+  Future<void> _loadInitial() async {
+    try {
+      await _loadClasses();
+    } catch (e) {
+      debugPrint('Load classes error: $e');
+    }
+    await _loadLeaderboard();
+  }
+
+  Future<void> _loadClasses() async {
+    // Không đọc trực tiếp users.class_name ở client vì RLS có thể chỉ cho
+    // người dùng xem chính bản ghi của mình. Lấy danh sách lớp từ RPC
+    // leaderboard (SECURITY DEFINER) để có toàn bộ lớp trong hệ thống.
+    final data = await supabase.rpc(
+      'get_leaderboard',
+      params: {
+        'p_scope': 'all',
+        'p_class_name': null,
+        'p_metric': 'daily',
+      },
+    );
+
+    final classes = <String>{};
+    String userClass = '';
+    final currentUserId = supabase.auth.currentUser?.id;
+
+    for (final rawRow in (data as List)) {
+      final row = Map<String, dynamic>.from(rawRow as Map);
+      final value = row['class_name']?.toString().trim() ?? '';
+      if (value.isNotEmpty) classes.add(value);
+
+      if (currentUserId != null &&
+          row['user_id']?.toString() == currentUserId) {
+        userClass = value;
+      }
+    }
+
+    final sortedClasses = classes.toList()..sort((a, b) => a.compareTo(b));
+
+    if (!mounted) return;
+    setState(() {
+      availableClasses = sortedClasses;
+      if (_selectedClass == null && availableClasses.isNotEmpty) {
+        _selectedClass = availableClasses.contains(userClass)
+            ? userClass
+            : availableClasses.first;
+      }
+    });
+  }
+
   Future<void> _loadLeaderboard() async {
     try {
-      setState(() {
-        isLoading = true;
-        errorMessage = null;
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = true;
+          errorMessage = null;
+          _highlightedUserId = null;
+        });
+      }
 
-      final data = await supabase.rpc('get_leaderboard');
+      final data = await supabase.rpc(
+        'get_leaderboard',
+        params: {
+          'p_scope': _scope,
+          'p_class_name': _isClassScope ? _selectedClass : null,
+          'p_metric': _metric,
+        },
+      );
+
       final rows = (data as List)
           .map((row) => Map<String, dynamic>.from(row as Map))
           .toList();
+
+      // Production RPC đã trả rank theo đúng scope. Sort lại theo rank để
+      // UI luôn giữ đúng thứ tự kể cả khi backend trả về khác thứ tự.
       rows.sort((a, b) {
-        final streakCompare = ((b['current_streak'] as num?)?.toInt() ?? 0)
-            .compareTo((a['current_streak'] as num?)?.toInt() ?? 0);
-        if (streakCompare != 0) return streakCompare;
-        final checkInCompare = ((b['total_check_ins'] as num?)?.toInt() ?? 0)
-            .compareTo((a['total_check_ins'] as num?)?.toInt() ?? 0);
-        if (checkInCompare != 0) return checkInCompare;
-        return _displayName(a).toLowerCase().compareTo(_displayName(b).toLowerCase());
+        final ar = (a['rank'] as num?)?.toInt();
+        final br = (b['rank'] as num?)?.toInt();
+        if (ar != null && br != null && ar != br) return ar.compareTo(br);
+
+        final av = _metricValue(a);
+        final bv = _metricValue(b);
+        if (bv != av) return bv.compareTo(av);
+
+        final ac = _totalCheckIns(a);
+        final bc = _totalCheckIns(b);
+        if (bc != ac) return bc.compareTo(ac);
+        return _displayName(a).toLowerCase().compareTo(
+              _displayName(b).toLowerCase(),
+            );
       });
 
       final user = supabase.auth.currentUser;
@@ -4286,6 +4459,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     }
   }
 
+  int _metricValue(Map<String, dynamic> row) {
+    return _metric == 'weekly'
+        ? ((row['weekly_streak'] as num?)?.toInt() ?? 0)
+        : ((row['current_streak'] as num?)?.toInt() ?? 0);
+  }
+
   String _displayName(Map<String, dynamic> row) {
     final value = row['display_name']?.toString().trim();
     return value == null || value.isEmpty ? 'Sinh viên' : value;
@@ -4305,8 +4484,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return value == null || value.isEmpty ? 'Chưa có lớp' : value;
   }
 
-  int _streak(Map<String, dynamic> row) => (row['current_streak'] as num?)?.toInt() ?? 0;
-  int _totalCheckIns(Map<String, dynamic> row) => (row['total_check_ins'] as num?)?.toInt() ?? 0;
+  int _streak(Map<String, dynamic> row) =>
+      (row['current_streak'] as num?)?.toInt() ?? 0;
+
+  int _weeklyStreak(Map<String, dynamic> row) =>
+      (row['weekly_streak'] as num?)?.toInt() ?? 0;
+
+  int _totalCheckIns(Map<String, dynamic> row) =>
+      (row['total_check_ins'] as num?)?.toInt() ?? 0;
+
+  String _userId(Map<String, dynamic> row) => row['user_id']?.toString() ?? '';
 
   Widget _avatar(Map<String, dynamic> row, {double radius = 22}) {
     final url = _avatarUrl(row);
@@ -4315,6 +4502,24 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       backgroundImage: url.isNotEmpty ? NetworkImage(url) : null,
       child: url.isEmpty ? Icon(Icons.person, size: radius) : null,
     );
+  }
+
+  int _rankOf(Map<String, dynamic> row) {
+    final backendRank = (row['rank'] as num?)?.toInt();
+    if (backendRank != null && backendRank > 0) return backendRank;
+
+    final userId = _userId(row);
+    final index = leaderboard.indexWhere((r) => _userId(r) == userId);
+    return index < 0 ? 0 : index + 1;
+  }
+
+  Map<String, dynamic>? get _meRow {
+    final id = supabase.auth.currentUser?.id;
+    if (id == null) return null;
+    for (final row in leaderboard) {
+      if (_userId(row) == id) return row;
+    }
+    return null;
   }
 
   void _showStudentDetails(Map<String, dynamic> row) {
@@ -4382,19 +4587,25 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       Expanded(
                         child: _detailStatCard(
                           icon: Icons.local_fire_department_rounded,
-                          label: 'Streak',
+                          label: 'Streak ngày',
                           value: '${_streak(row)} ngày',
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: _detailStatCard(
-                          icon: Icons.check_circle_outline_rounded,
-                          label: 'Check-in',
-                          value: '${_totalCheckIns(row)} lần',
+                          icon: Icons.calendar_view_week_rounded,
+                          label: 'Streak tuần',
+                          value: '${_weeklyStreak(row)} tuần',
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  _detailStatCard(
+                    icon: Icons.check_circle_outline_rounded,
+                    label: 'Tổng check-in',
+                    value: '${_totalCheckIns(row)} lần',
                   ),
                   const SizedBox(height: 12),
                   _detailInfoTile(
@@ -4523,99 +4734,90 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           onTap: () => _showStudentDetails(row),
           child: Container(
             margin: EdgeInsets.only(
-          left: rank == 1 ? 6 : 4,
-          right: rank == 3 ? 6 : 4,
-          top: rank == 1 ? 0 : 28,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 5),
+              left: rank == 1 ? 6 : 4,
+              right: rank == 3 ? 6 : 4,
+              top: rank == 1 ? 0 : 28,
             ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Text(
-              '#$rank',
-              style: TextStyle(
-                fontSize: rank == 1 ? 22 : 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            _avatar(row, radius: rank == 1 ? 34 : 28),
-            const SizedBox(height: 8),
-            Text(
-              _displayName(row),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            child: Column(
+              children: [
+                Text(
+                  '#$rank',
+                  style: TextStyle(
+                    fontSize: rank == 1 ? 22 : 18,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _avatar(row, radius: rank == 1 ? 34 : 28),
+                const SizedBox(height: 8),
+                Text(
+                  _displayName(row),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _className(row),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+                Text(
+                  _studentCode(row),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _metric == 'weekly'
+                      ? '📅 ${_weeklyStreak(row)} tuần'
+                      : '🔥 ${_streak(row)} ngày',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 3),
-            Text(
-              _className(row),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10,
-                color: Theme.of(context).textTheme.bodySmall?.color,
-              ),
-            ),
-            Text(
-              _studentCode(row),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10,
-                color: Theme.of(context).textTheme.bodySmall?.color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '🔥 ${_streak(row)} ngày',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).textTheme.bodySmall?.color,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
         ),
       ),
     );
-  }
-
-  int _rankOf(Map<String, dynamic> row) {
-    final userId = row['user_id']?.toString();
-    final index = leaderboard.indexWhere((r) => r['user_id']?.toString() == userId);
-    return index < 0 ? 0 : index + 1;
-  }
-
-  Map<String, dynamic>? get _meRow {
-    final id = supabase.auth.currentUser?.id;
-    if (id == null) return null;
-    for (final row in leaderboard) {
-      if (row['user_id']?.toString() == id) return row;
-    }
-    return null;
   }
 
   void _scrollByPage(int delta) {
     final target = (currentPage + delta).clamp(1, totalPages);
     if (target == currentPage) return;
     setState(() => currentPage = target);
-    _scrollController.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _jumpToMe() async {
@@ -4624,30 +4826,31 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
     final rank = _rankOf(me);
     final page = ((rank - 1) ~/ pageSize) + 1;
+    final id = _userId(me);
 
-    if (mounted) {
-      setState(() {
-        currentPage = page;
-        _isMeHighlighted = true;
-      });
-    }
+    setState(() {
+      currentPage = page;
+      _highlightedUserId = id;
+    });
 
-    // Chờ trang mới render xong rồi cuộn thẳng tới Card của mình.
+    // Chờ frame mới để row của trang đích được build, sau đó cuộn đúng tới
+    // card của mình thay vì chỉ nhảy lên đầu trang.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final targetContext = _myRowKey.currentContext;
-      if (targetContext == null || !mounted) return;
+      final key = _rowKeys[id];
+      final targetContext = key?.currentContext;
+      if (targetContext != null && mounted) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 700),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.35,
+        );
+      }
 
-      await Scrollable.ensureVisible(
-        targetContext,
-        duration: const Duration(milliseconds: 650),
-        curve: Curves.easeInOutCubic,
-        alignment: 0.5,
-      );
-
-      // Giữ hiệu ứng nổi bật một chút để người dùng dễ nhận ra vị trí.
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-      if (mounted) {
-        setState(() => _isMeHighlighted = false);
+      if (!mounted) return;
+      await Future.delayed(const Duration(milliseconds: 1800));
+      if (mounted && _highlightedUserId == id) {
+        setState(() => _highlightedUserId = null);
       }
     });
   }
@@ -4655,47 +4858,342 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   void _fastScroll() {
     if (!_scrollController.hasClients) return;
     final max = _scrollController.position.maxScrollExtent;
-    final next = (_scrollController.offset + MediaQuery.of(context).size.height * 1.8).clamp(0.0, max);
-    _scrollController.animateTo(next, duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
+    final next = (_scrollController.offset +
+            MediaQuery.of(context).size.height * 1.8)
+        .clamp(0.0, max);
+    _scrollController.animateTo(
+      next,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
+    );
   }
 
   Widget _buildRow(Map<String, dynamic> row) {
     final rank = _rankOf(row);
-    final me = row['user_id']?.toString() == supabase.auth.currentUser?.id;
-    return AnimatedScale(
-      scale: me && _isMeHighlighted ? 1.025 : 1.0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutBack,
-      child: Card(
-        key: me ? _myRowKey : null,
-        margin: const EdgeInsets.only(bottom: 9),
-        elevation: me && _isMeHighlighted ? 6 : 0,
-        color: me && _isMeHighlighted
-            ? Theme.of(context).colorScheme.primaryContainer
-            : null,
-        child: ListTile(
-        onTap: () => _showStudentDetails(row),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        leading: SizedBox(
-          width: 40,
-          child: Text('#$rank', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        title: Row(
-          children: [
-            _avatar(row, radius: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(_displayName(row), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: me ? FontWeight.w800 : FontWeight.w600)),
+    final me = _userId(row) == supabase.auth.currentUser?.id;
+    final highlighted = _highlightedUserId == _userId(row);
+    final colorScheme = Theme.of(context).colorScheme;
+    final key = _rowKeys.putIfAbsent(_userId(row), () => GlobalKey());
+
+    return Container(
+      key: key,
+      margin: const EdgeInsets.only(bottom: 9),
+      child: AnimatedScale(
+        scale: highlighted ? 1.018 : 1.0,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutBack,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: highlighted
+                  ? colorScheme.primary
+                  : Colors.transparent,
+              width: highlighted ? 2 : 0,
             ),
-            if (me) const Chip(label: Text('Bạn', style: TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact),
-          ],
+            boxShadow: highlighted
+                ? [
+                    BoxShadow(
+                      color: colorScheme.primary.withOpacity(0.38),
+                      blurRadius: 22,
+                      spreadRadius: 2,
+                    ),
+                  ]
+                : const [],
+          ),
+          child: Card(
+            elevation: highlighted ? 5 : 0,
+            margin: EdgeInsets.zero,
+            child: ListTile(
+              onTap: () => _showStudentDetails(row),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 4,
+              ),
+              leading: SizedBox(
+                width: 40,
+                child: Text(
+                  '#$rank',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              title: Row(
+                children: [
+                  _avatar(row, radius: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _displayName(row),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: me ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (me)
+                    const Chip(
+                      label: Text('Bạn', style: TextStyle(fontSize: 10)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(left: 50, top: 3),
+                child: Text(
+                  '${_className(row)} • ${_studentCode(row)} • ${_totalCheckIns(row)} check-in',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              trailing: Text(
+                _metric == 'weekly'
+                    ? '📅 ${_weeklyStreak(row)}'
+                    : '🔥 ${_streak(row)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
         ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(left: 50, top: 3),
-          child: Text('${_className(row)} • ${_studentCode(row)} • ${_totalCheckIns(row)} check-in', maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
+
+  Widget _buildScopeToggle() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.42),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: colorScheme.outline.withOpacity(0.22),
         ),
-          trailing: Text('🔥 ${_streak(row)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildFilterChoice(
+                  label: 'Chung',
+                  icon: Icons.public_rounded,
+                  selected: !_isClassScope,
+                  onTap: () {
+                    if (_scope == 'all') return;
+                    setState(() {
+                      _scope = 'all';
+                      currentPage = 1;
+                      _highlightedUserId = null;
+                    });
+                    _loadLeaderboard();
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _buildFilterChoice(
+                  label: 'Theo lớp',
+                  icon: Icons.school_rounded,
+                  selected: _isClassScope,
+                  onTap: () {
+                    if (_scope == 'class') return;
+                    setState(() {
+                      _scope = 'class';
+                      currentPage = 1;
+                      _highlightedUserId = null;
+                      if (_selectedClass == null && availableClasses.isNotEmpty) {
+                        _selectedClass = availableClasses.first;
+                      }
+                    });
+                    _loadLeaderboard();
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _buildFilterChoice(
+                  label: 'Ngày',
+                  icon: Icons.local_fire_department_rounded,
+                  selected: _metric == 'daily',
+                  onTap: () {
+                    if (_metric == 'daily') return;
+                    setState(() {
+                      _metric = 'daily';
+                      currentPage = 1;
+                      _highlightedUserId = null;
+                    });
+                    _loadLeaderboard();
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _buildFilterChoice(
+                  label: 'Tuần',
+                  icon: Icons.calendar_view_week_rounded,
+                  selected: _metric == 'weekly',
+                  onTap: () {
+                    if (_metric == 'weekly') return;
+                    setState(() {
+                      _metric = 'weekly';
+                      currentPage = 1;
+                      _highlightedUserId = null;
+                    });
+                    _loadLeaderboard();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChoice({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(15),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(15),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 50,
+          decoration: BoxDecoration(
+            color: selected
+                ? colorScheme.primary.withOpacity(0.20)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: selected
+                  ? colorScheme.primary.withOpacity(0.38)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 21,
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  color: selected
+                      ? colorScheme.primary
+                      : colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildClassPicker() {
+    if (!_isClassScope) return const SizedBox.shrink();
+
+    final current = availableClasses.contains(_selectedClass)
+        ? _selectedClass
+        : (availableClasses.isNotEmpty ? availableClasses.first : null);
+
+    if (current != _selectedClass && current != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _selectedClass != current) {
+          setState(() => _selectedClass = current);
+          _loadLeaderboard();
+        }
+      });
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: DropdownButtonFormField<String>(
+        value: current,
+        isExpanded: true,
+        menuMaxHeight: 360,
+        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+        decoration: InputDecoration(
+          labelText: 'Lớp đang xem',
+          hintText: availableClasses.isEmpty ? 'Chưa có dữ liệu lớp' : null,
+          prefixIcon: const Icon(Icons.school_rounded),
+          filled: true,
+          fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.55),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 15,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: colorScheme.outline.withOpacity(0.16),
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: colorScheme.primary.withOpacity(0.65),
+              width: 1.5,
+            ),
+          ),
+        ),
+        items: availableClasses
+            .map(
+              (className) => DropdownMenuItem<String>(
+                value: className,
+                child: Text(
+                  className,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            )
+            .toList(),
+        onChanged: availableClasses.isEmpty
+            ? null
+            : (value) {
+                if (value == null || value == _selectedClass) return;
+                setState(() {
+                  _selectedClass = value;
+                  currentPage = 1;
+                  _highlightedUserId = null;
+                });
+                _loadLeaderboard();
+              },
       ),
     );
   }
@@ -4707,12 +5205,19 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     final name = profile['display_name']?.toString().trim().isNotEmpty == true
         ? profile['display_name'].toString()
         : (profile['name']?.toString() ?? 'Bạn');
-    final email = profile['email']?.toString() ?? supabase.auth.currentUser?.email ?? 'Chưa có email';
-    final code = profile['student_code']?.toString().trim().isNotEmpty == true ? profile['student_code'].toString() : 'Chưa có MSSV';
-    final cls = profile['class_name']?.toString().trim().isNotEmpty == true ? profile['class_name'].toString() : 'Chưa có lớp';
+    final email = profile['email']?.toString() ??
+        supabase.auth.currentUser?.email ??
+        'Chưa có email';
+    final code = profile['student_code']?.toString().trim().isNotEmpty == true
+        ? profile['student_code'].toString()
+        : 'Chưa có MSSV';
+    final cls = profile['class_name']?.toString().trim().isNotEmpty == true
+        ? profile['class_name'].toString()
+        : 'Chưa có lớp';
+    final inSelectedClass = me != null;
 
     return Card(
-      elevation: 4,
+      elevation: inSelectedClass ? 5 : 2,
       margin: const EdgeInsets.only(top: 12),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -4724,19 +5229,50 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text('Rank ${rank ?? '—'} • ${me == null ? 0 : _totalCheckIns(me)} check-in • 🔥 ${me == null ? 0 : _streak(me)}', style: const TextStyle(fontSize: 12)),
+                  Text(
+                    inSelectedClass
+                        ? 'Hạng $rank • ${_totalCheckIns(me)} check-in • '
+                            '${_metric == 'weekly' ? '📅 ${_weeklyStreak(me)} tuần' : '🔥 ${_streak(me)} ngày'}'
+                        : 'Không thuộc lớp đang xem • $code • $cls',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                   const SizedBox(height: 2),
-                  Text('$code • $cls', style: const TextStyle(fontSize: 11)),
-                  Text(email, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+                  Text(
+                    '$code • $cls',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  Text(
+                    email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11),
+                  ),
                 ],
               ),
             ),
             IconButton(
-              tooltip: 'Định vị tôi trên bảng xếp hạng',
-              onPressed: me == null ? null : _jumpToMe,
-              icon: const Icon(Icons.my_location_rounded),
+              tooltip: inSelectedClass
+                  ? 'Định vị tôi trên bảng xếp hạng'
+                  : 'Bạn không thuộc lớp đang xem',
+              onPressed: inSelectedClass ? _jumpToMe : null,
+              icon: Icon(
+                Icons.my_location_rounded,
+                color: inSelectedClass
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
+              ),
             ),
           ],
         ),
@@ -4768,10 +5304,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: const [
                         SizedBox(
-                          height: 320,
-                          child: Center(
-                            child: CircularProgressIndicator(),
-                          ),
+                          height: 420,
+                          child: Center(child: CircularProgressIndicator()),
                         ),
                       ],
                     )
@@ -4781,25 +5315,15 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                           padding: const EdgeInsets.all(24),
                           children: [
                             const SizedBox(height: 100),
-                            const Icon(
-                              Icons.error_outline,
-                              size: 48,
-                              color: Colors.red,
-                            ),
+                            const Icon(Icons.error_outline, size: 48, color: Colors.red),
                             const SizedBox(height: 16),
                             const Text(
                               'Không thể tải bảng xếp hạng.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 10),
-                            Text(
-                              errorMessage!,
-                              textAlign: TextAlign.center,
-                            ),
+                            Text(errorMessage!, textAlign: TextAlign.center),
                             const SizedBox(height: 16),
                             Center(
                               child: OutlinedButton(
@@ -4815,9 +5339,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                               children: const [
                                 SizedBox(
                                   height: 320,
-                                  child: Center(
-                                    child: Text('Chưa có dữ liệu xếp hạng.'),
-                                  ),
+                                  child: Center(child: Text('Chưa có dữ liệu xếp hạng.')),
                                 ),
                               ],
                             )
@@ -4826,92 +5348,60 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                                 ListView(
                                   controller: _scrollController,
                                   physics: const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    10,
-                                    52,
-                                    18,
-                                  ),
+                                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
                                   children: [
+                                    _buildScopeToggle(),
+                                    _buildClassPicker(),
+                                    const SizedBox(height: 18),
                                     const Text(
                                       'Leaderboard',
-                                      style: TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Xếp theo streak hiện tại • '
-                                      '${leaderboard.length} sinh viên • '
-                                      'tối đa $pageSize người/trang',
+                                      _isClassScope
+                                          ? '${_selectedClass ?? 'Chưa chọn lớp'} • $_metricLabel • ${leaderboard.length} sinh viên • tối đa $pageSize người/trang'
+                                          : 'Chung • $_metricLabel • ${leaderboard.length} sinh viên • tối đa $pageSize người/trang',
                                       style: TextStyle(
-                                        color: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.color,
+                                        color: Theme.of(context).textTheme.bodySmall?.color,
                                         fontSize: 13,
                                       ),
                                     ),
                                     const SizedBox(height: 18),
-
                                     if (showPodium)
                                       Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          _buildPodiumCard(
-                                            row: rows[1],
-                                            rank: 2,
-                                          ),
-                                          _buildPodiumCard(
-                                            row: rows[0],
-                                            rank: 1,
-                                          ),
-                                          _buildPodiumCard(
-                                            row: rows[2],
-                                            rank: 3,
-                                          ),
+                                          _buildPodiumCard(row: rows[1], rank: 2),
+                                          _buildPodiumCard(row: rows[0], rank: 1),
+                                          _buildPodiumCard(row: rows[2], rank: 3),
                                         ],
                                       ),
-
-                                    if (showPodium)
-                                      const SizedBox(height: 22),
-
+                                    if (showPodium) const SizedBox(height: 22),
                                     ...rows.map(_buildRow),
-
                                     const SizedBox(height: 12),
                                     Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
+                                      mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
                                         IconButton(
                                           tooltip: 'Trang trước',
                                           onPressed: currentPage > 1
                                               ? () => _scrollByPage(-1)
                                               : null,
-                                          icon: const Icon(
-                                            Icons.chevron_left_rounded,
-                                          ),
+                                          icon: const Icon(Icons.chevron_left_rounded),
                                         ),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 8,
-                                          ),
+                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                           decoration: BoxDecoration(
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .primary
                                                 .withOpacity(0.08),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
+                                            borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
                                             '$currentPage / $totalPages',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                            ),
+                                            style: const TextStyle(fontWeight: FontWeight.w800),
                                           ),
                                         ),
                                         IconButton(
@@ -4919,9 +5409,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                                           onPressed: currentPage < totalPages
                                               ? () => _scrollByPage(1)
                                               : null,
-                                          icon: const Icon(
-                                            Icons.chevron_right_rounded,
-                                          ),
+                                          icon: const Icon(Icons.chevron_right_rounded),
                                         ),
                                       ],
                                     ),
@@ -4936,9 +5424,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                                       heroTag: 'fast_rank_scroll',
                                       tooltip: 'Cuộn nhanh',
                                       onPressed: _fastScroll,
-                                      child: const Icon(
-                                        Icons.keyboard_double_arrow_down_rounded,
-                                      ),
+                                      child: const Icon(Icons.keyboard_double_arrow_down_rounded),
                                     ),
                                   ),
                                 ),
@@ -4946,13 +5432,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                             ),
             ),
           ),
-
-          // Fixed "my rank" section. Explicit height prevents it from
-          // expanding to fill the whole screen.
           SafeArea(
             top: false,
             child: SizedBox(
-              height: 132,
+              height: 142,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                 child: _buildMyCard(),
@@ -4962,7 +5445,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ],
       ),
     );
-  }}
+  }
+}
 
 // ============================================================
 // SCHEDULE IMPORT
