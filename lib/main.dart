@@ -82,6 +82,12 @@ class NotificationService {
 
     await localNotifications.initialize(
       settings: settings,
+      onDidReceiveNotificationResponse: (response) async {
+        final notificationId = response.id;
+        if (notificationId != null && notificationId >= 0) {
+          await localNotifications.cancel(id: notificationId);
+        }
+      },
     );
 
     final android = localNotifications
@@ -120,72 +126,113 @@ class NotificationService {
   static Future<void> syncSchedule(
     List<ClassSession> classes,
   ) async {
-    await localNotifications.cancelAll();
+    // Do not call cancelAll() here: a notification that has already been
+    // delivered is no longer a pending request. Refreshing the timetable
+    // should update future alarms without dismissing a visible reminder.
+    final pending = await localNotifications.pendingNotificationRequests();
+    final desiredIds = <int>{};
 
     for (final classSession in classes) {
       // Inactive sessions are soft-deleted: keep their check-in history,
       // but never schedule reminders for them.
       if (!classSession.isActive) continue;
 
-      final parts = classSession.startTime.split(':');
-
+      final startParts = classSession.startTime.split(':');
+      final endParts = classSession.endTime.split(':');
       if (classSession.id.isEmpty ||
-          parts.length < 2 ||
+          startParts.length < 2 ||
+          endParts.length < 2 ||
           classSession.dayOfWeek < 1 ||
           classSession.dayOfWeek > 7) {
         continue;
       }
 
-      final hour = int.tryParse(parts[0]);
-      final minute = int.tryParse(parts[1]);
-      if (hour == null || minute == null) continue;
+      final startHour = int.tryParse(startParts[0]);
+      final startMinute = int.tryParse(startParts[1]);
+      final endHour = int.tryParse(endParts[0]);
+      final endMinute = int.tryParse(endParts[1]);
+      if (startHour == null ||
+          startMinute == null ||
+          endHour == null ||
+          endMinute == null) {
+        continue;
+      }
+
+      final notificationId = _notificationId(classSession.id);
+      desiredIds.add(notificationId);
 
       final now = tz.TZDateTime.now(tz.local);
-
-      // Always remind exactly 30 minutes before the class starts.
       var scheduled = tz.TZDateTime(
         tz.local,
         now.year,
         now.month,
         now.day,
-        hour,
-        minute,
+        startHour,
+        startMinute,
       ).subtract(const Duration(minutes: 30));
 
       final daysUntil =
           (classSession.dayOfWeek - now.weekday + 7) % 7;
-
       scheduled = scheduled.add(Duration(days: daysUntil));
 
+      // If today's reminder time has passed, schedule next week's reminder.
       if (!scheduled.isAfter(now)) {
         scheduled = scheduled.add(const Duration(days: 7));
       }
 
-      // Schedule the reminder as a real Android alarm. It is independent
-    // of the Flutter UI, so it can fire while the user is on the Home
-    // screen, inside another app, or with DUT Campus Streak closed.
-    //
-    // Use an exact alarm so the notification is targeted at the exact
-    // 30-minute-before-class time, including while the device is idle.
-    await localNotifications.zonedSchedule(
-      id: _notificationId(classSession.id),
-      title: 'Sắp đến giờ học',
-      body: 'Tiết học sẽ bắt đầu lúc ${_formatTimeHHmm(classSession.startTime)} '
-          'tại phòng ${classSession.room}.',
-      scheduledDate: scheduled,
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: _channelDescription,
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
+      final classStart = scheduled.add(const Duration(minutes: 30));
+      var classEnd = tz.TZDateTime(
+        tz.local,
+        classStart.year,
+        classStart.month,
+        classStart.day,
+        endHour,
+        endMinute,
+      );
+      if (!classEnd.isAfter(classStart)) {
+        classEnd = classEnd.add(const Duration(days: 1));
+      }
+
+      final timeoutAfter = classEnd.difference(scheduled).inMilliseconds;
+
+      await localNotifications.zonedSchedule(
+        id: notificationId,
+        title: 'Sắp đến giờ học',
+        body: 'Tiết học sẽ bắt đầu lúc '
+            '${_formatTimeHHmm(classSession.startTime)} '
+            'tại phòng ${classSession.room}.',
+        scheduledDate: scheduled,
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId,
+            _channelName,
+            channelDescription: _channelDescription,
+            importance: Importance.high,
+            priority: Priority.high,
+            playSound: true,
+            // Keep the notification visible and non-dismissible until the
+            // class ends; tapping it dismisses it via the callback above.
+            ongoing: true,
+            autoCancel: false,
+            onlyAlertOnce: true,
+            timeoutAfter: timeoutAfter > 0
+                ? timeoutAfter
+                : const Duration(minutes: 30).inMilliseconds,
+            category: AndroidNotificationCategory.reminder,
+          ),
         ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-    );
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      );
+    }
+
+    // Remove only obsolete *pending* alarms. A notification already shown
+    // to the user is not in this list and therefore remains visible until
+    // tapped or timed out at the end of class.
+    for (final request in pending) {
+      if (!desiredIds.contains(request.id)) {
+        await localNotifications.cancel(id: request.id);
+      }
     }
   }
 
@@ -528,7 +575,7 @@ class _AuthGateState extends State<AuthGate> {
 
     return supabase.auth.currentSession == null
         ? const LoginScreen()
-        : const HomeScreen();
+        : const MainNavigationScreen();
   }
 }
 
@@ -603,7 +650,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
         (_) => false,
       );
     } on AuthException catch (e) {
@@ -983,7 +1030,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 24),
 
                       const Text(
-                        'DUT Campus Streak',
+                        '© 2026 Nguyễn Tấn Phú. All rights reserved.',
                         style: TextStyle(
                           color: Colors.white54,
                           fontSize: 12,
@@ -1085,7 +1132,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
         (_) => false,
       );
     } on AuthException catch (e) {
@@ -1196,7 +1243,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
 // ============================================================
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? onBackToHome;
+
+  const ProfileScreen({super.key, this.onBackToHome});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -1805,6 +1854,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Hồ sơ'),
+        leading: IconButton(
+          tooltip: 'Về trang chủ',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: widget.onBackToHome ?? () => Navigator.maybePop(context),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
@@ -2194,11 +2248,148 @@ class AboutContactScreen extends StatelessWidget {
 
 
 // ============================================================
+// MAIN NAVIGATION SHELL
+// Keeps the navigation bar mounted while Home/Profile content loads.
+// The selection pill animates horizontally when switching tabs.
+// ============================================================
+
+class MainNavigationScreen extends StatefulWidget {
+  const MainNavigationScreen({super.key});
+
+  @override
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  int _selectedIndex = 0;
+
+  void _selectTab(int index) {
+    if (index == _selectedIndex) return;
+    setState(() => _selectedIndex = index);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          HomeScreen(onOpenProfile: () => _selectTab(1)),
+          ProfileScreen(onBackToHome: () => _selectTab(0)),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+          child: Container(
+            height: 62,
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(32),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final itemWidth = constraints.maxWidth / 2;
+                return Stack(
+                  children: [
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeInOutCubic,
+                      left: itemWidth * _selectedIndex + 5,
+                      top: 5,
+                      bottom: 5,
+                      width: itemWidth - 10,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: primary.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(28),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _NavigationTab(
+                            icon: Icons.home_rounded,
+                            selected: _selectedIndex == 0,
+                            onTap: () => _selectTab(0),
+                          ),
+                        ),
+                        Expanded(
+                          child: _NavigationTab(
+                            icon: Icons.person_outline_rounded,
+                            selected: _selectedIndex == 1,
+                            onTap: () => _selectTab(1),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavigationTab extends StatelessWidget {
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _NavigationTab({
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: onTap,
+        child: Center(
+          child: AnimatedScale(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            scale: selected ? 1.05 : 1.0,
+            child: Icon(
+              icon,
+              color: selected ? colors.primary : colors.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
 // HOME
 // ============================================================
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onOpenProfile;
+
+  const HomeScreen({super.key, this.onOpenProfile});
 
   @override
   State<HomeScreen> createState() =>
@@ -2885,63 +3076,6 @@ Future<void> _loadStreakData() async {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-          child: Container(
-            height: 62,
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(32),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: Icon(
-                      Icons.home_rounded,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(28),
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const ProfileScreen(),
-                        ),
-                      );
-                      if (mounted) {
-                        await _loadProfile();
-                      }
-                    },
-                    child: Icon(
-                      Icons.person_outline_rounded,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
@@ -2987,16 +3121,16 @@ Future<void> _loadStreakData() async {
                         InkWell(
                           borderRadius:
                               BorderRadius.circular(30),
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const ProfileScreen(),
-                              ),
-                            );
-                            if (mounted) {
-                              await _loadProfile();
+                          onTap: () {
+                            if (widget.onOpenProfile != null) {
+                              widget.onOpenProfile!();
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const ProfileScreen(),
+                                ),
+                              );
                             }
                           },
                           child: CircleAvatar(
@@ -4848,7 +4982,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       }
 
       if (!mounted) return;
-      await Future.delayed(const Duration(milliseconds: 1800));
+      await Future.delayed(const Duration(milliseconds: 1200));
       if (mounted && _highlightedUserId == id) {
         setState(() => _highlightedUserId = null);
       }
