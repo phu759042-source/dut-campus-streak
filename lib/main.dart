@@ -204,7 +204,7 @@ class NotificationService {
 
       await localNotifications.zonedSchedule(
         id: notificationId,
-        title: 'Sắp đến giờ học',
+        title: 'Sắp đến giờ học: ${classSession.subject}',
         body: 'Tiết học sẽ bắt đầu lúc '
             '${_formatTimeHHmm(classSession.startTime)} '
             'tại phòng ${classSession.room}.',
@@ -1160,84 +1160,195 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFEAF4FF),
-      appBar: AppBar(title: const Text('Tạo tài khoản')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Tạo tài khoản DUT Campus Streak',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text('Mật khẩu được Supabase Auth quản lý và không lưu trong profile của ứng dụng.'),
-              const SizedBox(height: 24),
-              TextField(
-                controller: _displayNameController,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Tên hiển thị',
-                  prefixIcon: Icon(Icons.person_outline),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Mật khẩu',
-                  prefixIcon: Icon(Icons.lock_outline),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirmController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Nhập lại mật khẩu',
-                  prefixIcon: Icon(Icons.lock_reset_outlined),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (_error != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
+    const primary = Color(0xFF075FD8);
+    const deepBlue = Color(0xFF063B86);
+    const paleBlue = Color(0xFFEAF4FF);
+
+    InputDecoration fieldDecoration(String label, IconData icon) {
+      return InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: const Color(0xFF55708F)),
+        filled: true,
+        fillColor: const Color(0xFFF7FAFF),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFD7E3F2)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFD7E3F2)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: primary, width: 1.7),
+        ),
+      );
+    }
+
+    return Theme(
+      data: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(seedColor: primary),
+        scaffoldBackgroundColor: paleBlue,
+      ),
+      child: Scaffold(
+        backgroundColor: paleBlue,
+        appBar: AppBar(
+          title: const Text('Tạo tài khoản', style: TextStyle(fontWeight: FontWeight.w700)),
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF172B4D),
+          elevation: 0,
+          surfaceTintColor: Colors.white,
+        ),
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFF8FBFF), Color(0xFFE4F0FF), Color(0xFFD8E9FF)],
+            ),
+          ),
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 24, 22, 30),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1678F2), deepBlue],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(color: primary.withValues(alpha: 0.22), blurRadius: 22, offset: const Offset(0, 10)),
+                            ],
+                          ),
+                          child: const Icon(Icons.school_rounded, color: Colors.white, size: 38),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Bắt đầu hành trình của bạn',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 25, fontWeight: FontWeight.w800, color: Color(0xFF172B4D), letterSpacing: -0.4),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Tạo tài khoản DUT Campus Streak để quản lý lịch học và duy trì streak mỗi ngày.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF5B6F89)),
+                      ),
+                      const SizedBox(height: 26),
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.96),
+                          borderRadius: BorderRadius.circular(26),
+                          border: Border.all(color: Colors.white),
+                          boxShadow: [
+                            BoxShadow(color: const Color(0xFF204A7A).withValues(alpha: 0.10), blurRadius: 30, offset: const Offset(0, 12)),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextField(
+                              controller: _displayNameController,
+                              textCapitalization: TextCapitalization.words,
+                              textInputAction: TextInputAction.next,
+                              decoration: fieldDecoration('Tên hiển thị', Icons.person_outline_rounded),
+                            ),
+                            const SizedBox(height: 15),
+                            TextField(
+                              controller: _emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              decoration: fieldDecoration('Email', Icons.mail_outline_rounded),
+                            ),
+                            const SizedBox(height: 15),
+                            TextField(
+                              controller: _passwordController,
+                              obscureText: true,
+                              textInputAction: TextInputAction.next,
+                              decoration: fieldDecoration('Mật khẩu', Icons.lock_outline_rounded),
+                            ),
+                            const SizedBox(height: 15),
+                            TextField(
+                              controller: _confirmController,
+                              obscureText: true,
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: (_) => _loading ? null : _signUp(),
+                              decoration: fieldDecoration('Nhập lại mật khẩu', Icons.lock_reset_rounded),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Mật khẩu được Supabase Auth quản lý và không lưu trong hồ sơ ứng dụng.',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF718198), height: 1.4),
+                            ),
+                            if (_error != null) ...[
+                              const SizedBox(height: 14),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF0F0),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFFFD4D4)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(Icons.error_outline, color: Color(0xFFCC3333), size: 20),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(_error!, style: const TextStyle(color: Color(0xFFB42318), height: 1.35))),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 22),
+                            SizedBox(
+                              height: 54,
+                              child: FilledButton(
+                                onPressed: _loading ? null : _signUp,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: primary,
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  shadowColor: primary.withValues(alpha: 0.25),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                                child: _loading
+                                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    : const Text('Tạo tài khoản', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'DUT CAMPUS STREAK  •  Học đều mỗi ngày',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11, letterSpacing: 1.0, fontWeight: FontWeight.w700, color: Color(0xFF7186A3)),
+                      ),
+                    ],
                   ),
-                  child: Text(_error!, style: const TextStyle(color: Colors.red)),
-                ),
-              const SizedBox(height: 20),
-              SizedBox(
-                height: 52,
-                child: FilledButton(
-                  onPressed: _loading ? null : _signUp,
-                  child: _loading
-                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Tạo tài khoản', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -3655,7 +3766,12 @@ class _DeadlineScreenState extends State<DeadlineScreen> {
       if (user == null) throw Exception('Bạn chưa đăng nhập.');
       final data = await supabase.from('deadline_tasks').select()
           .eq('user_id', user.id).order('deadline_at');
-      final tasks = List<Map<String, dynamic>>.from(data);
+      final tasks = List<Map<String, dynamic>>.from(data)
+        ..sort((a, b) {
+          final aDeadline = DateTime.tryParse(a['deadline_at']?.toString() ?? '') ?? DateTime(9999);
+          final bDeadline = DateTime.tryParse(b['deadline_at']?.toString() ?? '') ?? DateTime(9999);
+          return aDeadline.compareTo(bDeadline);
+        });
       if (!mounted) return;
       setState(() => _tasks = tasks);
       await _syncTaskNotifications(tasks);
