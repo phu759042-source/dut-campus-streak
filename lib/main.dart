@@ -1,6 +1,13 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
 
 import 'package:flutter/material.dart';
+import 'meme_feedback.dart';
+import 'dart:ui' show FontFeature;
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -719,7 +726,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 220,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.06),
+                    color: Colors.white.withValues(alpha: 0.06),
                   ),
                 ),
               ),
@@ -731,7 +738,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 220,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                   ),
                 ),
               ),
@@ -753,10 +760,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         height: 104,
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
+                          color: Colors.white.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(30),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.22),
+                            color: Colors.white.withValues(alpha: 0.22),
                           ),
                         ),
                         child: ClipRRect(
@@ -814,7 +821,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(28),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
+                              color: Colors.black.withValues(alpha: 0.18),
                               blurRadius: 30,
                               offset: const Offset(0, 14),
                             ),
@@ -925,7 +932,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   color:
-                                      Colors.red.withOpacity(0.07),
+                                      Colors.red.withValues(alpha: 0.07),
                                   borderRadius:
                                       BorderRadius.circular(14),
                                 ),
@@ -1215,7 +1222,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.08),
+                    color: Colors.red.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -2101,7 +2108,7 @@ class AboutContactScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: _blue.withOpacity(0.12),
+                    color: _blue.withValues(alpha: 0.12),
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
@@ -2208,7 +2215,7 @@ class AboutContactScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 14,
             offset: const Offset(0, 5),
           ),
@@ -2293,7 +2300,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               borderRadius: BorderRadius.circular(32),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 18,
                   offset: const Offset(0, 6),
                 ),
@@ -2313,7 +2320,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       width: itemWidth - 10,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: primary.withOpacity(0.10),
+                          color: primary.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(28),
                         ),
                       ),
@@ -2361,20 +2368,17 @@ class _NavigationTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(28),
-        onTap: onTap,
-        child: Center(
-          child: AnimatedScale(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            scale: selected ? 1.05 : 1.0,
-            child: Icon(
-              icon,
-              color: selected ? colors.primary : colors.onSurfaceVariant,
-            ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Center(
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          scale: selected ? 1.05 : 1.0,
+          child: Icon(
+            icon,
+            color: selected ? colors.primary : colors.onSurfaceVariant,
           ),
         ),
       ),
@@ -2708,7 +2712,7 @@ Future<void> _loadStreakData() async {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.07),
+          color: Colors.red.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
@@ -2826,7 +2830,7 @@ Future<void> _loadStreakData() async {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
                         borderRadius:
                             BorderRadius.circular(14),
                       ),
@@ -2885,7 +2889,7 @@ Future<void> _loadStreakData() async {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -3110,7 +3114,7 @@ Future<void> _loadStreakData() async {
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFF005BAC)
-                              .withOpacity(0.22),
+                              .withValues(alpha: 0.22),
                           blurRadius: 18,
                           offset: const Offset(0, 8),
                         ),
@@ -3200,7 +3204,7 @@ Future<void> _loadStreakData() async {
                           height: 42,
                           decoration: BoxDecoration(
                             color: Colors.white
-                                .withOpacity(0.14),
+                                .withValues(alpha: 0.14),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -3232,7 +3236,7 @@ Future<void> _loadStreakData() async {
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black
-                              .withOpacity(0.05),
+                              .withValues(alpha: 0.05),
                           blurRadius: 14,
                           offset: const Offset(0, 5),
                         ),
@@ -3545,6 +3549,30 @@ Future<void> _loadStreakData() async {
                         );
                       },
                     ),
+                    _menuTile(
+                      icon: Icons.folder_copy_rounded,
+                      title: 'Tài liệu',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DocumentsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _menuTile(
+                      icon: Icons.flag_rounded,
+                      title: 'Deadline',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DeadlineScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ]),
                   gridDelegate:
                       const SliverGridDelegateWithFixedCrossAxisCount(
@@ -3586,6 +3614,836 @@ Future<void> _loadStreakData() async {
 // ============================================================
 // TODAY CHECK-INS
 // ============================================================
+
+// ============================================================
+// DEADLINE TASKS
+// ============================================================
+
+class DeadlineScreen extends StatefulWidget {
+  const DeadlineScreen({super.key});
+
+  @override
+  State<DeadlineScreen> createState() => _DeadlineScreenState();
+}
+
+class _DeadlineScreenState extends State<DeadlineScreen> {
+  List<Map<String, dynamic>> _tasks = [];
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+  late final Timer _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadTasks() async {
+    if (mounted) setState(() { _loading = true; _error = null; });
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) throw Exception('Bạn chưa đăng nhập.');
+      final data = await supabase.from('deadline_tasks').select()
+          .eq('user_id', user.id).order('deadline_at');
+      final tasks = List<Map<String, dynamic>>.from(data);
+      if (!mounted) return;
+      setState(() => _tasks = tasks);
+      await _syncTaskNotifications(tasks);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Không tải được Deadline: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  int _notificationId(String taskId, int slot) {
+    var hash = 0;
+    for (final c in taskId.codeUnits) {
+      hash = (hash * 31 + c) & 0x3fffffff;
+    }
+    // Dedicated positive ID range, separate from class reminder IDs.
+    return -1 - ((hash + slot * 104729) % 500000000);
+  }
+
+  Future<void> _showTaskNotification({required int id, required String title,
+      required String body, required tz.TZDateTime when}) async {
+    if (!when.isAfter(tz.TZDateTime.now(tz.local))) return;
+    await localNotifications.zonedSchedule(
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: when,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'deadline_reminders', 'Nhắc Deadline',
+          channelDescription: 'Nhắc nhiệm vụ sắp đến hạn.',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    );
+  }
+
+  Future<void> _syncTaskNotifications(List<Map<String, dynamic>> tasks) async {
+    final now = tz.TZDateTime.now(tz.local);
+    final desired = <int>{};
+    for (final task in tasks) {
+      final id = task['id']?.toString() ?? '';
+      if (id.isEmpty || task['is_completed'] == true) continue;
+      final deadline = DateTime.tryParse(task['deadline_at']?.toString() ?? '');
+      if (deadline == null || !deadline.isAfter(DateTime.now())) continue;
+      final localDeadline = tz.TZDateTime.from(deadline, tz.local);
+      final title = task['title']?.toString() ?? 'Nhiệm vụ';
+      final remaining = deadline.difference(DateTime.now());
+      final points = <Duration, int>{
+        const Duration(hours: 24): 1,
+        const Duration(hours: 12): 2,
+        const Duration(hours: 6): 3,
+        const Duration(hours: 2): 4,
+        const Duration(hours: 1): 5,
+        const Duration(minutes: 15): 6,
+      };
+      var slot = 1;
+      if (remaining > const Duration(hours: 24)) {
+        // Keep only the next daily reminder for each task; it is resynced
+        // whenever the Deadline screen is opened.
+        final candidates = <tz.TZDateTime>[];
+        for (final hour in [7, 13, 19]) {
+          var candidate = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour);
+          if (!candidate.isAfter(now)) {
+            candidate = candidate.add(const Duration(days: 1));
+          }
+          candidates.add(candidate);
+        }
+        candidates.sort((a, b) => a.compareTo(b));
+        final next = candidates.first;
+        final nid = _notificationId(id, 10 + next.hour);
+        desired.add(nid);
+        await _showTaskNotification(id: nid, title: 'Deadline sắp tới',
+          body: '$title • Hãy tiếp tục hoàn thành nhiệm vụ nhé.', when: next);
+      }
+      for (final entry in points.entries) {
+        final when = localDeadline.subtract(entry.key);
+        if (when.isAfter(now)) {
+          final nid = _notificationId(id, entry.value);
+          desired.add(nid);
+          await _showTaskNotification(id: nid, title: 'Sắp đến Deadline',
+            body: '$title • Còn ${entry.key.inHours > 0 ? '${entry.key.inHours} giờ' : '15 phút'}.', when: when);
+        }
+        slot++;
+      }
+      // Notify at the deadline if it has not been completed. Completing the
+      // task cancels this pending notification.
+      final overdueId = _notificationId(id, 20);
+      desired.add(overdueId);
+      await _showTaskNotification(id: overdueId, title: 'Deadline đã đến',
+        body: '$title đã đến hạn. Hãy kiểm tra và cập nhật nhiệm vụ.', when: localDeadline);
+    }
+    final pending = await localNotifications.pendingNotificationRequests();
+    for (final request in pending) {
+      if (request.id < 0 && request.id >= -500000000 &&
+          !desired.contains(request.id)) {
+        await localNotifications.cancel(id: request.id);
+      }
+    }
+  }
+
+  Future<void> _cancelTaskNotifications(String taskId) async {
+    for (var slot = 1; slot <= 20; slot++) {
+      await localNotifications.cancel(id: _notificationId(taskId, slot));
+    }
+    for (final hour in [7, 13, 19]) {
+      await localNotifications.cancel(id: _notificationId(taskId, 10 + hour));
+    }
+  }
+
+  Future<void> _openTaskDialog({Map<String, dynamic>? task}) async {
+    final titleController = TextEditingController(text: task?['title']?.toString() ?? '');
+    final descriptionController = TextEditingController(text: task?['description']?.toString() ?? '');
+    final existing = task == null ? null : DateTime.tryParse(task['deadline_at'].toString())?.toLocal();
+    DateTime selectedDate = existing ?? DateTime.now().add(const Duration(days: 1));
+    TimeOfDay selectedTime = existing == null ? const TimeOfDay(hour: 23, minute: 59) : TimeOfDay.fromDateTime(existing);
+    bool includeTime = existing != null && !(existing.hour == 0 && existing.minute == 0 && existing.second == 0);
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(task == null ? 'Tạo Deadline' : 'Chỉnh sửa Deadline'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Tên nhiệm vụ *', hintText: 'Ví dụ: Nộp bài tập Giải tích')),
+            const SizedBox(height: 10),
+            TextField(controller: descriptionController, maxLines: 2, decoration: const InputDecoration(labelText: 'Mô tả (không bắt buộc)')),
+            const SizedBox(height: 12),
+            ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.calendar_month), title: const Text('Ngày Deadline'), subtitle: Text('${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}'), onTap: () async {
+              final picked = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime.now().subtract(const Duration(days: 3650)), lastDate: DateTime(2100));
+              if (picked != null) setDialogState(() => selectedDate = picked);
+            }),
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Chọn giờ cụ thể'), value: includeTime, onChanged: (v) => setDialogState(() => includeTime = v)),
+            if (includeTime) ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.access_time), title: const Text('Giờ Deadline'), subtitle: Text(selectedTime.format(context)), onTap: () async {
+              final picked = await showTimePicker(context: context, initialTime: selectedTime);
+              if (picked != null) setDialogState(() => selectedTime = picked);
+            }) else const Text('Mặc định: hết ngày đã chọn (00:00 ngày hôm sau).', style: TextStyle(fontSize: 12)),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Hủy')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Lưu')),
+          ],
+        ),
+      ),
+    );
+    if (result != true) return;
+    final title = titleController.text.trim();
+    if (title.isEmpty) { _message('Vui lòng nhập tên nhiệm vụ.'); return; }
+    final deadlineLocal = includeTime
+        ? DateTime(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime.hour, selectedTime.minute)
+        : DateTime(selectedDate.year, selectedDate.month, selectedDate.day).add(const Duration(days: 1));
+    if (!deadlineLocal.isAfter(DateTime.now())) { _message('Deadline phải ở thời điểm trong tương lai.'); return; }
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+    try {
+      setState(() => _busy = true);
+      final payload = <String, dynamic>{
+        'title': title,
+        'description': descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
+        'deadline_at': deadlineLocal.toUtc().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      if (task == null) {
+        payload['user_id'] = user.id;
+        await supabase.from('deadline_tasks').insert(payload);
+      } else {
+        await supabase.from('deadline_tasks').update(payload).eq('id', task['id']).eq('user_id', user.id);
+        await _cancelTaskNotifications(task['id'].toString());
+      }
+      await _loadTasks();
+    } catch (e) {
+      _message('Không lưu được Deadline: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _completeTask(Map<String, dynamic> task) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    // Determine the feedback from the actual deadline at the moment the
+    // user taps Complete. Completing exactly at the deadline counts as success.
+    final now = DateTime.now();
+    final deadline = DateTime.tryParse(task['deadline_at']?.toString() ?? '');
+    final feedbackType = deadline != null && now.isAfter(deadline)
+        ? MemeFeedbackType.deadlineFailure
+        : MemeFeedbackType.deadlineSuccess;
+
+    try {
+      await supabase.from('deadline_tasks').update({
+        'is_completed': true,
+        'completed_at': now.toUtc().toIso8601String(),
+        'updated_at': now.toUtc().toIso8601String(),
+      }).eq('id', task['id']).eq('user_id', user.id);
+      await _cancelTaskNotifications(task['id'].toString());
+      await _loadTasks();
+      _message('Đã hoàn thành nhiệm vụ!');
+
+      // Only show feedback after Supabase confirms the task update.
+      if (mounted) {
+        try {
+          await MemeFeedback.show(context, feedbackType);
+        } catch (feedbackError, feedbackStackTrace) {
+          debugPrint('DEADLINE FEEDBACK ERROR: $feedbackError');
+          debugPrintStack(stackTrace: feedbackStackTrace);
+        }
+      }
+    } catch (e) {
+      _message('Không cập nhật được nhiệm vụ: $e');
+    }
+  }
+
+  Future<void> _deleteTask(Map<String, dynamic> task) async {
+    final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Xóa Deadline?'), content: Text('Bạn có chắc muốn xóa "${task['title']}"?'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xóa'))],
+    ));
+    if (yes != true) return;
+    try {
+      await supabase.from('deadline_tasks').delete().eq('id', task['id']);
+      await _cancelTaskNotifications(task['id'].toString());
+      await _loadTasks();
+    } catch (e) { _message('Không xóa được Deadline: $e'); }
+  }
+
+  void _message(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _remaining(DateTime deadline) {
+    final diff = deadline.difference(DateTime.now());
+    if (diff.isNegative || diff == Duration.zero) return 'Quá hạn';
+    if (diff <= const Duration(hours: 24)) {
+      final h = diff.inHours.toString().padLeft(2, '0');
+      final m = (diff.inMinutes % 60).toString().padLeft(2, '0');
+      final sec = (diff.inSeconds % 60).toString().padLeft(2, '0');
+      return '$h:$m:$sec';
+    }
+    final days = (diff.inSeconds / const Duration(days: 1).inSeconds).ceil();
+    return 'Còn $days ngày';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _tasks.where((t) => t['is_completed'] != true).toList();
+    final completed = _tasks.where((t) => t['is_completed'] == true).toList();
+
+    Widget body;
+    if (_loading) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (_error != null) {
+      body = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 42),
+              const SizedBox(height: 12),
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _loadTasks,
+                child: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      body = RefreshIndicator(
+        onRefresh: _loadTasks,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          children: [
+            if (active.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 36),
+                child: Column(
+                  children: [
+                    Icon(Icons.flag_outlined, size: 48),
+                    SizedBox(height: 12),
+                    Text(
+                      'Chưa có Deadline nào',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Tạo nhiệm vụ để theo dõi thời hạn.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ...active.map((task) {
+              final deadline = DateTime.tryParse(task['deadline_at'].toString())?.toLocal() ?? DateTime.now();
+              final overdue = !deadline.isAfter(DateTime.now());
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              task['title']?.toString() ?? 'Nhiệm vụ',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          PopupMenuButton<String>(
+                            onSelected: (v) {
+                              if (v == 'edit') _openTaskDialog(task: task);
+                              if (v == 'delete') _deleteTask(task);
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Chỉnh sửa / gia hạn'),
+                              ),
+                              PopupMenuItem(value: 'delete', child: Text('Xóa')),
+                            ],
+                          ),
+                        ],
+                      ),
+                      if ((task['description']?.toString() ?? '').isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(task['description'].toString()),
+                        ),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.event,
+                            size: 17,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Hạn: ${deadline.day.toString().padLeft(2, '0')}/${deadline.month.toString().padLeft(2, '0')}/${deadline.year} ${deadline.hour.toString().padLeft(2, '0')}:${deadline.minute.toString().padLeft(2, '0')}',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _remaining(deadline),
+                        style: TextStyle(
+                          fontSize: _remaining(deadline).contains(':') ? 24 : 17,
+                          fontWeight: FontWeight.w800,
+                          color: overdue
+                              ? Colors.red
+                              : Theme.of(context).colorScheme.primary,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      if (overdue)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 5),
+                          child: Text(
+                            'Nhiệm vụ chưa hoàn thành — bạn có thể gia hạn hoặc đánh dấu hoàn thành.',
+                            style: TextStyle(color: Colors.red, fontSize: 12),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.tonalIcon(
+                          onPressed: () => _completeTask(task),
+                          icon: const Icon(Icons.check_circle_outline),
+                          label: const Text('Hoàn thành'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            if (completed.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 12, 4, 8),
+                child: Text(
+                  'Đã hoàn thành',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                ),
+              ),
+              ...completed.map(
+                (task) => Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.check_circle, color: Colors.green),
+                    title: Text(task['title']?.toString() ?? 'Nhiệm vụ'),
+                    subtitle: const Text('Đã hoàn thành'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => _deleteTask(task),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Deadline'),
+        actions: [
+          IconButton(onPressed: _loadTasks, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _busy ? null : () => _openTaskDialog(),
+        icon: const Icon(Icons.add),
+        label: const Text('Tạo nhiệm vụ'),
+      ),
+      body: body,
+    );
+  }
+}
+
+// ============================================================
+// DOCUMENTS: private files and nested folders in Supabase
+// ============================================================
+
+class DocumentsScreen extends StatefulWidget {
+  const DocumentsScreen({super.key});
+
+  @override
+  State<DocumentsScreen> createState() => _DocumentsScreenState();
+}
+
+class _DocumentsScreenState extends State<DocumentsScreen> {
+  static const String _bucket = 'student-documents';
+  List<Map<String, dynamic>> _items = [];
+  final List<Map<String, dynamic>> _folderStack = [];
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+
+  String? get _parentId =>
+      _folderStack.isEmpty ? null : _folderStack.last['id'] as String;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    if (mounted) setState(() { _loading = true; _error = null; });
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) throw Exception('Bạn chưa đăng nhập.');
+      var query = supabase.from('documents').select().eq('user_id', user.id);
+      final data = _parentId == null
+          ? await query.isFilter('parent_id', null).order('item_type').order('name')
+          : await query.eq('parent_id', _parentId!).order('item_type').order('name');
+      if (!mounted) return;
+      setState(() => _items = List<Map<String, dynamic>>.from(data));
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Không tải được tài liệu: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<String?> _askName({String title = 'Tên thư mục', String initial = ''}) async {
+    final controller = TextEditingController(text: initial);
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Nhập tên'),
+          onSubmitted: (_) => Navigator.pop(dialogContext, controller.text.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Hủy')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Lưu')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createFolder() async {
+    final name = await _askName();
+    if (name == null || name.isEmpty) return;
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+    try {
+      setState(() => _busy = true);
+      await supabase.from('documents').insert({
+        'user_id': user.id,
+        'name': name,
+        'item_type': 'folder',
+        'parent_id': _parentId,
+      });
+      await _loadItems();
+    } catch (e) {
+      _showMessage('Không tạo được thư mục: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _mimeType(String filename) {
+    final ext = filename.contains('.') ? filename.split('.').last.toLowerCase() : '';
+    const types = <String, String>{
+      'pdf': 'application/pdf', 'png': 'image/png', 'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'txt': 'text/plain', 'csv': 'text/csv', 'zip': 'application/zip',
+      'mp3': 'audio/mpeg', 'mp4': 'video/mp4',
+    };
+    return types[ext] ?? 'application/octet-stream';
+  }
+
+  Future<void> _uploadFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final user = supabase.auth.currentUser;
+      if (user == null) throw Exception('Bạn chưa đăng nhập.');
+      setState(() => _busy = true);
+      for (final file in result.files) {
+        final Uint8List? bytes = file.bytes;
+        if (bytes == null) throw Exception('Không đọc được tệp ${file.name}. Hãy thử chọn lại.');
+        final id = supabase.auth.currentUser!.id;
+        // Keep Storage object keys ASCII-only. The original filename remains in
+        // documents.name for display, while Storage uses a safe opaque name.
+        final rawExtension = file.name.contains('.')
+            ? file.name.split('.').last.toLowerCase()
+            : '';
+        final safeExtension = RegExp(r'^[a-z0-9]{1,10}$').hasMatch(rawExtension)
+            ? rawExtension
+            : 'bin';
+        final storagePath =
+            '$id/${DateTime.now().microsecondsSinceEpoch}.$safeExtension';
+        await supabase.storage.from(_bucket).uploadBinary(
+          storagePath, bytes,
+          fileOptions: FileOptions(contentType: _mimeType(file.name), upsert: false),
+        );
+        try {
+          await supabase.from('documents').insert({
+            'user_id': user.id,
+            'name': file.name,
+            'item_type': 'file',
+            'parent_id': _parentId,
+            'storage_path': storagePath,
+            'mime_type': _mimeType(file.name),
+            'file_size': bytes.length,
+          });
+        } catch (_) {
+          // Avoid leaving an orphaned Storage object if metadata insert fails.
+          await supabase.storage.from(_bucket).remove([storagePath]);
+          rethrow;
+        }
+      }
+      await _loadItems();
+      _showMessage('Đã tải lên ${result.files.length} tệp.');
+    } catch (e) {
+      _showMessage('Tải tệp thất bại: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _openFile(Map<String, dynamic> item) async {
+    try {
+      setState(() => _busy = true);
+      final bytes = await supabase.storage.from(_bucket).download(item['storage_path'] as String);
+      final dir = await getTemporaryDirectory();
+      final safeName = (item['name'] as String).replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final file = File('${dir.path}/$safeName');
+      await file.writeAsBytes(bytes, flush: true);
+      final result = await OpenFilex.open(file.path);
+      if (result.type != ResultType.done && mounted) {
+        _showMessage('Không mở được tệp. Bạn hãy kiểm tra ứng dụng hỗ trợ định dạng này.');
+      }
+    } catch (e) {
+      _showMessage('Không mở được tệp: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _rename(Map<String, dynamic> item) async {
+    final name = await _askName(title: 'Đổi tên', initial: item['name'] as String);
+    if (name == null || name.isEmpty || name == item['name']) return;
+    try {
+      setState(() => _busy = true);
+      await supabase.from('documents').update({
+        'name': name,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', item['id']).eq('user_id', supabase.auth.currentUser!.id);
+      await _loadItems();
+    } catch (e) {
+      _showMessage('Đổi tên thất bại: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _delete(Map<String, dynamic> item) async {
+    final isFolder = item['item_type'] == 'folder';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isFolder ? 'Xóa thư mục?' : 'Xóa tệp?'),
+        content: Text(isFolder
+            ? 'Thư mục và toàn bộ nội dung bên trong sẽ bị xóa. Bạn không thể hoàn tác.'
+            : 'Tệp này sẽ bị xóa khỏi tài liệu của bạn.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Hủy')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Xóa')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      setState(() => _busy = true);
+      await _deleteItemRecursively(item);
+      await _loadItems();
+      _showMessage('Đã xóa.');
+    } catch (e) {
+      _showMessage('Xóa thất bại: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _deleteItemRecursively(Map<String, dynamic> item) async {
+    final id = item['id'] as String;
+    if (item['item_type'] == 'folder') {
+      final children = await supabase.from('documents').select().eq('parent_id', id);
+      for (final child in List<Map<String, dynamic>>.from(children)) {
+        await _deleteItemRecursively(child);
+      }
+    } else {
+      final path = item['storage_path'] as String?;
+      if (path != null) await supabase.storage.from(_bucket).remove([path]);
+    }
+    await supabase.from('documents').delete()
+        .eq('id', id).eq('user_id', supabase.auth.currentUser!.id);
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _openFolder(Map<String, dynamic> folder) {
+    setState(() => _folderStack.add(folder));
+    _loadItems();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Tài liệu'),
+        actions: [
+          IconButton(tooltip: 'Tạo thư mục', onPressed: _busy ? null : _createFolder,
+              icon: const Icon(Icons.create_new_folder_outlined)),
+          IconButton(tooltip: 'Tải tệp lên', onPressed: _busy ? null : _uploadFiles,
+              icon: const Icon(Icons.upload_file_rounded)),
+        ],
+      ),
+      body: Column(children: [
+        if (_folderStack.isNotEmpty)
+          SizedBox(
+            height: 52,
+            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+              TextButton.icon(
+                onPressed: () { setState(() => _folderStack.clear()); _loadItems(); },
+                icon: const Icon(Icons.home_outlined), label: const Text('Tài liệu'),
+              ),
+              for (var i = 0; i < _folderStack.length; i++) ...[
+                const Icon(Icons.chevron_right, size: 18),
+                TextButton(
+                  onPressed: () { setState(() => _folderStack.removeRange(i + 1, _folderStack.length)); _loadItems(); },
+                  child: Text(_folderStack[i]['name'] as String),
+                ),
+              ],
+            ]),
+          ),
+        if (_busy) const LinearProgressIndicator(),
+        Expanded(child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center)))
+              : _items.isEmpty
+                  ? Center(child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.folder_open_rounded, size: 64, color: colors.onSurfaceVariant),
+                        const SizedBox(height: 12),
+                        const Text('Thư mục này chưa có tài liệu.', style: TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 6),
+                        Text('Tạo thư mục hoặc tải tệp lên bằng các nút phía trên.', textAlign: TextAlign.center, style: TextStyle(color: colors.onSurfaceVariant)),
+                      ]),
+                    ))
+                  : RefreshIndicator(
+                      onRefresh: _loadItems,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 4),
+                        itemBuilder: (context, index) {
+                          final item = _items[index];
+                          final folder = item['item_type'] == 'folder';
+                          final name = item['name'] as String;
+                          final size = item['file_size'] as int?;
+                          return Card(
+                            child: ListTile(
+                              leading: Icon(folder ? Icons.folder_rounded : _iconForFile(name),
+                                  color: folder ? Colors.amber.shade700 : colors.primary, size: 30),
+                              title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
+                              subtitle: folder ? const Text('Thư mục') : Text(_formatSize(size ?? 0)),
+                              onTap: _busy ? null : () => folder ? _openFolder(item) : _openFile(item),
+                              trailing: PopupMenuButton<String>(
+                                enabled: !_busy,
+                                onSelected: (value) {
+                                  if (value == 'rename') _rename(item);
+                                  if (value == 'delete') _delete(item);
+                                  if (value == 'open' && !folder) _openFile(item);
+                                },
+                                itemBuilder: (_) => [
+                                  if (!folder) const PopupMenuItem(value: 'open', child: Text('Mở tệp')),
+                                  const PopupMenuItem(value: 'rename', child: Text('Đổi tên')),
+                                  const PopupMenuItem(value: 'delete', child: Text('Xóa')),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    )),
+      ]),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _busy ? null : _uploadFiles,
+        icon: const Icon(Icons.upload_rounded), label: const Text('Tải tệp lên'),
+      ),
+    );
+  }
+
+  IconData _iconForFile(String name) {
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    if (ext == 'pdf') return Icons.picture_as_pdf_rounded;
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].contains(ext)) return Icons.image_rounded;
+    if (['ppt', 'pptx'].contains(ext)) return Icons.slideshow_rounded;
+    if (['doc', 'docx', 'txt'].contains(ext)) return Icons.description_rounded;
+    if (['xls', 'xlsx', 'csv'].contains(ext)) return Icons.table_chart_rounded;
+    return Icons.insert_drive_file_rounded;
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
+// ============================================================
+// TODAY CHECK-INS
+// ============================================================
+
 
 class TodayCheckInsScreen extends StatefulWidget {
   const TodayCheckInsScreen({super.key});
@@ -4676,7 +5534,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
+                  color: Colors.black.withValues(alpha: 0.18),
                   blurRadius: 24,
                   offset: const Offset(0, -6),
                 ),
@@ -4779,7 +5637,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
-        color: colorScheme.primary.withOpacity(0.08),
+        color: colorScheme.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -4818,7 +5676,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.45),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(15),
       ),
       child: Row(
@@ -4878,7 +5736,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
+                  color: Colors.black.withValues(alpha: 0.06),
                   blurRadius: 12,
                   offset: const Offset(0, 5),
                 ),
@@ -5030,7 +5888,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             boxShadow: highlighted
                 ? [
                     BoxShadow(
-                      color: colorScheme.primary.withOpacity(0.38),
+                      color: colorScheme.primary.withValues(alpha: 0.38),
                       blurRadius: 22,
                       spreadRadius: 2,
                     ),
@@ -5105,10 +5963,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.42),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: colorScheme.outline.withOpacity(0.22),
+          color: colorScheme.outline.withValues(alpha: 0.22),
         ),
       ),
       child: Column(
@@ -5215,12 +6073,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           height: 50,
           decoration: BoxDecoration(
             color: selected
-                ? colorScheme.primary.withOpacity(0.20)
+                ? colorScheme.primary.withValues(alpha: 0.20)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
               color: selected
-                  ? colorScheme.primary.withOpacity(0.38)
+                  ? colorScheme.primary.withValues(alpha: 0.38)
                   : Colors.transparent,
             ),
           ),
@@ -5282,7 +6140,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           hintText: availableClasses.isEmpty ? 'Chưa có dữ liệu lớp' : null,
           prefixIcon: const Icon(Icons.school_rounded),
           filled: true,
-          fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.55),
+          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 15,
@@ -5294,13 +6152,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide(
-              color: colorScheme.outline.withOpacity(0.16),
+              color: colorScheme.outline.withValues(alpha: 0.16),
             ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide(
-              color: colorScheme.primary.withOpacity(0.65),
+              color: colorScheme.primary.withValues(alpha: 0.65),
               width: 1.5,
             ),
           ),
@@ -5530,7 +6388,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .primary
-                                                .withOpacity(0.08),
+                                                .withValues(alpha: 0.08),
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
@@ -7351,10 +8209,10 @@ class MissionScreen extends StatelessWidget {
                   ? Container(
                       height: 54,
                       decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.10),
+                        color: Colors.green.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.green.withOpacity(0.30),
+                          color: Colors.green.withValues(alpha: 0.30),
                         ),
                       ),
                       child: const Row(
@@ -7646,7 +8504,7 @@ class _CameraCheckInScreenState
                     decoration:
                         BoxDecoration(
                       color: Colors.black
-                          .withOpacity(0.65),
+                          .withValues(alpha: 0.65),
                       borderRadius:
                           BorderRadius.circular(
                         16,
@@ -8051,6 +8909,20 @@ class _RoomVerificationScreenState
       debugPrint(
         'AI VERIFIED: $verified',
       );
+
+      // Show failure feedback only when AI returned a negative verification.
+      if (!verified && mounted) {
+        debugPrint('SHOW CHECK-IN FAILURE MEME: AI verification returned false');
+        try {
+          await MemeFeedback.show(
+            context,
+            MemeFeedbackType.checkinFailure,
+          );
+        } catch (feedbackError, feedbackStackTrace) {
+          debugPrint('CHECK-IN FAILURE MEME ERROR: $feedbackError');
+          debugPrint('$feedbackStackTrace');
+        }
+      }
     } catch (e, stackTrace) {
       debugPrint('=== AI ROOM VERIFICATION ERROR ===');
       debugPrint('ERROR: $e');
@@ -8066,6 +8938,22 @@ class _RoomVerificationScreenState
           '',
         );
       });
+
+      // If the image was uploaded, an exception happened during/after the
+      // verification request (for example Gemini/Edge Function 502). Do not
+      // show this meme for local image or upload failures.
+      if (uploadedImagePath != null && mounted) {
+        debugPrint('SHOW CHECK-IN FAILURE MEME: verification request threw an error');
+        try {
+          await MemeFeedback.show(
+            context,
+            MemeFeedbackType.checkinFailure,
+          );
+        } catch (feedbackError, feedbackStackTrace) {
+          debugPrint('CHECK-IN FAILURE MEME ERROR: $feedbackError');
+          debugPrint('$feedbackStackTrace');
+        }
+      }
     }
   }
 
@@ -8273,9 +9161,9 @@ class _RoomVerificationScreenState
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isSuccess
-                          ? (isDark ? Colors.green.shade900.withOpacity(0.35) : Colors.green.shade50)
+                          ? (isDark ? Colors.green.shade900.withValues(alpha: 0.35) : Colors.green.shade50)
                           : errorMessage != null
-                              ? (isDark ? Colors.red.shade900.withOpacity(0.35) : Colors.red.shade50)
+                              ? (isDark ? Colors.red.shade900.withValues(alpha: 0.35) : Colors.red.shade50)
                               : (isDark ? colors.primaryContainer : Colors.blue.shade50),
                     ),
                     child: Icon(
@@ -8333,7 +9221,7 @@ class _RoomVerificationScreenState
                       color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: colors.outline.withOpacity(0.35),
+                        color: colors.outline.withValues(alpha: 0.35),
                       ),
                     ),
                     child: Column(
@@ -8483,7 +9371,7 @@ class _InfoRow extends StatelessWidget {
 // CHECK-IN SUCCESS
 // ============================================================
 
-class CheckInSuccessScreen extends StatelessWidget {
+class CheckInSuccessScreen extends StatefulWidget {
   final ClassSession classSession;
   final bool alreadyCheckedIn;
 
@@ -8492,6 +9380,25 @@ class CheckInSuccessScreen extends StatelessWidget {
     required this.classSession,
     required this.alreadyCheckedIn,
   });
+
+  @override
+  State<CheckInSuccessScreen> createState() => _CheckInSuccessScreenState();
+}
+
+class _CheckInSuccessScreenState extends State<CheckInSuccessScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Show celebratory meme only for a newly recorded check-in.
+    // Existing check-ins must not replay success feedback.
+    if (!widget.alreadyCheckedIn) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          MemeFeedback.show(context, MemeFeedbackType.checkinSuccess);
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -8512,7 +9419,7 @@ class CheckInSuccessScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               Text(
-                alreadyCheckedIn
+                widget.alreadyCheckedIn
                     ? 'Bạn đã Check-in lớp này!'
                     : 'Check-in thành công!',
                 textAlign: TextAlign.center,
@@ -8523,18 +9430,14 @@ class CheckInSuccessScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                classSession.subject,
+                widget.classSession.subject,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 18,
-                ),
+                style: const TextStyle(fontSize: 18),
               ),
               const SizedBox(height: 8),
               Text(
-                'Phòng ${classSession.room}',
-                style: const TextStyle(
-                  fontSize: 16,
-                ),
+                'Phòng ${widget.classSession.room}',
+                style: const TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 32),
               ElevatedButton(
@@ -8544,9 +9447,7 @@ class CheckInSuccessScreen extends StatelessWidget {
                     (route) => route.isFirst,
                   );
                 },
-                child: const Text(
-                  'Về trang chủ',
-                ),
+                child: const Text('Về trang chủ'),
               ),
             ],
           ),
