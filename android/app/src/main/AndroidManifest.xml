@@ -32,6 +32,17 @@
                     android:scheme="io.dut.campusstreak"
                     android:host="login-callback" />
             </intent-filter>
+            
+            <!-- Deep link cho Supabase reset password -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="dutcampusstreak"
+                    android:host="reset-password" />
+            </intent-filter>
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

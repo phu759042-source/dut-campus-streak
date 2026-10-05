@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:pdfx/pdfx.dart';
+import 'package:crop_your_image/crop_your_image.dart';
 
 import 'package:flutter/material.dart';
 import 'meme_feedback.dart';
@@ -33,6 +35,10 @@ final supabase = Supabase.instance.client;
 // Giao diện sáng/tối dùng chung cho toàn app.
 final ValueNotifier<ThemeMode> appThemeMode =
     ValueNotifier<ThemeMode>(ThemeMode.light);
+
+// Dùng để hiển thị meme sau khi đã quay về Home.
+final GlobalKey<NavigatorState> appNavigatorKey =
+    GlobalKey<NavigatorState>();
 
 Future<void> loadUserThemePreference() async {
   final user = supabase.auth.currentUser;
@@ -312,6 +318,7 @@ class DUTCampusStreakApp extends StatelessWidget {
       valueListenable: appThemeMode,
       builder: (context, mode, _) {
         return MaterialApp(
+          navigatorKey: appNavigatorKey,
           debugShowCheckedModeBanner: false,
           title: 'DUT Campus Streak',
           themeMode: mode,
@@ -607,6 +614,31 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _errorMessage;
+  late final StreamSubscription<AuthState> _authStateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _authStateSubscription = supabase.auth.onAuthStateChange.listen((data) {
+      if (data.event != AuthChangeEvent.passwordRecovery) return;
+      if (!mounted) return;
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const ResetPasswordScreen(),
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _authStateSubscription.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
@@ -925,6 +957,39 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
 
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const ForgotPasswordScreen(),
+                                          ),
+                                        );
+                                      },
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 4,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text(
+                                  'Quên mật khẩu?',
+                                  style: TextStyle(
+                                    color: Color(0xFF075FD8),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+
                             if (_errorMessage != null) ...[
                               const SizedBox(height: 14),
                               Container(
@@ -1053,6 +1118,461 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     ),
+    );
+  }
+}
+
+// ============================================================
+// FORGOT / RESET PASSWORD
+// ============================================================
+
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key});
+
+  @override
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+}
+
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final TextEditingController _emailController = TextEditingController();
+
+  bool _loading = false;
+  bool _sent = false;
+  String? _error;
+
+  // Add this exact URL in Supabase:
+  // Authentication > URL Configuration > Additional Redirect URLs.
+  static const String _resetRedirectUrl =
+      'dutcampusstreak://reset-password';
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendResetEmail() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      setState(() => _error = 'Vui lòng nhập email đã đăng ký.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await supabase.auth.resetPasswordForEmail(
+        email,
+        redirectTo: _resetRedirectUrl,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+        _sent = true;
+      });
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Không thể gửi email. Vui lòng thử lại.';
+      });
+      debugPrint('Reset password email error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Quên mật khẩu')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Icon(
+                  Icons.lock_reset_rounded,
+                  size: 38,
+                  color: primary,
+                ),
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'Khôi phục mật khẩu',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Nhập email tài khoản DUT Campus Streak. '
+                'Chúng mình sẽ gửi cho bạn một liên kết để đặt mật khẩu mới.',
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.5,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 28),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                enabled: !_loading && !_sent,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  hintText: 'you@example.com',
+                  prefixIcon: const Icon(Icons.mail_outline_rounded),
+                  filled: true,
+                  fillColor: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: primary,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 14),
+                _PasswordMessage(
+                  icon: Icons.error_outline_rounded,
+                  color: Colors.red,
+                  text: _error!,
+                ),
+              ],
+              if (_sent) ...[
+                const SizedBox(height: 18),
+                _PasswordMessage(
+                  icon: Icons.mark_email_read_outlined,
+                  color: Colors.green,
+                  text:
+                      'Email khôi phục đã được gửi. Hãy kiểm tra hộp thư và mở liên kết để đặt mật khẩu mới.',
+                ),
+              ],
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 54,
+                child: FilledButton(
+                  onPressed: _loading || _sent ? null : _sendResetEmail,
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(
+                          _sent ? 'Đã gửi email' : 'Gửi liên kết khôi phục',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Quay lại đăng nhập'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ResetPasswordScreen extends StatefulWidget {
+  const ResetPasswordScreen({super.key});
+
+  @override
+  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
+}
+
+class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmController = TextEditingController();
+
+  bool _loading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
+  String? _error;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _updatePassword() async {
+    final password = _passwordController.text;
+    final confirm = _confirmController.text;
+
+    if (password.length < 6) {
+      setState(() => _error = 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+
+    if (password != confirm) {
+      setState(() => _error = 'Mật khẩu xác nhận không khớp.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await supabase.auth.updateUser(
+        UserAttributes(password: password),
+      );
+
+      if (!mounted) return;
+
+      await supabase.auth.signOut();
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Không thể đặt mật khẩu mới. Vui lòng thử lại.';
+      });
+      debugPrint('Reset password error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Đặt lại mật khẩu'),
+        automaticallyImplyLeading: false,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Icon(
+                  Icons.password_rounded,
+                  size: 38,
+                  color: primary,
+                ),
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'Tạo mật khẩu mới',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Nhập mật khẩu mới cho tài khoản của bạn.',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 28),
+              _PasswordField(
+                controller: _passwordController,
+                label: 'Mật khẩu mới',
+                obscureText: _obscurePassword,
+                enabled: !_loading,
+                onToggle: () {
+                  setState(() => _obscurePassword = !_obscurePassword);
+                },
+              ),
+              const SizedBox(height: 14),
+              _PasswordField(
+                controller: _confirmController,
+                label: 'Xác nhận mật khẩu',
+                obscureText: _obscureConfirm,
+                enabled: !_loading,
+                onToggle: () {
+                  setState(() => _obscureConfirm = !_obscureConfirm);
+                },
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 14),
+                _PasswordMessage(
+                  icon: Icons.error_outline_rounded,
+                  color: Colors.red,
+                  text: _error!,
+                ),
+              ],
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 54,
+                child: FilledButton(
+                  onPressed: _loading ? null : _updatePassword,
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Cập nhật mật khẩu',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PasswordField extends StatelessWidget {
+  const _PasswordField({
+    required this.controller,
+    required this.label,
+    required this.obscureText,
+    required this.enabled,
+    required this.onToggle,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final bool obscureText;
+  final bool enabled;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      enabled: enabled,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: const Icon(Icons.lock_outline_rounded),
+        suffixIcon: IconButton(
+          onPressed: enabled ? onToggle : null,
+          icon: Icon(
+            obscureText
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
+          ),
+        ),
+        filled: true,
+        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _PasswordMessage extends StatelessWidget {
+  const _PasswordMessage({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1356,6 +1876,144 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 }
 
+class BannerCropScreen extends StatefulWidget {
+  final Uint8List imageBytes;
+
+  const BannerCropScreen({
+    super.key,
+    required this.imageBytes,
+  });
+
+  @override
+  State<BannerCropScreen> createState() => _BannerCropScreenState();
+}
+
+class _BannerCropScreenState extends State<BannerCropScreen> {
+  final CropController _controller = CropController();
+  bool _cropping = false;
+
+  void _crop() {
+    if (_cropping) return;
+    setState(() => _cropping = true);
+    _controller.crop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // Khung cắt phải có đúng cùng tỉ lệ với banner hiển thị trong Profile.
+    // Profile có padding ngang 20px và banner cao cố định 178px.
+    // Vì vậy không dùng 3/1 nữa, nếu không ảnh sẽ bị xén thêm hai bên sau khi cắt.
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final profileBannerWidth = (screenWidth - 40).clamp(1.0, double.infinity).toDouble();
+    const profileBannerHeight = 178.0;
+    final bannerAspectRatio = profileBannerWidth / profileBannerHeight;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Căn chỉnh banner'),
+        actions: [
+          TextButton(
+            onPressed: _cropping ? null : _crop,
+            child: const Text('Xong'),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Crop(
+                  image: widget.imageBytes,
+                  controller: _controller,
+                  // Tỉ lệ này khớp chính xác với banner ở ProfileScreen.
+                  aspectRatio: bannerAspectRatio,
+                  interactive: true,
+                  fixCropRect: true,
+                  radius: 18,
+                  maskColor: Colors.black.withValues(alpha: 0.62),
+                  baseColor: Colors.black,
+                  filterQuality: FilterQuality.high,
+                  progressIndicator: const CircularProgressIndicator(),
+                  cornerDotBuilder: (size, edgeAlignment) => const SizedBox.shrink(),
+                  onCropped: (result) {
+                    switch (result) {
+                      case CropSuccess(:final croppedImage):
+                        if (mounted) {
+                          Navigator.pop(context, croppedImage);
+                        }
+                      case CropFailure(:final cause):
+                        if (mounted) {
+                          setState(() => _cropping = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Không thể cắt ảnh: $cause'),
+                            ),
+                          );
+                        }
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: Column(
+              children: [
+                Text(
+                  'Kéo ảnh để chọn vị trí hiển thị trong khung.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Bạn có thể phóng to / thu nhỏ bằng thao tác hai ngón.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: _cropping ? null : _crop,
+                    icon: _cropping
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_rounded),
+                    label: Text(
+                      _cropping ? 'Đang xử lý...' : 'Cắt & xem trước',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ============================================================
 // PROFILE
 // ============================================================
@@ -1379,6 +2037,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _saving = false;
   String? _avatarUrl;
   String? _selectedAvatarPath;
+  String? _bannerUrl;
+  Uint8List? _selectedBannerBytes;
   String? _error;
 
   String _originalDisplayName = '';
@@ -1386,6 +2046,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _originalStudentCode = '';
   String _originalClassName = '';
   String? _originalAvatarUrl;
+  String? _originalBannerUrl;
 
   @override
   void initState() {
@@ -1418,7 +2079,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _emailController.text.trim().toLowerCase() != _originalEmail.trim().toLowerCase() ||
         _studentCodeController.text.trim() != _originalStudentCode ||
         _classNameController.text.trim() != _originalClassName ||
-        _selectedAvatarPath != null;
+        _selectedAvatarPath != null ||
+        _selectedBannerBytes != null;
   }
 
   void _onProfileChanged() {
@@ -1440,7 +2102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       final profileData = await supabase
           .from('profiles')
-          .select('display_name, avatar_url')
+          .select('display_name, avatar_url, banner_url')
           .eq('id', user.id)
           .single();
 
@@ -1455,6 +2117,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final className =
           userData['class_name']?.toString() ?? '';
       final avatarUrl = profileData['avatar_url']?.toString();
+      final bannerUrl = profileData['banner_url']?.toString();
 
       _displayNameController.text = displayName;
       _emailController.text = email;
@@ -1466,11 +2129,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _originalStudentCode = studentCode;
       _originalClassName = className;
       _originalAvatarUrl = avatarUrl;
+      _originalBannerUrl = bannerUrl;
 
       if (!mounted) return;
       setState(() {
         _avatarUrl = avatarUrl;
+        _bannerUrl = bannerUrl;
         _selectedAvatarPath = null;
+        _selectedBannerBytes = null;
         _loading = false;
         _error = null;
       });
@@ -1535,6 +2201,316 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '$publicUrl?v=${DateTime.now().millisecondsSinceEpoch}';
   }
 
+  Future<void> _pickBanner() async {
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 95,
+        maxWidth: 2400,
+        maxHeight: 2400,
+      );
+
+      if (image == null || !mounted) return;
+
+      final bytes = await image.readAsBytes();
+      if (!mounted) return;
+
+      final cropped = await Navigator.push<Uint8List>(
+        context,
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => BannerCropScreen(imageBytes: bytes),
+        ),
+      );
+
+      if (cropped == null || !mounted) return;
+
+      setState(() {
+        _selectedBannerBytes = cropped;
+      });
+
+      // Cho người dùng xem ngay banner mới trong hồ sơ trước khi lưu.
+      await _showProfilePreview();
+    } catch (e) {
+      debugPrint('Pick banner error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể chọn banner: $e')),
+      );
+    }
+  }
+
+  Future<String?> _uploadSelectedBanner(String userId) async {
+    final bytes = _selectedBannerBytes;
+    if (bytes == null) return _bannerUrl;
+
+    const bucket = 'profile-banners';
+    final path = '$userId/banner.jpg';
+
+    await supabase.storage.from(bucket).uploadBinary(
+      path,
+      bytes,
+      fileOptions: const FileOptions(
+        upsert: true,
+        contentType: 'image/jpeg',
+        cacheControl: '3600',
+      ),
+    );
+
+    final publicUrl = supabase.storage.from(bucket).getPublicUrl(path);
+    return '$publicUrl?v=${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  Future<void> _showProfilePreview() async {
+    final name = _displayNameController.text.trim().isEmpty
+        ? 'Hồ sơ sinh viên'
+        : _displayNameController.text.trim();
+    final className = _classNameController.text.trim().isEmpty
+        ? 'Chưa có lớp'
+        : _classNameController.text.trim();
+    final studentCode = _studentCodeController.text.trim().isEmpty
+        ? 'Chưa có MSSV'
+        : _studentCodeController.text.trim();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+            decoration: BoxDecoration(
+              color: Theme.of(sheetContext).cardColor,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colorScheme.outline.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Xem trước hồ sơ',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildProfilePreviewCard(
+                    context: sheetContext,
+                    name: name,
+                    className: className,
+                    studentCode: studentCode,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Đây là giao diện người khác sẽ thấy khi xem hồ sơ của bạn.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          child: const Text('Đóng'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _hasChanges
+                              ? () {
+                                  Navigator.pop(sheetContext);
+                                  // Người dùng vẫn phải bấm "Lưu thay đổi"
+                                  // ở màn hình hồ sơ để upload/commit.
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Bản xem trước đã sẵn sàng. Bấm "Lưu thay đổi" để lưu.',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              : null,
+                          child: const Text('Tiếp tục lưu'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProfilePreviewCard({
+    required BuildContext context,
+    required String name,
+    required String className,
+    required String studentCode,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final ImageProvider<Object>? bannerProvider = _selectedBannerBytes != null
+        ? MemoryImage(_selectedBannerBytes!)
+        : (_bannerUrl != null && _bannerUrl!.isNotEmpty
+            ? NetworkImage(_bannerUrl!)
+            : null);
+
+    final avatarProvider = _selectedAvatarPath != null
+        ? FileImage(File(_selectedAvatarPath!)) as ImageProvider
+        : (_avatarUrl != null && _avatarUrl!.isNotEmpty
+            ? NetworkImage(_avatarUrl!)
+            : null);
+
+    // Preview phải dùng đúng cùng tỉ lệ banner với popup BXH.
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final profileBannerWidth = screenWidth - 32;
+    final bannerAspectRatio = profileBannerWidth / 178;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: colorScheme.outline.withValues(alpha: 0.12),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final bannerWidth = constraints.maxWidth;
+          final bannerHeight = bannerWidth / bannerAspectRatio;
+
+          // Giống popup BXH: avatar overlap xuống dưới mép banner 60px.
+          const avatarOverlap = 80.0;
+
+          return Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                height: bannerHeight + avatarOverlap,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: bannerHeight,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: bannerProvider != null
+                            ? Image(
+                                image: bannerProvider,
+                                fit: BoxFit.cover,
+                              )
+                            : Container(
+                                decoration: const BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Color(0xFF1877C9),
+                                      Color(0xFF0756A9),
+                                      Color(0xFF12315C),
+                                    ],
+                                  ),
+                                ),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.photo_camera_back_rounded,
+                                    color: Colors.white54,
+                                    size: 42,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surface,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.18),
+                                blurRadius: 14,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: CircleAvatar(
+                            radius: 58,
+                            backgroundImage: avatarProvider,
+                            child: avatarProvider == null
+                                ? const Icon(Icons.person, size: 58)
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Thông tin nằm dưới vùng avatar overlap,
+              // giống bố cục popup BXH và không đè lên avatar.
+              const SizedBox(height: 2),
+              Column(
+                children: [
+                  Text(
+                    name,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '$className • $studentCode',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _saveChanges() async {
     if (!_hasChanges || _saving) return;
 
@@ -1558,6 +2534,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       String? newAvatarUrl = _avatarUrl;
+      String? newBannerUrl = _bannerUrl;
+
       // ----------------------------------------------------------
       // 1. Upload avatar nếu người dùng vừa chọn ảnh mới.
       // ----------------------------------------------------------
@@ -1566,7 +2544,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       // ----------------------------------------------------------
-      // 2. Cập nhật dữ liệu hồ sơ trong database.
+      // 2. Upload banner đã crop nếu người dùng vừa chọn ảnh mới.
+      // ----------------------------------------------------------
+      if (_selectedBannerBytes != null) {
+        newBannerUrl = await _uploadSelectedBanner(user.id);
+      }
+
+      // ----------------------------------------------------------
+      // 3. Cập nhật dữ liệu hồ sơ trong database.
       // Unique index ở public.users sẽ chặn mã sinh viên trùng.
       // ----------------------------------------------------------
       try {
@@ -1586,6 +2571,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await supabase.from('profiles').update({
         'display_name': displayName,
         'avatar_url': newAvatarUrl,
+        'banner_url': newBannerUrl,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', user.id);
 
@@ -1612,7 +2598,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       setState(() {
         _avatarUrl = newAvatarUrl;
+        _bannerUrl = newBannerUrl;
         _originalAvatarUrl = newAvatarUrl;
+        _originalBannerUrl = newBannerUrl;
         _originalDisplayName = displayName;
         _originalStudentCode = studentCode;
         _originalClassName = className;
@@ -1620,6 +2608,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _originalEmail = email;
         }
         _selectedAvatarPath = null;
+        _selectedBannerBytes = null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1920,6 +2909,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return null;
   }
 
+  Widget _defaultBanner() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF1877C9),
+            Color(0xFF0756A9),
+            Color(0xFF12315C),
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -28,
+            top: -40,
+            child: Container(
+              width: 160,
+              height: 160,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.10),
+              ),
+            ),
+          ),
+          Positioned(
+            left: -50,
+            bottom: -80,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.07),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEditableField({
     required String label,
     required TextEditingController controller,
@@ -1983,33 +3016,122 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
+            // ----------------------------------------------------------
+            // PROFILE BANNER + AVATAR
+            // ----------------------------------------------------------
+            SizedBox(
+              height: 254,
+              width: double.infinity,
               child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  CircleAvatar(
-                    radius: 58,
-                    backgroundImage: image,
-                    child: image == null
-                        ? const Icon(Icons.person, size: 58)
-                        : null,
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      height: 178,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.14),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (_selectedBannerBytes != null)
+                            Image.memory(
+                              _selectedBannerBytes!,
+                              fit: BoxFit.cover,
+                            )
+                          else if (_bannerUrl != null && _bannerUrl!.isNotEmpty)
+                            Image.network(
+                              _bannerUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _defaultBanner(),
+                            )
+                          else
+                            _defaultBanner(),
+                          Positioned(
+                            right: 12,
+                            bottom: 12,
+                            child: Material(
+                              color: Colors.black.withValues(alpha: 0.48),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: _saving ? null : _pickBanner,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(11),
+                                  child: Icon(
+                                    Icons.add_photo_alternate_outlined,
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   Positioned(
+                    left: 0,
                     right: 0,
                     bottom: 0,
-                    child: Material(
-                      color: const Color(0xFF005BAC),
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: _saving ? null : _pickAvatar,
-                        child: const Padding(
-                          padding: EdgeInsets.all(10),
-                          child: Icon(
-                            Icons.camera_alt,
-                            color: Colors.white,
-                            size: 20,
+                    child: Center(
+                      child: Stack(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Theme.of(context).colorScheme.surface,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.18),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            child: CircleAvatar(
+                              radius: 58,
+                              backgroundImage: image,
+                              child: image == null
+                                  ? const Icon(Icons.person, size: 58)
+                                  : null,
+                            ),
                           ),
-                        ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Material(
+                              color: const Color(0xFF005BAC),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: _saving ? null : _pickAvatar,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -2017,7 +3139,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
 
-            const SizedBox(height: 28),
+            const SizedBox(height: 10),
 
             const Text(
               'Thông tin cá nhân',
@@ -2061,6 +3183,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               label: 'Lớp',
               controller: _classNameController,
               icon: Icons.school_outlined,
+            ),
+
+            const SizedBox(height: 4),
+
+            OutlinedButton.icon(
+              onPressed: _showProfilePreview,
+              icon: const Icon(Icons.preview_outlined),
+              label: const Text('Xem trước hồ sơ'),
             ),
 
             const SizedBox(height: 8),
@@ -4223,6 +5353,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  bool _gridView = false;
+  final Map<String, Future<Uint8List?>> _thumbnailFutures = {};
 
   String? get _parentId =>
       _folderStack.isEmpty ? null : _folderStack.last['id'] as String;
@@ -4448,6 +5580,201 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     _loadItems();
   }
 
+  Future<Uint8List?> _loadThumbnail(Map<String, dynamic> item) async {
+    final path = item['storage_path']?.toString();
+    if (path == null || path.isEmpty) return null;
+
+    try {
+      final bytes = await supabase.storage.from(_bucket).download(path);
+      final name = item['name']?.toString() ?? '';
+      final mime = item['mime_type']?.toString() ?? _mimeType(name);
+
+      if (mime.startsWith('image/')) {
+        return bytes;
+      }
+
+      if (mime == 'application/pdf' || name.toLowerCase().endsWith('.pdf')) {
+        final document = await PdfDocument.openData(bytes);
+        try {
+          final page = await document.getPage(1);
+          try {
+            final image = await page.render(
+              width: 360,
+              height: 480,
+              format: PdfPageImageFormat.jpeg,
+              backgroundColor: '#FFFFFF',
+              quality: 100,
+            );
+            return image?.bytes;
+          } finally {
+            await page.close();
+          }
+        } finally {
+          await document.close();
+        }
+      }
+    } catch (e) {
+      debugPrint('Document thumbnail error: $e');
+    }
+
+    return null;
+  }
+
+  Future<Uint8List?> _thumbnailFor(Map<String, dynamic> item) {
+    final id = item['id']?.toString() ?? item['storage_path']?.toString() ?? item['name'].toString();
+    return _thumbnailFutures.putIfAbsent(id, () => _loadThumbnail(item));
+  }
+
+  Widget _documentThumbnail(Map<String, dynamic> item, {required bool grid}) {
+    final folder = item['item_type'] == 'folder';
+    final name = item['name']?.toString() ?? '';
+
+    if (folder) {
+      return Container(
+        color: Colors.amber.withValues(alpha: 0.10),
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.folder_rounded,
+          size: grid ? 58 : 42,
+          color: Colors.amber.shade700,
+        ),
+      );
+    }
+
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    final isVisual = ['png', 'jpg', 'jpeg', 'gif', 'webp'].contains(ext) || ext == 'pdf';
+
+    if (!isVisual) {
+      return Container(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        alignment: Alignment.center,
+        child: Icon(_iconForFile(name), size: grid ? 52 : 38, color: Theme.of(context).colorScheme.primary),
+      );
+    }
+
+    return FutureBuilder<Uint8List?>(
+      future: _thumbnailFor(item),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            alignment: Alignment.center,
+            child: const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+
+        final bytes = snapshot.data;
+        if (bytes == null || bytes.isEmpty) {
+          return Container(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            alignment: Alignment.center,
+            child: Icon(_iconForFile(name), size: grid ? 52 : 38, color: Theme.of(context).colorScheme.primary),
+          );
+        }
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.memory(bytes, fit: BoxFit.cover),
+            if (ext == 'pdf')
+              Positioned(
+                left: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text('PDF', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _listItem(Map<String, dynamic> item) {
+    final colors = Theme.of(context).colorScheme;
+    final folder = item['item_type'] == 'folder';
+    final name = item['name'] as String;
+    final size = item['file_size'] as int?;
+
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(width: 52, height: 52, child: _documentThumbnail(item, grid: false)),
+        ),
+        title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: folder ? const Text('Thư mục') : Text(_formatSize(size ?? 0)),
+        onTap: _busy ? null : () => folder ? _openFolder(item) : _openFile(item),
+        trailing: PopupMenuButton<String>(
+          enabled: !_busy,
+          onSelected: (value) {
+            if (value == 'rename') _rename(item);
+            if (value == 'delete') _delete(item);
+            if (value == 'open' && !folder) _openFile(item);
+          },
+          itemBuilder: (_) => [
+            if (!folder) const PopupMenuItem(value: 'open', child: Text('Mở tệp')),
+            const PopupMenuItem(value: 'rename', child: Text('Đổi tên')),
+            const PopupMenuItem(value: 'delete', child: Text('Xóa')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _gridItem(Map<String, dynamic> item) {
+    final colors = Theme.of(context).colorScheme;
+    final folder = item['item_type'] == 'folder';
+    final name = item['name'] as String;
+    final size = item['file_size'] as int?;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _busy ? null : () => folder ? _openFolder(item) : _openFile(item),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: _documentThumbnail(item, grid: true)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 9, 6, 3),
+              child: Row(
+                children: [
+                  Expanded(child: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
+                  PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    iconSize: 20,
+                    enabled: !_busy,
+                    onSelected: (value) {
+                      if (value == 'rename') _rename(item);
+                      if (value == 'delete') _delete(item);
+                      if (value == 'open' && !folder) _openFile(item);
+                    },
+                    itemBuilder: (_) => [
+                      if (!folder) const PopupMenuItem(value: 'open', child: Text('Mở tệp')),
+                      const PopupMenuItem(value: 'rename', child: Text('Đổi tên')),
+                      const PopupMenuItem(value: 'delete', child: Text('Xóa')),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: Text(folder ? 'Thư mục' : _formatSize(size ?? 0), style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -4455,10 +5782,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       appBar: AppBar(
         title: const Text('Tài liệu'),
         actions: [
-          IconButton(tooltip: 'Tạo thư mục', onPressed: _busy ? null : _createFolder,
-              icon: const Icon(Icons.create_new_folder_outlined)),
-          IconButton(tooltip: 'Tải tệp lên', onPressed: _busy ? null : _uploadFiles,
-              icon: const Icon(Icons.upload_file_rounded)),
+          IconButton(
+            tooltip: _gridView ? 'Chế độ danh sách' : 'Chế độ lưới',
+            onPressed: () => setState(() => _gridView = !_gridView),
+            icon: Icon(_gridView ? Icons.view_list_rounded : Icons.grid_view_rounded),
+          ),
+          IconButton(tooltip: 'Tạo thư mục', onPressed: _busy ? null : _createFolder, icon: const Icon(Icons.create_new_folder_outlined)),
+          IconButton(tooltip: 'Tải tệp lên', onPressed: _busy ? null : _uploadFiles, icon: const Icon(Icons.upload_file_rounded)),
         ],
       ),
       body: Column(children: [
@@ -4497,39 +5827,24 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     ))
                   : RefreshIndicator(
                       onRefresh: _loadItems,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                        itemCount: _items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 4),
-                        itemBuilder: (context, index) {
-                          final item = _items[index];
-                          final folder = item['item_type'] == 'folder';
-                          final name = item['name'] as String;
-                          final size = item['file_size'] as int?;
-                          return Card(
-                            child: ListTile(
-                              leading: Icon(folder ? Icons.folder_rounded : _iconForFile(name),
-                                  color: folder ? Colors.amber.shade700 : colors.primary, size: 30),
-                              title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
-                              subtitle: folder ? const Text('Thư mục') : Text(_formatSize(size ?? 0)),
-                              onTap: _busy ? null : () => folder ? _openFolder(item) : _openFile(item),
-                              trailing: PopupMenuButton<String>(
-                                enabled: !_busy,
-                                onSelected: (value) {
-                                  if (value == 'rename') _rename(item);
-                                  if (value == 'delete') _delete(item);
-                                  if (value == 'open' && !folder) _openFile(item);
-                                },
-                                itemBuilder: (_) => [
-                                  if (!folder) const PopupMenuItem(value: 'open', child: Text('Mở tệp')),
-                                  const PopupMenuItem(value: 'rename', child: Text('Đổi tên')),
-                                  const PopupMenuItem(value: 'delete', child: Text('Xóa')),
-                                ],
+                      child: _gridView
+                          ? GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(12, 10, 12, 90),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                                childAspectRatio: 0.82,
                               ),
+                              itemCount: _items.length,
+                              itemBuilder: (_, index) => _gridItem(_items[index]),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+                              itemCount: _items.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 4),
+                              itemBuilder: (_, index) => _listItem(_items[index]),
                             ),
-                          );
-                        },
-                      ),
                     )),
       ]),
       floatingActionButton: FloatingActionButton.extended(
@@ -5488,6 +6803,44 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     });
   }
 
+  Future<void> _attachLeaderboardBanners(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final ids = rows
+        .map((row) => row['user_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    if (ids.isEmpty) return;
+
+    try {
+      final result = await supabase.rpc(
+        'get_public_profile_banners',
+        params: {'p_user_ids': ids},
+      );
+
+      final bannerById = <String, String>{};
+      for (final raw in (result as List)) {
+        final row = Map<String, dynamic>.from(raw as Map);
+        final id = row['user_id']?.toString();
+        final url = row['banner_url']?.toString();
+        if (id != null && url != null && url.isNotEmpty) {
+          bannerById[id] = url;
+        }
+      }
+
+      for (final row in rows) {
+        final id = row['user_id']?.toString();
+        row['banner_url'] = id == null ? null : bannerById[id];
+      }
+    } catch (e) {
+      // Banner là dữ liệu bổ sung. Nếu RPC chưa được tạo, leaderboard
+      // vẫn phải chạy bình thường thay vì làm hỏng toàn bộ BXH.
+      debugPrint('Load leaderboard banners error: $e');
+    }
+  }
+
   Future<void> _loadLeaderboard() async {
     try {
       if (mounted) {
@@ -5510,6 +6863,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       final rows = (data as List)
           .map((row) => Map<String, dynamic>.from(row as Map))
           .toList();
+
+      await _attachLeaderboardBanners(rows);
 
       // Production RPC đã trả rank theo đúng scope. Sort lại theo rank để
       // UI luôn giữ đúng thứ tự kể cả khi backend trả về khác thứ tự.
@@ -5669,7 +7024,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       borderRadius: BorderRadius.circular(99),
                     ),
                   ),
-                  _avatar(row, radius: 52),
+                  _buildLeaderboardBannerWithAvatar(row),
                   const SizedBox(height: 14),
                   Text(
                     _displayName(row),
@@ -5741,6 +7096,101 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildLeaderboardBannerWithAvatar(Map<String, dynamic> row) {
+    final url = row['banner_url']?.toString().trim() ?? '';
+
+    // Giữ nguyên đúng tỉ lệ khung banner hiện tại.
+    // Chỉ thay đổi bố cục avatar để giống Profile:
+    // avatar nằm ở giữa mép dưới và đè lên khoảng một nửa banner.
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final profileBannerWidth = screenWidth - 32;
+    final profileBannerAspectRatio = profileBannerWidth / 178;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bannerWidth = constraints.maxWidth;
+        final bannerHeight =
+            bannerWidth / profileBannerAspectRatio;
+
+        // Profile có phần avatar nằm dưới mép banner khoảng 60px.
+        // Dùng cùng khoảng này để popup BXH có cảm giác giống hệt Profile.
+        const avatarOverlap = 80.0;
+
+        return SizedBox(
+          width: double.infinity,
+          height: bannerHeight + avatarOverlap,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: bannerHeight,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: url.isEmpty
+                      ? _leaderboardDefaultBanner()
+                      : Image.network(
+                          url,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _leaderboardDefaultBanner(),
+                        ),
+                ),
+              ),
+
+              // Avatar đè lên mép dưới banner, giống phần Hồ sơ.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).colorScheme.surface,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: _avatar(row, radius: 58),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _leaderboardDefaultBanner() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF1877C9),
+            Color(0xFF0756A9),
+            Color(0xFF12315C),
+          ],
+        ),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.school_rounded,
+          color: Colors.white54,
+          size: 42,
+        ),
+      ),
     );
   }
 
@@ -6453,11 +7903,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                             )
                           : Stack(
                               children: [
-                                ListView(
+                                SingleChildScrollView(
                                   controller: _scrollController,
                                   physics: const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
-                                  children: [
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
                                     _buildScopeToggle(),
                                     _buildClassPicker(),
                                     const SizedBox(height: 18),
@@ -6521,7 +7974,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                                         ),
                                       ],
                                     ),
-                                  ],
+                                      ],
+                                    ),
+                                  ),
                                 ),
                                 Positioned(
                                   right: 6,
@@ -9216,15 +10671,29 @@ class _RoomVerificationScreenState
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
+      // Check-in đã được ghi nhận thành công.
+      // Về Home ngay, sau đó mới mở meme + âm thanh trên Home.
+      Navigator.popUntil(
         context,
-        MaterialPageRoute(
-          builder: (_) => CheckInSuccessScreen(
-            classSession: widget.classSession,
-            alreadyCheckedIn: false,
-          ),
-        ),
+        (route) => route.isFirst,
       );
+
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final navigatorContext =
+            appNavigatorKey.currentState?.overlay?.context;
+
+        if (navigatorContext == null) return;
+
+        try {
+          await MemeFeedback.show(
+            navigatorContext,
+            MemeFeedbackType.checkinSuccess,
+          );
+        } catch (feedbackError, feedbackStackTrace) {
+          debugPrint('CHECK-IN SUCCESS MEME ERROR: $feedbackError');
+          debugPrint('$feedbackStackTrace');
+        }
+      });
     } catch (e, stackTrace) {
       debugPrint('=== CHECK-IN ERROR ===');
       debugPrint('ERROR: $e');
@@ -9507,13 +10976,8 @@ class _CheckInSuccessScreenState extends State<CheckInSuccessScreen> {
     super.initState();
     // Show celebratory meme only for a newly recorded check-in.
     // Existing check-ins must not replay success feedback.
-    if (!widget.alreadyCheckedIn) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          MemeFeedback.show(context, MemeFeedbackType.checkinSuccess);
-        }
-      });
-    }
+    // Success meme is triggered from _completeCheckIn after returning Home,
+    // so it stays visible on top of the Home screen.
   }
 
   @override
