@@ -2386,11 +2386,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ? NetworkImage(_avatarUrl!)
             : null);
 
-    // Preview phải dùng đúng cùng tỉ lệ banner với popup BXH.
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final profileBannerWidth = screenWidth - 32;
-    final bannerAspectRatio = profileBannerWidth / 178;
-
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -2400,113 +2395,78 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final bannerWidth = constraints.maxWidth;
-          final bannerHeight = bannerWidth / bannerAspectRatio;
-
-          // Giống popup BXH: avatar overlap xuống dưới mép banner 60px.
-          const avatarOverlap = 80.0;
-
-          return Column(
-            children: [
-              SizedBox(
-                width: double.infinity,
-                height: bannerHeight + avatarOverlap,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: bannerHeight,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: bannerProvider != null
-                            ? Image(
-                                image: bannerProvider,
-                                fit: BoxFit.cover,
-                              )
-                            : Container(
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Color(0xFF1877C9),
-                                      Color(0xFF0756A9),
-                                      Color(0xFF12315C),
-                                    ],
-                                  ),
-                                ),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.photo_camera_back_rounded,
-                                    color: Colors.white54,
-                                    size: 42,
-                                  ),
-                                ),
-                              ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 170,
+            width: double.infinity,
+            child: bannerProvider != null
+                ? Image(
+                    image: bannerProvider,
+                    fit: BoxFit.cover,
+                  )
+                : Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Color(0xFF1877C9),
+                          Color(0xFF0756A9),
+                          Color(0xFF12315C),
+                        ],
                       ),
                     ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surface,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.18),
-                                blurRadius: 14,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: CircleAvatar(
-                            radius: 58,
-                            backgroundImage: avatarProvider,
-                            child: avatarProvider == null
-                                ? const Icon(Icons.person, size: 58)
-                                : null,
-                          ),
-                        ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.photo_camera_back_rounded,
+                        color: Colors.white54,
+                        size: 42,
                       ),
                     ),
-                  ],
+                  ),
+          ),
+          Transform.translate(
+            offset: const Offset(0, -42),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                shape: BoxShape.circle,
+              ),
+              child: CircleAvatar(
+                radius: 42,
+                backgroundImage: avatarProvider,
+                child: avatarProvider == null
+                    ? const Icon(Icons.person, size: 42)
+                    : null,
+              ),
+            ),
+          ),
+          Transform.translate(
+            offset: const Offset(0, -30),
+            child: Column(
+              children: [
+                Text(
+                  name,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: colorScheme.onSurface,
+                  ),
                 ),
-              ),
-              // Thông tin nằm dưới vùng avatar overlap,
-              // giống bố cục popup BXH và không đè lên avatar.
-              const SizedBox(height: 2),
-              Column(
-                children: [
-                  Text(
-                    name,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: colorScheme.onSurface,
-                    ),
+                const SizedBox(height: 5),
+                Text(
+                  '$className • $studentCode',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 5),
-                  Text(
-                    '$className • $studentCode',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3020,7 +2980,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // PROFILE BANNER + AVATAR
             // ----------------------------------------------------------
             SizedBox(
-              height: 254,
+              height: 257,
               width: double.infinity,
               child: Stack(
                 clipBehavior: Clip.none,
@@ -7025,7 +6985,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     ),
                   ),
                   _buildLeaderboardBannerWithAvatar(row),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 80),
                   Text(
                     _displayName(row),
                     textAlign: TextAlign.center,
@@ -7102,74 +7062,56 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Widget _buildLeaderboardBannerWithAvatar(Map<String, dynamic> row) {
     final url = row['banner_url']?.toString().trim() ?? '';
 
-    // Giữ nguyên đúng tỉ lệ khung banner hiện tại.
-    // Chỉ thay đổi bố cục avatar để giống Profile:
-    // avatar nằm ở giữa mép dưới và đè lên khoảng một nửa banner.
+    // Banner trong Profile có kích thước cố định cao 178 px,
+    // với chiều rộng bằng chiều rộng màn hình trừ 32 px (16 px mỗi bên).
+    // Popup BXH có chiều rộng khác, nên chỉ cần giữ đúng TỈ LỆ này.
+    // Như vậy ảnh đã crop ở Profile sẽ không bị xén thêm trên/dưới.
     final screenWidth = MediaQuery.sizeOf(context).width;
     final profileBannerWidth = screenWidth - 32;
     final profileBannerAspectRatio = profileBannerWidth / 178;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final bannerWidth = constraints.maxWidth;
-        final bannerHeight =
-            bannerWidth / profileBannerAspectRatio;
-
-        // Profile có phần avatar nằm dưới mép banner khoảng 60px.
-        // Dùng cùng khoảng này để popup BXH có cảm giác giống hệt Profile.
-        const avatarOverlap = 80.0;
-
-        return SizedBox(
-          width: double.infinity,
-          height: bannerHeight + avatarOverlap,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: bannerHeight,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: url.isEmpty
-                      ? _leaderboardDefaultBanner()
-                      : Image.network(
-                          url,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              _leaderboardDefaultBanner(),
-                        ),
-                ),
-              ),
-
-              // Avatar đè lên mép dưới banner, giống phần Hồ sơ.
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Theme.of(context).colorScheme.surface,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.18),
-                          blurRadius: 14,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
+    return AspectRatio(
+      aspectRatio: profileBannerAspectRatio,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: url.isEmpty
+                  ? _leaderboardDefaultBanner()
+                  : Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          _leaderboardDefaultBanner(),
                     ),
-                    child: _avatar(row, radius: 58),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        );
-      },
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: -71,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Theme.of(context).cardColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: _avatar(row, radius: 52),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -10269,6 +10211,8 @@ class _RoomVerificationScreenState
   double? confidence;
   String? uploadedImagePath;
 
+  bool isCompletingCheckIn = false;
+
   @override
   void initState() {
     super.initState();
@@ -10405,95 +10349,28 @@ class _RoomVerificationScreenState
       );
 
       // ========================================================
-      // 5. GỌI SUPABASE EDGE FUNCTION -> GEMINI
+      // 5. CHỈ UPLOAD ẢNH Ở BƯỚC NÀY
+      //
+      // Gemini KHÔNG được gọi tại đây.
+      // Khi người dùng bấm "Hoàn tất Check-in", Edge Function
+      // complete-check-in sẽ xác minh phòng đúng 1 lần ở server
+      // rồi mới INSERT check-in.
       // ========================================================
-
-      debugPrint('CALLING verify-room EDGE FUNCTION...');
-
-      final response = await supabase.functions.invoke(
-        'verify-room',
-        body: {
-          'image_path': uploadedPath,
-          'expected_room': widget.classSession.room,
-        },
-      );
-
-      debugPrint(
-        'EDGE FUNCTION RESPONSE: ${response.data}',
-      );
-
-      final data = response.data;
-
-      if (data is! Map) {
-        throw Exception(
-          'Phản hồi từ hệ thống xác minh không hợp lệ.',
-        );
-      }
-
-      final result = Map<String, dynamic>.from(data);
-
-      if (result['error'] != null) {
-        throw Exception(
-          result['error'].toString(),
-        );
-      }
-
-      final aiDetectedRoom =
-          result['detected_room']?.toString().trim() ?? '';
-
-      final aiConfidence =
-          (result['confidence'] as num?)?.toDouble() ?? 0.0;
-
-      final verified = result['verified'] == true;
 
       if (!mounted) return;
 
       setState(() {
         isChecking = false;
-        isSuccess = verified;
-        detectedRoom = aiDetectedRoom.isEmpty
-            ? null
-            : aiDetectedRoom;
-        confidence = aiConfidence;
-
-        if (!verified) {
-          if (aiDetectedRoom.isEmpty) {
-            errorMessage =
-                'Không đọc được biển phòng. Vui lòng chụp rõ biển phòng.';
-          } else if (aiDetectedRoom.toUpperCase() !=
-              widget.classSession.room.toUpperCase()) {
-            errorMessage =
-                'Phòng phát hiện ($aiDetectedRoom) không khớp với phòng ${widget.classSession.room}.';
-          } else {
-            errorMessage =
-                'Độ tin cậy của AI chưa đủ để xác minh phòng.';
-          }
-        }
+        // Ảnh đã upload thành công và sẵn sàng cho bước hoàn tất.
+        // Đây KHÔNG phải kết quả Gemini verification.
+        isSuccess = true;
+        detectedRoom = null;
+        confidence = null;
+        errorMessage = null;
       });
 
-      debugPrint(
-        'AI DETECTED ROOM: $aiDetectedRoom',
-      );
-      debugPrint(
-        'AI CONFIDENCE: $aiConfidence',
-      );
-      debugPrint(
-        'AI VERIFIED: $verified',
-      );
-
-      // Show failure feedback only when AI returned a negative verification.
-      if (!verified && mounted) {
-        debugPrint('SHOW CHECK-IN FAILURE MEME: AI verification returned false');
-        try {
-          await MemeFeedback.show(
-            context,
-            MemeFeedbackType.checkinFailure,
-          );
-        } catch (feedbackError, feedbackStackTrace) {
-          debugPrint('CHECK-IN FAILURE MEME ERROR: $feedbackError');
-          debugPrint('$feedbackStackTrace');
-        }
-      }
+      debugPrint('IMAGE READY FOR SERVER-SIDE VERIFICATION');
+      debugPrint('GEMINI WILL RUN ONCE IN complete-check-in');
     } catch (e, stackTrace) {
       debugPrint('=== AI ROOM VERIFICATION ERROR ===');
       debugPrint('ERROR: $e');
@@ -10538,14 +10415,15 @@ class _RoomVerificationScreenState
       return;
     }
 
-    // Không cho INSERT nếu AI chưa xác minh thành công.
+    // Chỉ cho phép hoàn tất khi ảnh đã upload thành công.
+    // Việc xác minh phòng thật sự do complete-check-in thực hiện ở server.
     if (!isSuccess || uploadedImagePath == null) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Chưa xác minh phòng thành công.',
+            'Ảnh check-in chưa sẵn sàng. Vui lòng thử lại.',
           ),
         ),
       );
@@ -10567,6 +10445,12 @@ class _RoomVerificationScreenState
 
       return;
     }
+
+    if (!mounted) return;
+
+    setState(() {
+      isCompletingCheckIn = true;
+    });
 
     try {
       final now = DateTime.now();
@@ -10639,32 +10523,63 @@ class _RoomVerificationScreenState
         return;
       }
 
-      // Every new streakable check-in must point to today's occurrence.
-      final occurrenceId =
-          await _getTodayOccurrenceId(widget.classSession.id);
+      // ========================================================
+      // HOÀN TẤT CHECK-IN QUA EDGE FUNCTION
+      // Server sẽ tự kiểm tra occurrence, thời gian, duplicate,
+      // image path và xác minh phòng trước khi INSERT.
+      // ========================================================
 
-      if (occurrenceId == null) {
+      debugPrint('=== CALLING complete-check-in EDGE FUNCTION ===');
+      debugPrint('IMAGE PATH: $uploadedImagePath');
+      debugPrint('CLASS SESSION ID: ${widget.classSession.id}');
+
+      final imagePathForServer =
+          uploadedImagePath!.startsWith('check-in-images/')
+              ? uploadedImagePath!.substring('check-in-images/'.length)
+              : uploadedImagePath!;
+
+      debugPrint('IMAGE PATH FOR SERVER: $imagePathForServer');
+
+      debugPrint('CHECK-IN image_path: $imagePathForServer');
+      debugPrint(
+        'CHECK-IN class_session_id: ${widget.classSession.id}',
+      );
+
+      final response = await supabase.functions.invoke(
+        'complete-check-in',
+        body: {
+          'image_path': imagePathForServer,
+          'class_session_id': widget.classSession.id,
+        },
+      );
+
+      debugPrint(
+        'COMPLETE CHECK-IN RESPONSE: ${response.data}',
+      );
+
+      final data = response.data;
+
+      if (data is! Map) {
         throw Exception(
-          'Không tìm thấy buổi học hôm nay trong hệ thống. Vui lòng tải lại lịch học rồi thử lại.',
+          'Phản hồi từ hệ thống Check-in không hợp lệ.',
         );
       }
 
-      // ========================================================
-      // INSERT CHECK-IN SAU KHI AI ĐÃ VERIFY
-      // ========================================================
+      final result = Map<String, dynamic>.from(data);
 
-      debugPrint('INSERTING VERIFIED CHECK-IN...');
+      if (result['error'] != null) {
+        throw Exception(
+          result['error'].toString(),
+        );
+      }
 
-      await supabase.from('check_ins').insert({
-        'user_id': user.id,
-        'class_session_id': widget.classSession.id,
-        'occurrence_id': occurrenceId,
-        'checked_in_at': now.toUtc().toIso8601String(),
-        'room': widget.classSession.room,
-        'image_url': uploadedImagePath,
-        'verification_status': 'verified',
-      });
-      debugPrint('CHECK-IN INSERT SUCCESS');
+      if (result['success'] != true) {
+        throw Exception(
+          'Không thể hoàn tất Check-in.',
+        );
+      }
+
+      debugPrint('SERVER CHECK-IN SUCCESS');
       debugPrint(
         'IMAGE PATH SAVED TO DB: $uploadedImagePath',
       );
@@ -10702,6 +10617,8 @@ class _RoomVerificationScreenState
       if (!mounted) return;
 
       setState(() {
+        isCompletingCheckIn = false;
+        isSuccess = false;
         errorMessage = e.toString().replaceFirst(
           'Exception: ',
           '',
@@ -10717,6 +10634,58 @@ class _RoomVerificationScreenState
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+
+    if (isCompletingCheckIn) {
+      return PopScope(
+        canPop: false,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Hoàn tất Check-in'),
+            automaticallyImplyLeading: false,
+          ),
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 4,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      'Đang hoàn tất Check-in...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: colors.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Đang xác minh và lưu thông tin điểm danh.\nVui lòng chờ một chút.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final confidencePercent =
         confidence == null
@@ -10770,10 +10739,10 @@ class _RoomVerificationScreenState
 
                   Text(
                     isChecking
-                        ? 'Đang xác minh phòng học'
+                        ? 'Đang chuẩn bị ảnh check-in'
                         : isSuccess
-                            ? 'Phòng học đã được xác minh'
-                            : 'Không thể xác minh phòng',
+                            ? 'Ảnh đã sẵn sàng để xác minh'
+                            : 'Không thể chuẩn bị ảnh',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 24,
@@ -10785,9 +10754,9 @@ class _RoomVerificationScreenState
 
                   Text(
                     isChecking
-                        ? 'Đang tải ảnh và dùng AI để đọc biển phòng ${widget.classSession.room}...'
+                        ? 'Đang tải ảnh lên hệ thống. AI sẽ xác minh phòng khi bạn bấm Hoàn tất Check-in.'
                         : isSuccess
-                            ? 'AI đã xác nhận ảnh khớp với phòng học yêu cầu.'
+                            ? 'Ảnh đã được tải lên. Khi bạn bấm Hoàn tất Check-in, hệ thống sẽ xác minh phòng và lưu điểm danh trong một lần.'
                             : errorMessage ??
                                 'Vui lòng thử lại bằng một ảnh rõ hơn.',
                     textAlign: TextAlign.center,
@@ -10862,7 +10831,7 @@ class _RoomVerificationScreenState
                       child: ElevatedButton(
                         onPressed: _completeCheckIn,
                         child: const Text(
-                          'Hoàn tất Check-in',
+                          'Hoàn tất Check-in & Xác minh',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
