@@ -27,5 +27,10 @@ workflows:
         script: |
           flutter build appbundle --release
 
+      - name: Rename Android App Bundle
+        script: |
+          mv build/app/outputs/bundle/release/app-release.aab \
+             build/app/outputs/bundle/release/dut-campus-streak.aab
+
     artifacts:
       - build/app/outputs/bundle/release/*.aab
