@@ -50,12 +50,13 @@ function makeStudent() {
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
-export function createWalker({ scene, camera, el, data, pickables, limits, onNear, onInteract, onExit, onView }) {
+export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], limits, onNear, onInteract, onExit, onView }) {
   const s = makeStudent();
   s.group.visible = s.blob.visible = false;
   scene.add(s.group, s.blob);
 
   const solids = data.buildings.map((b, i) => ({ pts: b.pts, box: bbox([b.pts]), i }));
+  for (const pts of extraSolids) solids.push({ pts, box: bbox([pts]), i: -1 }); // gate structures (no info card)
   // perimeter wall segments (thin, so only a distance check)
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) {
@@ -310,6 +311,7 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
       st.nearTimer = 0.2;
       let best = -1, bd = 6.5;
       for (const b of solids) {
+        if (b.i < 0) continue;
         if (st.x < b.box.minX - bd || st.x > b.box.maxX + bd || st.z < b.box.minZ - bd || st.z > b.box.maxZ + bd) continue;
         const { d } = nearestEdge(b.pts, st.x, st.z);
         if (d < bd) { bd = d; best = b.i; }

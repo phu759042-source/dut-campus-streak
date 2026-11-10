@@ -211,6 +211,7 @@ export function MapPage() {
         const [A, data] = await Promise.all([
           import('../map3d.js'),
           fetch('/data/campus.json').then((r) => { if (!r.ok) throw new Error('Không tải được dữ liệu bản đồ.'); return r.json(); }),
+          document.fonts?.load?.('900 64px "Be Vietnam Pro"').catch(() => {}), // fonts for the gate signs
         ]);
         if (disposed) return;
         const dark = document.documentElement.dataset.theme === 'dark';

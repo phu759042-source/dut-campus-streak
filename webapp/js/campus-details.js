@@ -318,55 +318,190 @@ export function buildWalls(walls) {
   return B.mesh();
 }
 
-/** Sign texture for a gate beam. */
-function signTexture(text, sub) {
+// ---------------- gates ----------------
+const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
+function canvasTex(w, h, draw) {
   const c = document.createElement('canvas');
-  c.width = 1024; c.height = 160;
-  const g = c.getContext('2d');
-  const grd = g.createLinearGradient(0, 0, 0, 160); grd.addColorStop(0, '#1f4fbf'); grd.addColorStop(1, '#183d94');
-  g.fillStyle = grd; g.fillRect(0, 0, 1024, 160);
-  g.fillStyle = '#ffd34d'; g.fillRect(0, 0, 1024, 8); g.fillRect(0, 152, 1024, 8);
-  g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = '900 64px "Be Vietnam Pro", system-ui, sans-serif'; g.fillText(text, 512, sub ? 66 : 82);
-  if (sub) { g.font = '700 30px "Be Vietnam Pro", system-ui, sans-serif'; g.fillStyle = '#dbe6ff'; g.fillText(sub, 512, 122); }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return t;
 }
+/** fillText that shrinks the font until the text fits maxW. */
+function fitText(g, text, x, y, maxW, weight, size) {
+  let px = size;
+  do { g.font = `${weight} ${px}px ${FONT}`; px -= 2; } while (g.measureText(text).width > maxW && px > 10);
+  g.fillText(text, x, y);
+}
+/** Simple "BK" emblem (stand-in for the school logo). */
+function drawEmblem(g, x, y, s) {
+  g.fillStyle = '#ffffff'; g.fillRect(x, y, s, s);
+  g.fillStyle = '#1d4fb8'; g.fillRect(x + s * 0.08, y + s * 0.08, s * 0.84, s * 0.84);
+  g.fillStyle = '#f5c518'; g.beginPath(); g.moveTo(x + s * 0.08, y + s * 0.92); g.lineTo(x + s * 0.92, y + s * 0.5); g.lineTo(x + s * 0.92, y + s * 0.92); g.closePath(); g.fill();
+  g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = `900 ${Math.round(s * 0.42)}px ${FONT}`; g.fillText('BK', x + s * 0.47, y + s * 0.44);
+}
+/** Terracotta stone sign with the school name (right of the main gate). */
+const stoneSignTex = () => canvasTex(1024, 400, (g, w, h) => {
+  const grd = g.createLinearGradient(0, 0, w, h); grd.addColorStop(0, '#b8634b'); grd.addColorStop(1, '#9c4d39');
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 10; g.strokeRect(14, 14, w - 28, h - 28);
+  g.fillStyle = '#fff6ee'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const mw = w - 110;
+  fitText(g, 'ĐẠI HỌC ĐÀ NẴNG', w / 2, 62, mw, 800, 34);
+  fitText(g, 'TRƯỜNG ĐẠI HỌC BÁCH KHOA', w / 2, 150, mw, 900, 78);
+  fitText(g, 'UNIVERSITY OF SCIENCE AND TECHNOLOGY', w / 2, 226, mw, 800, 36);
+  fitText(g, 'INSTITUT POLYTECHNIQUE DE DANANG', w / 2, 272, mw, 700, 30);
+  g.textAlign = 'left'; g.font = `700 28px ${FONT}`; g.fillText('54 Nguyễn Lương Bằng', 70, 340);
+});
+/** Blue billboard over the guard house (left of the main gate). */
+const billboardTex = () => canvasTex(512, 640, (g, w, h) => {
+  const grd = g.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, '#2457c5'); grd.addColorStop(1, '#173f99');
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  drawEmblem(g, w / 2 - 60, 40, 120);
+  g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  fitText(g, 'ĐẠI HỌC ĐÀ NẴNG', w / 2, 220, w - 60, 800, 38);
+  fitText(g, 'TRƯỜNG ĐẠI HỌC', w / 2, 300, w - 60, 900, 52);
+  fitText(g, 'BÁCH KHOA', w / 2, 366, w - 60, 900, 52);
+  g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(40, 420, w - 80, 4);
+});
+const emblemTex = () => canvasTex(256, 256, (g) => drawEmblem(g, 0, 0, 256));
+const flagTex = () => canvasTex(300, 200, (g, w, h) => {
+  g.fillStyle = '#da251d'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#ffde00'; g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? 26 : 62, a = -Math.PI / 2 + (i * Math.PI) / 5;
+    g.lineTo(w / 2 + Math.cos(a) * r, h / 2 + Math.sin(a) * r);
+  }
+  g.closePath(); g.fill();
+});
+/** Plain sign for the side gate. */
+const sideSignTex = () => canvasTex(1024, 160, (g, w, h) => {
+  g.fillStyle = '#1d47ad'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = `900 64px ${FONT}`; g.fillText('CỔNG PHỤ', w / 2, 66);
+  g.font = `700 30px ${FONT}`; g.fillStyle = '#dbe6ff'; g.fillText('Trường Đại học Bách khoa – ĐHĐN', w / 2, 122);
+});
 
-/** Gates: two pillars, a beam with the university name, and a small guard house at the main gate. */
-export function buildGates(pois) {
+/** Textured box (same texture on the given faces, plain colour elsewhere). */
+function texturedPanel(w, h, d, tex, color = 0xffffff, both = true) {
+  const plain = new THREE.MeshLambertMaterial({ color });
+  const face = new THREE.MeshLambertMaterial({ map: tex });
+  // BoxGeometry face order: +x, -x, +y, -y, +z, -z
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [plain, plain, plain, plain, face, both ? face : plain]);
+  m.castShadow = m.receiveShadow = true;
+  return m;
+}
+
+/**
+ * Gates. The main gate follows photos of the real one (no overhead arch):
+ *  left (seen from the street): pale-blue guard house with a white portico, a tall blue billboard and a flag pole;
+ *  right: a tall white ribbed column with an emblem cube on top, and a terracotta stone sign on a planter.
+ * The side gate keeps a simple two-pillar frame with a sign.
+ * Returns { group, solids } – solids are footprints the walking student collides with.
+ */
+export function buildGates(pois, center = [0, 0]) {
   const group = new THREE.Group();
   const B = new Builder();
+  const solids = [];
+  const rect = (cx, cz, w, d, ang) => {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    return [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([x, z]) => [cx + x * c - z * s, cz + x * s + z * c]);
+  };
   for (const p of pois.filter((x) => x.kind === 'gate' && x.dir)) {
-    const main = p.id === 'gate-main';
-    const [x, z] = p.at, [dx, dz] = p.dir;
-    const px = -dz, pz = dx; // across the road
-    const half = (main ? 9 : 6.5);
-    const H = main ? 6.5 : 5;
-    const ang = Math.atan2(pz, px);
-    B.color(0xe9e4da);
-    for (const s of [-1, 1]) B.box(x + px * half * s, z + pz * half * s, 1.4, 1.4, 0, H, ang);
-    B.color(0xc2bcb0);
-    for (const s of [-1, 1]) B.box(x + px * half * s, z + pz * half * s, 1.7, 1.7, H, 0.35, ang);
-    // beam + sign
-    B.color(0x1d47ad); B.box(x, z, half * 2 + 1.4, 0.7, H - 1.9, 1.6, ang);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(half * 2 - 1.2, 1.35), new THREE.MeshBasicMaterial({ map: signTexture(main ? 'ĐẠI HỌC BÁCH KHOA' : 'CỔNG PHỤ', main ? 'Đại học Đà Nẵng' : 'Đại học Bách khoa – ĐHĐN'), toneMapped: false }));
-    for (const s of [-1, 1]) {
-      const m = sign.clone();
-      m.position.set(x + dx * 0.37 * s, H - 1.1, z + dz * 0.37 * s);
-      m.rotation.y = Math.atan2(dx * s, dz * s);
-      group.add(m);
+    const [x, z] = p.at;
+    // f = into the campus, r = right-hand side for someone standing outside looking in
+    let [fx, fz] = p.dir;
+    if ((center[0] - x) * fx + (center[1] - z) * fz < 0) { fx = -fx; fz = -fz; }
+    const rx = -fz, rz = fx;
+    const across = Math.atan2(rz, rx); // box local x runs across the road
+    const P = (side, fwd) => [x + rx * side + fx * fwd, z + rz * side + fz * fwd];
+
+    if (p.id !== 'gate-main') {
+      const half = 6.5, H = 5;
+      B.color(0xe9e4da);
+      for (const sd of [-1, 1]) { const [px, pz] = P(half * sd, 0); B.box(px, pz, 1.4, 1.4, 0, H, across); solids.push(rect(px, pz, 1.4, 1.4, across)); }
+      B.color(0x1d47ad); B.box(x, z, half * 2 + 1.4, 0.7, H - 1.9, 1.6, across);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(half * 2 - 1.2, 1.35), new THREE.MeshBasicMaterial({ map: sideSignTex() }));
+      for (const sd of [-1, 1]) {
+        const m = sign.clone();
+        m.position.set(x - fx * 0.37 * sd, H - 1.1, z - fz * 0.37 * sd);
+        m.rotation.y = Math.atan2(-fx * sd, -fz * sd);
+        group.add(m);
+      }
+      continue;
     }
-    if (main) {
-      // guard house with a blue roof beside the gate (as in the campus render)
-      const gx = x + px * (half + 5.5) - dx * 4, gz = z + pz * (half + 5.5) - dz * 4;
-      B.color(0xf3f1ec); B.box(gx, gz, 4.5, 3.6, 0, 3, ang);
-      B.color(0x3d6fc4); B.box(gx, gz, 5.3, 4.4, 3, 0.4, ang);
-      B.color(0x8fb2d6); B.box(gx + px * 2.27, gz + pz * 2.27, 0.05, 1.6, 1.1, 1.2, ang);
+
+    // ---- main gate ----
+    const faceOut = Math.atan2(-fx, -fz); // rotation.y so a mesh's +z faces the street
+
+    // LEFT: guard house (pale blue) with a white portico frame toward the road
+    {
+      const [gx, gz] = P(-8.5, 3);
+      B.color(0xa9d6ea); B.box(gx, gz, 6, 6.5, 0, 3.4, across);                       // house
+      B.color(0x8fc3dc); B.box(gx, gz, 6.3, 6.8, 3.4, 0.35, across);                  // roof slab
+      const [wx, wz] = P(-8.5 + 3.02, 3); B.color(0x6e8ea8); B.box(wx, wz, 0.05, 3.4, 1, 1.4, across); // window
+      // white portico: thick frame + two square columns, sticking out toward the gate road
+      const [px, pz] = P(-5.2, 1.2);
+      B.color(0xf7f7f5); B.box(px, pz, 3.6, 4.2, 3.2, 0.7, across);
+      for (const fw of [-1.6, 1.6]) { const [cx, cz] = P(-3.7, 1.2 + fw); B.box(cx, cz, 0.6, 0.6, 0, 3.2, across); solids.push(rect(cx, cz, 0.6, 0.6, across)); }
+      B.color(0xb85c46); B.box(gx, gz, 6.6, 7, 0, 0.25, across);                      // red tiled step
+      solids.push(rect(gx, gz, 6, 6.5, across));
+      // tall blue billboard behind/left of the guard house, facing the street
+      const [bx, bz] = P(-12.8, 0.6);
+      const board = texturedPanel(5.2, 6.6, 0.5, billboardTex(), 0x1d4fb8, false);
+      board.position.set(bx, 3.3 + 2.4, bz);
+      board.rotation.y = faceOut; // textured +z face toward the street
+      group.add(board);
+      B.color(0x1d4fb8); B.box(bx, bz, 5.2, 0.5, 0, 2.4, across);
+      solids.push(rect(bx, bz, 5.2, 0.6, across));
+      // flag pole on the billboard
+      const [fpx, fpz] = P(-11.4, 0.6);
+      B.color(0xd9dde3); B.box(fpx, fpz, 0.12, 0.12, 9, 4.2, across);
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.2), new THREE.MeshLambertMaterial({ map: flagTex(), side: THREE.DoubleSide }));
+      flag.position.set(fpx + rx * 0.95, 12.5, fpz + rz * 0.95);
+      flag.rotation.y = faceOut;
+      group.add(flag);
     }
+
+    // RIGHT: tall white ribbed column with an emblem cube on top
+    {
+      const [cx, cz] = P(6.2, 0.5);
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 10.5, 20), new THREE.MeshLambertMaterial({ color: 0xf3f4f6 }));
+      col.position.set(cx, 5.25, cz); col.castShadow = true; group.add(col);
+      for (let k = 1; k < 10; k++) {
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 0.12, 20), new THREE.MeshLambertMaterial({ color: 0xd5d9df }));
+        ring.position.set(cx, k * 1.05, cz); group.add(ring);
+      }
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), new THREE.MeshLambertMaterial({ map: emblemTex() }));
+      cube.position.set(cx, 11.4, cz); cube.rotation.y = faceOut; cube.castShadow = true; group.add(cube);
+      B.color(0xe7e9ec); B.box(cx, cz, 1.6, 1.6, 0, 0.5, across);
+      solids.push(rect(cx, cz, 1.4, 1.4, across));
+    }
+
+    // RIGHT: terracotta stone sign on a grass planter, turned a little toward the road
+    {
+      const [sx, sz] = P(11.6, -1.2);
+      const ang = across - 0.25;
+      B.color(0xb0563f); B.box(sx, sz, 9.2, 3.2, 0, 0.55, ang);         // planter curb
+      B.color(0x6fbf5a); B.box(sx, sz, 8.8, 2.8, 0.55, 0.06, ang);       // grass
+      const sign = texturedPanel(7.4, 2.9, 0.55, stoneSignTex(), 0x9c4d39, true);
+      sign.position.set(sx, 0.6 + 1.45, sz);
+      // orient: panel width along `ang`, text facing the street side
+      sign.rotation.y = Math.atan2(-Math.sin(ang), Math.cos(ang));
+      const n = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), sign.rotation.y);
+      if (n.x * -fx + n.z * -fz < 0) sign.rotation.y += Math.PI;
+      group.add(sign);
+      solids.push(rect(sx, sz, 9.2, 3.2, ang));
+    }
+
+    // white fence posts continuing from the column to the sign
+    B.color(0xf4f4f2);
+    for (let k = 0; k < 4; k++) { const [qx, qz] = P(7.4 + k * 0.9, 1.6); B.box(qx, qz, 0.25, 0.25, 0, 1.6, across); }
   }
   group.add(B.mesh());
-  return group;
+  return { group, solids };
 }
 
 /** Corrugated tin texture (UVs are in metres: one rib every 0.8 m). */

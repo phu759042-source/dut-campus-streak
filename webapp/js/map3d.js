@@ -219,7 +219,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const clickables = [...pickables, details.mesh];
   // perimeter wall, gates, parking canopies
   if (data.walls?.length) scene.add(buildWalls(data.walls));
-  scene.add(buildGates(data.pois));
+  const gates = buildGates(data.pois, [-30, -10]);
+  scene.add(gates.group);
   const canopies = buildCanopies(data.areas, data.boundary);
   if (canopies) scene.add(canopies);
 
@@ -335,7 +336,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   });
 
   // ---------- walk mode ----------
-  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
+  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: gates.solids, limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
   function startWalk(at, lookAt) {
     let x, z, facing;
     if (at) {
