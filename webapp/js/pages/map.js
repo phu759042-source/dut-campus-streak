@@ -1,7 +1,7 @@
 // /map: 3D map of the DUT campus. Public (no login needed) so new students can explore it.
 // Three.js is loaded only when this page opens.
 import { html, useState, useEffect, useRef } from 'preact';
-import { appStore, loadTodayClasses, fmtTime } from '../lib.js';
+import { appStore, loadTodayClasses, fmtTime, readLocal, writeLocal } from '../lib.js';
 import { Icon, Spinner, toast } from '../ui.js';
 import { back } from '../router.js';
 
@@ -176,6 +176,15 @@ function drawMinimap(cv, mm, w) {
   g.restore();
 }
 
+// Day / night for the map only. 'day' | 'night' chosen with the button; unset = follow the app theme.
+const TIME_KEY = 'cs-map-time';
+const appIsDark = () => document.documentElement.dataset.theme === 'dark';
+function mapNight() {
+  let v = null;
+  try { v = readLocal(TIME_KEY); } catch { /* storage off */ }
+  return v === 'night' ? true : v === 'day' ? false : appIsDark();
+}
+
 export function MapPage() {
   const host = useRef();
   const labelsRef = useRef();
@@ -198,6 +207,8 @@ export function MapPage() {
   const miniRef = useRef();
   const mmRef = useRef(null);
   const mobile = isMobile();
+  const [night, setNight] = useState(mapNight);
+  const dataRef = useRef(null);
   const loggedIn = !!appStore.get().session;
 
   useEffect(() => {
@@ -214,7 +225,7 @@ export function MapPage() {
           document.fonts?.load?.('900 64px "Be Vietnam Pro"').catch(() => {}), // fonts for the gate signs
         ]);
         if (disposed) return;
-        const dark = document.documentElement.dataset.theme === 'dark';
+        const dark = mapNight();
         let ts = [];
         const targetFor = (b) => {
           const info = sceneRef.current?.buildings.find((x) => x.id === b.id) || b;
@@ -255,6 +266,7 @@ export function MapPage() {
         });
         sceneRef.current = scene;
         mmRef.current = minimapImage(data, A, dark);
+        dataRef.current = { data, A };
         if (location.hostname === 'localhost') window.__map = scene;
         ts = buildTargets(scene, data, A);
         setTargets(ts);
@@ -285,7 +297,8 @@ export function MapPage() {
       }
     })();
     // follow light/dark changes
-    const mo = new MutationObserver(() => sceneRef.current?.setTheme(document.documentElement.dataset.theme === 'dark'));
+    // follow the app theme only while the user has not picked day/night on the map
+    const mo = new MutationObserver(() => { const n = mapNight(); setNight(n); applyNight(n); });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     const hintTimer = setTimeout(() => setHint(false), 6000);
     return () => {
@@ -336,6 +349,20 @@ export function MapPage() {
     setWalkHint(false);
   }
 
+  function applyNight(n) {
+    sceneRef.current?.setTheme(n);
+    if (dataRef.current) mmRef.current = minimapImage(dataRef.current.data, dataRef.current.A, n);
+  }
+  function toggleNight() {
+    const n = !night;
+    try { writeLocal(TIME_KEY, n ? 'night' : 'day'); } catch { /* storage off */ }
+    setNight(n);
+    applyNight(n);
+    toast(n ? 'Đã chuyển sang ban đêm 🌙' : 'Đã chuyển sang ban ngày ☀️', 'info', 1600);
+  }
+  const timeBtn = (cls = '') => html`<button class=${'map-btn map-time ' + cls} aria-label=${night ? 'Chuyển sang ban ngày' : 'Chuyển sang ban đêm'}
+    title=${night ? 'Chuyển sang ban ngày' : 'Chuyển sang ban đêm'} onClick=${toggleNight}><${Icon} name=${night ? 'sun' : 'moon'} size=${19} /></button>`;
+
   const results = focusSearch ? search(targets, q) : [];
   const pick = (t) => { setQ(''); setFocusSearch(false); document.activeElement?.blur?.(); select(t); };
   const goBack = () => (walking ? exitWalk() : back(appStore.get().session ? '/' : '/login'));
@@ -372,6 +399,7 @@ export function MapPage() {
     </div>
 
     ${state === 'ready' && walking && html`<div class="map-mini"><canvas ref=${miniRef}></canvas><span class="map-mini-n" style=${`transform: rotate(${compass}rad)`}><b>N</b></span></div>`}
+    ${state === 'ready' && walking && timeBtn('walk-time')}
     ${state === 'ready' && walking && near && !sel && html`<button class="map-near pop-in" key=${near.key} onClick=${() => select(near, { fly: false })}>
       <${Icon} name="pin" size=${16} /><span>Gần <b>${near.title}</b></span><span class="map-near-key">${mobile ? 'Chạm để xem' : 'Nhấn E'}</span></button>`}
     ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà · <b>Esc</b> thoát</div>`}
@@ -392,6 +420,7 @@ export function MapPage() {
       <button class="map-btn" aria-label="Phóng to" onClick=${() => sceneRef.current?.zoom(0.6)}><${Icon} name="plus" size=${20} /></button>
       <button class="map-btn" aria-label="Thu nhỏ" onClick=${() => sceneRef.current?.zoom(1.6)}><span class="minus"></span></button>
       <button class="map-btn" aria-label="Toàn cảnh" title="Toàn cảnh" onClick=${() => { select(null); sceneRef.current?.goHome(); }}><${Icon} name="crosshair" size=${19} /></button>
+      ${timeBtn()}
     </div>`}
 
     ${state === 'ready' && !walking && hint && !sel && html`<div class="map-hint pop-in overview-hint">${isMobile()

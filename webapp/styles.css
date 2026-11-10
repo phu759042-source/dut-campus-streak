@@ -975,3 +975,7 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .joy-eye { position: absolute; z-index: 3; right: 40px; bottom: calc(136px + var(--safe-b)); width: 52px; height: 52px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
   background: rgba(15, 27, 61, 0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .joy-eye.on { background: linear-gradient(135deg, #2f6bff, #6b4dff); }
+
+/* map day / night button */
+.map-time .icon { color: #f5a524; }
+.map-btn.walk-time { position: absolute; z-index: 3; right: 16px; top: calc(214px + var(--safe-t)); }
