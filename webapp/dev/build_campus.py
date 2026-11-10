@@ -167,16 +167,61 @@ pois = [
     {'id': 'parking-b', 'name': 'Nhà xe khu B', 'kind': 'parking', 'at': pt(nodes[1964068718])},
 ]
 
+# ---- perimeter wall: the campus boundary, opened wherever a road crosses it and at the gates ----
+def seg_dist(px, pz, a, b):
+    dx, dz = b[0] - a[0], b[1] - a[1]
+    L = dx * dx + dz * dz or 1
+    t = max(0, min(1, ((px - a[0]) * dx + (pz - a[1]) * dz) / L))
+    return math.hypot(a[0] + dx * t - px, a[1] + dz * t - pz)
+
+
+vehicle = [r for r in roads if not r['foot']]
+gates = [p['at'] for p in pois if p['kind'] == 'gate']
+ring_pts = out_boundary = (cpts[:-1] if cpts[0] == cpts[-1] else cpts)
+walls, cur = [], []
+for i in range(len(ring_pts)):
+    a, b = ring_pts[i], ring_pts[(i + 1) % len(ring_pts)]
+    n = max(1, int(math.dist(a, b) // 3))
+    for k in range(n):
+        p0 = [a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]
+        p1 = [a[0] + (b[0] - a[0]) * (k + 1) / n, a[1] + (b[1] - a[1]) * (k + 1) / n]
+        mx, mz = (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2
+        open_here = any(math.hypot(mx - g[0], mz - g[1]) < 9 for g in gates) or any(
+            seg_dist(mx, mz, r['pts'][j], r['pts'][j + 1]) < r['w'] / 2 + 1.5
+            for r in vehicle for j in range(len(r['pts']) - 1))
+        if open_here:
+            if len(cur) > 1: walls.append(cur)
+            cur = []
+        else:
+            if not cur: cur = [[round(p0[0], 1), round(p0[1], 1)]]
+            cur.append([round(p1[0], 1), round(p1[1], 1)])
+if len(cur) > 1: walls.append(cur)
+if len(walls) > 1 and walls[0][0] == walls[-1][-1]:
+    walls[0] = walls.pop() + walls[0][1:]
+
+# gate orientation = direction of the road passing through it
+for p in pois:
+    if p['kind'] != 'gate': continue
+    best = None
+    for r in vehicle:
+        for j in range(len(r['pts']) - 1):
+            d = seg_dist(p['at'][0], p['at'][1], r['pts'][j], r['pts'][j + 1])
+            if best is None or d < best[0]:
+                a, b = r['pts'][j], r['pts'][j + 1]
+                L = math.dist(a, b) or 1
+                best = (d, [round((b[0] - a[0]) / L, 3), round((b[1] - a[1]) / L, 3)], r['w'])
+    p['dir'], p['width'] = best[1], best[2]
+
 missing = [i for ids in ZONES.values() for i in ids if i not in ways]
 assert not missing, missing
 
 out = {
     'source': '© OpenStreetMap contributors (ODbL)',
     'boundary': cpts[:-1] if cpts[0] == cpts[-1] else cpts,
-    'buildings': buildings, 'roads': roads, 'areas': areas, 'pois': pois,
+    'buildings': buildings, 'roads': roads, 'areas': areas, 'pois': pois, 'walls': walls,
 }
 os.makedirs(os.path.join(ROOT, 'data'), exist_ok=True)
 with open(os.path.join(ROOT, 'data', 'campus.json'), 'w', encoding='utf-8') as f:
     json.dump(out, f, ensure_ascii=False, separators=(',', ':'))
-print(len(buildings), 'buildings,', len(roads), 'roads,', len(areas), 'areas; box', [round(v) for v in BOX])
+print(len(buildings), 'buildings,', len(roads), 'roads,', len(areas), 'areas,', len(walls), 'wall runs', sum(len(w) for w in walls), 'pts; box', [round(v) for v in BOX])
 print('zones:', sorted({b['zone'] for b in buildings if b['zone']}))

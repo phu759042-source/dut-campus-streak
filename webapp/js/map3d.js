@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWalker } from './walk.js';
+import { styleOf, wallMaterials, buildBuildingDetails, buildWalls, buildGates, buildCanopies, buildLamps, avenueTreeSpots } from './campus-details.js';
 
 export const FLOOR_H = 3.4;
 const NORTH = new THREE.Vector3(-1, 0, 0); // +x points south in this map
@@ -12,7 +13,7 @@ const NORTH = new THREE.Vector3(-1, 0, 0); // +x points south in this map
 const PALETTE = {
   light: {
     sky: 0xcfe2ff, ground: 0xe4e9e1, campus: 0xeef2e6, road: 0xb7bfcc, foot: 0xe3d6c3, grass: 0x9fd08a,
-    park: 0x8cc77a, water: 0x6fb7e8, parking: 0xc9ced8, pitch: 0x7cc46b, track: 0xd2876a, wall: 0xf4f1ea,
+    park: 0x8cc77a, water: 0x6fb7e8, parking: 0xc9ced8, pitch: 0x7cc46b, track: 0xd2876a, wall: 0xffffff,
     hemiSky: 0xffffff, hemiGround: 0xb7c4a8, hemi: 1.15, sun: 2.1, fogNear: 700, fogFar: 1900, glow: 0,
   },
   dark: {
@@ -123,26 +124,6 @@ function ribbons(lines, y) {
   return g;
 }
 
-/** Window texture: one window per 4 m x one floor (UVs of extruded walls are in metres). */
-function windowTextures() {
-  const mk = (lit) => {
-    const c = document.createElement('canvas');
-    c.width = 64; c.height = 64;
-    const g = c.getContext('2d');
-    g.fillStyle = lit ? '#000' : '#fff'; g.fillRect(0, 0, 64, 64);
-    g.fillStyle = lit ? '#ffd27a' : '#8fa3bd';
-    g.fillRect(14, 20, 36, 26);
-    if (!lit) { g.fillStyle = '#d9d4ca'; g.fillRect(0, 58, 64, 6); }
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(1 / 4, 1 / FLOOR_H);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 4;
-    return t;
-  };
-  return { map: mk(false), glow: mk(true) };
-}
-
 function rng(seed) {
   return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 }
@@ -206,9 +187,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   roads.receiveShadow = foot.receiveShadow = true;
   scene.add(roads, foot);
 
-  // buildings
-  const tex = windowTextures();
-  const wallMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex.map, emissive: 0xffffff, emissiveMap: tex.glow, emissiveIntensity: 0 });
+  // buildings (facade style per zone, see campus-details.js)
+  const walls = wallMaterials();
   const roofMats = new Map();
   const roofMat = (c) => { if (!roofMats.has(c)) roofMats.set(c, new THREE.MeshLambertMaterial({ color: c })); return roofMats.get(c); };
   const buildings = [];
@@ -222,7 +202,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * k);
     }
     geo.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geo, [roofMat(roofColor(b)), wallMat]);
+    const st = styleOf(b);
+    const mesh = new THREE.Mesh(geo, [roofMat(st.roofColor), walls.get(st.wall)]);
     mesh.castShadow = mesh.receiveShadow = true;
     const [cx, cz] = centroid(b.pts);
     const info = { ...b, height: h, center: [cx, cz], area: polyArea(b.pts), mesh };
@@ -231,6 +212,16 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     pickables.push(mesh);
     scene.add(mesh);
   }
+
+  // roofs, parapets, plinths, rooftop units, entrance canopies (one merged mesh)
+  const details = buildBuildingDetails(buildings);
+  scene.add(details.mesh);
+  const clickables = [...pickables, details.mesh];
+  // perimeter wall, gates, parking canopies
+  if (data.walls?.length) scene.add(buildWalls(data.walls));
+  scene.add(buildGates(data.pois));
+  const canopies = buildCanopies(data.areas, data.boundary);
+  if (canopies) scene.add(canopies);
 
   // selection outline
   const outline = new THREE.Group();
@@ -246,11 +237,13 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     requestRender();
   }
 
-  // trees (instanced, seeded so they never move)
+  // trees (instanced, seeded so they never move) + street lamps
+  const blockedBoxes = [...data.buildings.map((b) => b.pts), ...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking')].map((p) => [p, bbox([p])]);
+  const isBlocked = (x, z, m = 3) => blockedBoxes.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && inside(p, x, z));
+  const lamps = buildLamps(data.roads, data.boundary, (x, z) => isBlocked(x, z, 1.5));
+  scene.add(lamps.group);
   {
     const rand = rng(20261110);
-    const blocked = [...data.buildings.map((b) => b.pts), ...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking')];
-    const blockedBoxes = blocked.map((p) => [p, bbox([p])]);
     const spots = [];
     for (const g of byKind('grass')) {
       const bb = bbox([g]);
@@ -258,11 +251,15 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       for (let k = 0, tries = 0; k < n && tries < n * 6; tries++) {
         const x = bb.minX + rand() * (bb.maxX - bb.minX), z = bb.minZ + rand() * (bb.maxZ - bb.minZ);
         if (!inside(g, x, z)) continue;
-        if (blockedBoxes.some(([p, b]) => x > b.minX - 3 && x < b.maxX + 3 && z > b.minZ - 3 && z < b.maxZ + 3 && inside(p, x, z))) continue;
+        if (isBlocked(x, z)) continue;
         if (!inside(data.boundary, x, z)) continue;
         spots.push([x, z, 0.75 + rand() * 0.6, rand()]);
         k++;
       }
+    }
+    // avenue trees along the campus roads (like the boulevard from the main gate)
+    for (const t of avenueTreeSpots(data.roads, data.boundary, (x, z) => isBlocked(x, z, 2.5), rand)) {
+      if (!spots.some((s) => Math.abs(s[0] - t[0]) + Math.abs(s[1] - t[1]) < 4)) spots.push(t);
     }
     const trunkG = new THREE.CylinderGeometry(0.25, 0.35, 3, 5); trunkG.translate(0, 1.5, 0);
     const crownG = new THREE.IcosahedronGeometry(2.6, 0); crownG.translate(0, 4.6, 0);
@@ -285,8 +282,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     scene.background = new THREE.Color(P.sky);
     scene.fog.color.set(P.sky); scene.fog.near = P.fogNear; scene.fog.far = P.fogFar;
     for (const k of ['ground', 'campus', 'road', 'foot', 'grass', 'water', 'parking', 'pitch', 'track']) matOf(k).color.set(P[k]);
-    wallMat.color.set(P.wall);
-    wallMat.emissiveIntensity = P.glow;
+    walls.setNight(isDark, P.wall);
+    lamps.setNight(isDark);
     hemi.color.set(P.hemiSky); hemi.groundColor.set(P.hemiGround); hemi.intensity = P.hemi;
     sun.intensity = P.sun;
     sun.color.set(isDark ? 0xaabbff : 0xfff4e0);
@@ -381,8 +378,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     const r = el.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(pickables, false)[0];
-    onPick?.(hit ? hit.object.userData.building : null);
+    const hit = ray.intersectObjects(clickables, false)[0];
+    onPick?.(hit ? (hit.object === details.mesh ? details.pick(hit.faceIndex) : hit.object.userData.building) : null);
   });
 
   // ---------- render loop (on demand) ----------

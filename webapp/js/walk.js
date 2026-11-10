@@ -56,6 +56,12 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
   scene.add(s.group, s.blob);
 
   const solids = data.buildings.map((b, i) => ({ pts: b.pts, box: bbox([b.pts]), i }));
+  // perimeter wall segments (thin, so only a distance check)
+  const wallSegs = [];
+  for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) {
+    const a = w[i], b = w[i + 1];
+    wallSegs.push({ a, b, minX: Math.min(a[0], b[0]) - 1, maxX: Math.max(a[0], b[0]) + 1, minZ: Math.min(a[1], b[1]) - 1, maxZ: Math.max(a[1], b[1]) + 1 });
+  }
   const st = {
     on: false, x: 0, z: 0, y: 0, vy: 0, heading: 0, yaw: 0, pitch: 0.3, dist: 8, phase: 0, speed: 0,
     keys: new Set(), joy: { x: 0, y: 0 }, jumpReq: false, t: 0, nearIdx: -1, nearTimer: 0, fp: false,
@@ -89,6 +95,12 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
           const nx = (x - bx) / (d || 1), nz = (z - bz) / (d || 1);
           x = bx + nx * R; z = bz + nz * R; moved = true;
         }
+      }
+      for (const s of wallSegs) {
+        if (x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
+        const { d, bx, bz } = nearestEdge([s.a, s.b], x, z);
+        const r = R + 0.18;
+        if (d < r) { const nx = (x - bx) / (d || 1), nz = (z - bz) / (d || 1); x = bx + nx * r; z = bz + nz * r; moved = true; }
       }
       if (!moved) break;
     }

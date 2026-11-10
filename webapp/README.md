@@ -119,3 +119,6 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   kéo chuột xoay camera, O khóa chuột (pointer lock) để di chuột là xoay, lăn chuột zoom (sát vào hoặc F = góc nhìn thứ nhất),
   E xem tòa nhà đang đứng gần, Esc thoát. Điện thoại: joystick ảo (đẩy hết cỡ để chạy),
   nút nhảy, vuốt để xoay, 2 ngón để zoom. Va chạm theo footprint 2D của tòa nhà; tòa nhà che camera sẽ mờ đi.
+- Chi tiết công trình (`js/campus-details.js`): mặt tường theo khu (trắng có hành lang, kem, gạch nâu khu F, kính Nhà S,
+  Trung tâm Học liệu mái xanh), mái dốc ngói đỏ cho H/F/N/P/X/E1, tường chắn mái + cụm máy trên mái, chân tường,
+  sảnh mái che, tường rào (`walls` trong campus.json, có va chạm), cổng có biển tên, mái che bãi xe, đèn đường, hàng cây ven đường.
