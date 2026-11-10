@@ -858,3 +858,10 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .viewer-text { margin: 0; padding: 18px; white-space: pre-wrap; word-break: break-word; font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace; color: #e8edff; }
 
 .doc-more-sentinel { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 18px; color: var(--muted); font-size: 13px; }
+
+/* ---------- share page: download several as zip ---------- */
+.share-actions { margin: 4px 0 12px; align-items: center; }
+.share-hint { flex-basis: 100%; }
+@media (min-width: 640px) { .share-hint { flex-basis: auto; } }
+.share-page .select-bar { margin: 4px 0 12px; }
+.zip-panel { margin: 0 0 14px; }
