@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createWalker } from './walk.js';
 
 export const FLOOR_H = 3.4;
 const NORTH = new THREE.Vector3(-1, 0, 0); // +x points south in this map
@@ -147,7 +148,7 @@ function rng(seed) {
 }
 
 // ---------- the scene ----------
-export function createCampus(container, data, { dark = false, mobile = false, onPick, onFrame } = {}) {
+export function createCampus(container, data, { dark = false, mobile = false, onPick, onFrame, onNear, onInteract, onExitWalk } = {}) {
   let needs = true, raf = 0, disposed = false;
   function requestRender() { needs = true; }
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -331,6 +332,37 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     requestRender();
   });
 
+  // ---------- walk mode ----------
+  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, limits: LIM, onNear, onInteract, onExit: onExitWalk });
+  function startWalk(at) {
+    let x, z, facing;
+    if (at) {
+      // start just outside the chosen place, facing it
+      [x, z] = walker.freeSpot(at[0], at[1]);
+      facing = Math.atan2(at[0] - x, at[1] - z);
+      if (!Number.isFinite(facing) || (x === at[0] && z === at[1])) facing = Math.PI; // default: walk "up" the map
+    } else {
+      const gate = data.pois.find((p) => p.id === 'gate-main');
+      const [gx, gz] = gate ? gate.at : [0, 0];
+      const cx = -60, cz = -40; // towards the middle of the campus
+      const L = Math.hypot(cx - gx, cz - gz) || 1;
+      x = gx + ((cx - gx) / L) * 14; z = gz + ((cz - gz) / L) * 14;
+      facing = Math.atan2(cx - gx, cz - gz);
+    }
+    anim = null;
+    controls.enabled = false;
+    walker.enter({ x, z, facing });
+    requestRender();
+  }
+  function stopWalk() {
+    if (!walker.state.on) return;
+    const { x, z } = walker.state;
+    walker.exit();
+    controls.enabled = true;
+    controls.target.set(x, 0, z);
+    flyTo([x, 0, z], 230, { polar: 0.9, azimuth: walker.state.yaw });
+  }
+
   // ---------- picking ----------
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -356,26 +388,35 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   }
   function compassAngle() {
     // angle of map north on screen, radians clockwise from screen-up
-    const az = controls.getAzimuthalAngle();
+    const az = walker.state.on ? walker.state.yaw : controls.getAzimuthalAngle();
     const fwd = new THREE.Vector3(-Math.sin(az), 0, -Math.cos(az));
     const right = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az));
     return Math.atan2(NORTH.dot(right), NORTH.dot(fwd));
   }
+  let last = performance.now();
   function tick() {
     if (disposed) return;
     raf = requestAnimationFrame(tick);
-    if (anim) {
+    const now = performance.now(), dt = (now - last) / 1000;
+    last = now;
+    if (walker.state.on) {
+      const look = walker.update(dt);
+      controls.target.copy(look); // used for label distance
+      needs = true;
+    } else if (anim) {
       const t = Math.min(1, (performance.now() - anim.t0) / anim.ms), k = ease(t);
       camera.position.lerpVectors(anim.fromPos, anim.toPos, k);
       controls.target.lerpVectors(anim.fromTarget, anim.toTarget, k);
       if (t >= 1) anim = null;
       needs = true;
     }
-    if (controls.update()) needs = true;
+    if (!walker.state.on && controls.update()) needs = true;
     if (!needs) return;
     needs = false;
     renderer.render(scene, camera);
-    onFrame?.({ project, compass: compassAngle(), distance: camera.position.distanceTo(controls.target) / fit() });
+    const w = walker.state;
+    onFrame?.({ project, compass: compassAngle(), distance: w.on ? 60 : camera.position.distanceTo(controls.target) / fit(),
+      walk: w.on ? { x: w.x, z: w.z, heading: w.heading, yaw: w.yaw } : null });
   }
 
   function resize() {
@@ -401,13 +442,26 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       renderer.render(scene, camera); gl.finish();
       return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, ms: +(performance.now() - t).toFixed(1) };
     },
+    /** debug: advance walk mode by `sec` seconds at 60 fps synchronously, then draw */
+    _step(sec) {
+      for (let i = 0; i < Math.round(sec * 60); i++) if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); }
+      needs = true;
+      last = performance.now();
+      const w = walker.state;
+      renderer.render(scene, camera);
+      onFrame?.({ project, compass: compassAngle(), distance: 60, walk: w.on ? { x: w.x, z: w.z, heading: w.heading, yaw: w.yaw } : null });
+      return { x: +w.x.toFixed(1), z: +w.z.toFixed(1), y: +w.y.toFixed(2), near: w.nearIdx >= 0 ? data.buildings[w.nearIdx].zone || data.buildings[w.nearIdx].name : null };
+    },
     buildings,
     bounds: all,
     flyTo, focusBox, goHome, faceNorth, setSelected, setTheme, requestRender,
+    startWalk, stopWalk, walking: () => walker.state.on,
+    setJoy: (x, y) => walker.setJoy(x, y), jump: () => walker.jump(), teleport: (x, z) => walker.teleport(x, z),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
+      walker.dispose();
       ro.disconnect();
       controls.dispose();
       scene.traverse((o) => { o.geometry?.dispose?.(); });

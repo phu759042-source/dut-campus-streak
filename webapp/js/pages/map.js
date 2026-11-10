@@ -95,6 +95,83 @@ function roomLetter(room) {
   return m ? m[1] : null;
 }
 
+/** On-screen joystick for phones. onMove(x, y) with x right, y forward, both -1..1. */
+function Joystick({ onMove }) {
+  const ref = useRef(), knob = useRef(), id = useRef(null);
+  const R = 46;
+  const upd = (e) => {
+    const r = ref.current.getBoundingClientRect();
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const d = Math.hypot(dx, dy);
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.current.style.transform = `translate(${dx}px, ${dy}px)`;
+    onMove(dx / R, -dy / R);
+  };
+  const end = (e) => {
+    if (id.current !== e.pointerId) return;
+    id.current = null;
+    knob.current.style.transform = '';
+    onMove(0, 0);
+  };
+  return html`<div class="joy" ref=${ref} aria-label="Cần điều khiển"
+    onPointerDown=${(e) => { e.preventDefault(); id.current = e.pointerId; try { ref.current.setPointerCapture(e.pointerId); } catch { /* synthetic */ } upd(e); }}
+    onPointerMove=${(e) => { if (id.current === e.pointerId) upd(e); }} onPointerUp=${end} onPointerCancel=${end}>
+    <span class="joy-knob" ref=${knob}></span></div>`;
+}
+
+/** Top-down picture of the campus for the walk-mode minimap (drawn once). */
+function minimapImage(data, A, dark) {
+  const S = 1.5;
+  const b = A.bbox([data.boundary]);
+  const pad = 160;
+  const minX = b.minX - pad, minZ = b.minZ - pad;
+  const c = document.createElement('canvas');
+  c.width = Math.ceil((b.maxX - b.minX + pad * 2) * S); c.height = Math.ceil((b.maxZ - b.minZ + pad * 2) * S);
+  const g = c.getContext('2d');
+  const P = (x, z) => [(x - minX) * S, (z - minZ) * S];
+  const trace = (pts) => pts.forEach(([x, z], i) => { const [px, pz] = P(x, z); if (i) g.lineTo(px, pz); else g.moveTo(px, pz); });
+  const poly = (pts, fill) => { g.beginPath(); trace(pts); g.closePath(); g.fillStyle = fill; g.fill(); };
+  g.fillStyle = dark ? '#1a2232' : '#e4e9e1'; g.fillRect(0, 0, c.width, c.height);
+  poly(data.boundary, dark ? '#223047' : '#eef2e6');
+  const AREA = { grass: dark ? '#2f5a3a' : '#a8d896', water: '#6fb7e8', parking: dark ? '#343c4c' : '#cfd4dc', pitch: dark ? '#2e5b33' : '#86c873', track: '#d2876a' };
+  for (const a of data.areas) poly(a.pts, AREA[a.kind] || '#ccc');
+  g.lineCap = g.lineJoin = 'round';
+  for (const rd of data.roads) {
+    g.beginPath(); trace(rd.pts);
+    g.strokeStyle = rd.foot ? (dark ? '#5a5548' : '#e8dcc8') : (dark ? '#46526a' : '#c2c9d4');
+    g.lineWidth = rd.w * S; g.stroke();
+  }
+  for (const bd of data.buildings) poly(bd.pts, bd.zone ? (dark ? '#8d97ad' : '#7d8799') : (dark ? '#6b7385' : '#a3aab6'));
+  return { canvas: c, S, minX, minZ };
+}
+
+function drawMinimap(cv, mm, w) {
+  if (!cv || !mm) return;
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  const size = cv.clientWidth || 140;
+  if (cv.width !== Math.round(size * dpr)) { cv.width = cv.height = Math.round(size * dpr); }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, size, size);
+  const fx = -Math.sin(w.yaw), fz = -Math.cos(w.yaw);
+  const rot = -Math.PI / 2 - Math.atan2(fz, fx); // camera forward points up on the minimap
+  g.save();
+  g.beginPath(); g.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); g.clip();
+  g.translate(size / 2, size / 2);
+  g.rotate(rot);
+  const zoom = 1.1;
+  g.scale(zoom / mm.S, zoom / mm.S);
+  g.drawImage(mm.canvas, -(w.x - mm.minX) * mm.S, -(w.z - mm.minZ) * mm.S);
+  g.restore();
+  // player arrow (heading (sin h, cos h) in map x/z)
+  g.save();
+  g.translate(size / 2, size / 2);
+  g.rotate(rot + Math.atan2(Math.cos(w.heading), Math.sin(w.heading)));
+  g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, -6.5); g.lineTo(-2.5, 0); g.lineTo(-6, 6.5); g.closePath();
+  g.fillStyle = '#2f6bff'; g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); g.fill();
+  g.restore();
+}
+
 export function MapPage() {
   const host = useRef();
   const labelsRef = useRef();
@@ -108,6 +185,12 @@ export function MapPage() {
   const [compass, setCompass] = useState(0);
   const [hint, setHint] = useState(true);
   const [classes, setClasses] = useState(null);
+  const [walking, setWalking] = useState(false);
+  const [near, setNear] = useState(null);
+  const [walkHint, setWalkHint] = useState(false);
+  const miniRef = useRef();
+  const mmRef = useRef(null);
+  const mobile = isMobile();
   const loggedIn = !!appStore.get().session;
 
   useEffect(() => {
@@ -125,15 +208,22 @@ export function MapPage() {
         if (disposed) return;
         const dark = document.documentElement.dataset.theme === 'dark';
         let ts = [];
+        const targetFor = (b) => {
+          const info = sceneRef.current?.buildings.find((x) => x.id === b.id) || b;
+          return (b.zone && ts.find((x) => x.key === b.zone)) || ts.find((x) => x.key === `b${b.id}`)
+            || { key: `b${b.id}`, title: b.name || 'Tòa nhà', sub: b.name ? null : 'Chưa có tên trên bản đồ', kind: 'building', buildings: [info], box: A.bbox([b.pts]), height: info.height || 10 };
+        };
         const scene = A.createCampus(host.current, data, {
           dark, mobile: isMobile(),
           onPick: (b) => {
-            if (!b) return select(null);
-            const t = (b.zone && ts.find((x) => x.key === b.zone)) || ts.find((x) => x.key === `b${b.id}`)
-              || { key: `b${b.id}`, title: b.name || 'Tòa nhà', sub: b.name ? null : 'Chưa có tên trên bản đồ', kind: 'building', buildings: [b], box: A.bbox([b.pts]), height: b.height };
-            select(t, { fly: false });
+            if (!b) { if (!sceneRef.current?.walking()) select(null); return; }
+            select(targetFor(b), { fly: false });
           },
-          onFrame: ({ project, compass: c, distance }) => {
+          onNear: (b) => setNear(b ? targetFor(b) : null),
+          onInteract: (b) => { if (b) select(targetFor(b), { fly: false }); },
+          onExitWalk: () => exitWalk(),
+          onFrame: ({ project, compass: c, distance, walk }) => {
+            if (walk) drawMinimap(miniRef.current, mmRef.current, walk);
             // place labels by priority (zones first, nearest first) and hide ones that would overlap
             const placed = [];
             const items = labelEls.map((l) => ({ ...l, p: project(...l.t.anchor) }))
@@ -152,6 +242,7 @@ export function MapPage() {
           },
         });
         sceneRef.current = scene;
+        mmRef.current = minimapImage(data, A, dark);
         if (location.hostname === 'localhost') window.__map = scene;
         ts = buildTargets(scene, data, A);
         setTargets(ts);
@@ -205,7 +296,8 @@ export function MapPage() {
     if (!scene) return;
     scene.setSelected(t ? t.buildings : []);
     if (t && fly) {
-      if (t.kind === 'poi') scene.flyTo([t.anchor[0], 0, t.anchor[2]], 140);
+      if (scene.walking()) scene.teleport((t.box.minX + t.box.maxX) / 2, (t.box.minZ + t.box.maxZ) / 2); // walk mode: jump there
+      else if (t.kind === 'poi') scene.flyTo([t.anchor[0], 0, t.anchor[2]], 140);
       else scene.focusBox(t.box, t.height);
     }
     const url = new URL(location.href);
@@ -213,9 +305,28 @@ export function MapPage() {
     history.replaceState(history.state, '', url);
   }
 
+  function startWalk(t) {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const at = t ? [(t.box.minX + t.box.maxX) / 2, (t.box.minZ + t.box.maxZ) / 2] : null;
+    setSel(null); scene.setSelected([]);
+    setHint(false);
+    scene.startWalk(at);
+    setWalking(true);
+    setWalkHint(true);
+    setTimeout(() => setWalkHint(false), 9000);
+    history.replaceState(history.state, '', location.pathname);
+  }
+  function exitWalk() {
+    sceneRef.current?.stopWalk();
+    setWalking(false);
+    setNear(null);
+    setWalkHint(false);
+  }
+
   const results = focusSearch ? search(targets, q) : [];
   const pick = (t) => { setQ(''); setFocusSearch(false); document.activeElement?.blur?.(); select(t); };
-  const goBack = () => back(appStore.get().session ? '/' : '/login');
+  const goBack = () => (walking ? exitWalk() : back(appStore.get().session ? '/' : '/login'));
   const share = async () => {
     const url = location.href;
     try {
@@ -226,12 +337,12 @@ export function MapPage() {
 
   const here = sel && classes && sel.letter ? classes.filter((c) => roomLetter(c.room) === sel.letter[0]) : [];
 
-  return html`<div class="map-page">
+  return html`<div class=${'map-page' + (walking ? ' walking' : '')}>
     <div class="map-canvas" ref=${host}></div>
     <div class="map-labels" ref=${labelsRef}></div>
 
     <div class="map-top">
-      <button class="map-btn" aria-label="Quay lại" onClick=${goBack}><${Icon} name="back" size=${20} /></button>
+      <button class="map-btn" aria-label=${walking ? 'Thoát đi bộ' : 'Quay lại'} title=${walking ? 'Thoát đi bộ (Esc)' : 'Quay lại'} onClick=${goBack}><${Icon} name=${walking ? 'x' : 'back'} size=${20} /></button>
       <div class=${'map-search' + (focusSearch ? ' open' : '')}>
         <span class="map-search-icon"><${Icon} name="zoom" size=${18} /></span>
         <input value=${q} placeholder="Tìm khu, phòng (vd F305), thư viện…" aria-label="Tìm trên bản đồ"
@@ -248,7 +359,17 @@ export function MapPage() {
       </div>
     </div>
 
-    ${state === 'ready' && html`<div class="map-tools">
+    ${state === 'ready' && walking && html`<div class="map-mini"><canvas ref=${miniRef}></canvas><span class="map-mini-n" style=${`transform: rotate(${compass}rad)`}><b>N</b></span></div>`}
+    ${state === 'ready' && walking && near && !sel && html`<button class="map-near pop-in" key=${near.key} onClick=${() => select(near, { fly: false })}>
+      <${Icon} name="pin" size=${16} /><span>Gần <b>${near.title}</b></span><span class="map-near-key">${mobile ? 'Chạm để xem' : 'Nhấn E'}</span></button>`}
+    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy · kéo chuột để xoay · lăn chuột để zoom · <b>E</b> xem tòa nhà · <b>Esc</b> thoát</div>`}
+    ${state === 'ready' && walking && walkHint && mobile && html`<div class="map-hint pop-in walk-hint-m">Kéo cần bên trái để đi (đẩy hết cỡ để chạy) · vuốt màn hình để xoay · 2 ngón để zoom</div>`}
+    ${state === 'ready' && walking && mobile && html`<${Joystick} onMove=${(x, y) => sceneRef.current?.setJoy(x, y)} />
+      <button class="joy-jump" aria-label="Nhảy" onPointerDown=${(e) => { e.preventDefault(); sceneRef.current?.jump(); }}><span class="joy-jump-arrow"></span></button>`}
+    ${state === 'ready' && !walking && !sel && html`<button class="map-walk-btn pop-in" onClick=${() => startWalk(null)}>
+      <span class="map-walk-ico">🚶</span><span class="grow"><b>Đi dạo quanh trường</b><span class="small">Nhập vai sinh viên, xuất phát từ cổng chính</span></span></button>`}
+
+    ${state === 'ready' && !walking && html`<div class="map-tools">
       <button class="map-btn compass" aria-label="Xoay về hướng Bắc" title="Hướng Bắc" onClick=${() => sceneRef.current?.faceNorth()}>
         <span class="compass-needle" style=${`transform: rotate(${compass}rad)`}><b>N</b></span></button>
       <button class="map-btn" aria-label="Phóng to" onClick=${() => sceneRef.current?.zoom(0.6)}><${Icon} name="plus" size=${20} /></button>
@@ -256,7 +377,7 @@ export function MapPage() {
       <button class="map-btn" aria-label="Toàn cảnh" title="Toàn cảnh" onClick=${() => { select(null); sceneRef.current?.goHome(); }}><${Icon} name="crosshair" size=${19} /></button>
     </div>`}
 
-    ${state === 'ready' && hint && !sel && html`<div class="map-hint pop-in">${isMobile()
+    ${state === 'ready' && !walking && hint && !sel && html`<div class="map-hint pop-in overview-hint">${isMobile()
       ? 'Kéo 1 ngón để di chuyển · 2 ngón để xoay, nghiêng, thu phóng · Chạm vào tòa nhà để xem'
       : 'Kéo chuột trái để di chuyển · chuột phải để xoay · lăn chuột để thu phóng · bấm vào tòa nhà để xem'}</div>`}
 
@@ -280,6 +401,7 @@ export function MapPage() {
       </div>
       <div class="map-card-actions">
         <button class="btn btn-ghost btn-sm" onClick=${share}><${Icon} name="users" size=${16} /> Chia sẻ vị trí</button>
+        ${!walking && sel.box && html`<button class="btn btn-primary btn-sm" onClick=${() => startWalk(sel)}>🚶 Đi bộ tới đây</button>`}
       </div>
     </section>`}
 

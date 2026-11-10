@@ -115,3 +115,6 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   Số tầng lấy từ OSM nếu có, còn lại là ước lượng (`estimated: true`). Sửa script rồi chạy lại để cập nhật.
 - Tìm kiếm: mã phòng (vd `F305`) dẫn tới khu theo chữ cái đầu; link sâu `/map?k=F` hoặc `/map?room=F305`.
 - Code: `js/map3d.js` (cảnh 3D, vẽ theo yêu cầu, không vẽ liên tục), `js/pages/map.js` (giao diện, nhãn, thẻ thông tin).
+- Chế độ nhập vai (`js/walk.js`): nhân vật low-poly tự dựng bằng khối cơ bản; WASD/mũi tên, Shift chạy, Space nhảy,
+  kéo chuột xoay camera, lăn chuột zoom, E xem tòa nhà đang đứng gần, Esc thoát. Điện thoại: joystick ảo (đẩy hết cỡ để chạy),
+  nút nhảy, vuốt để xoay, 2 ngón để zoom. Va chạm theo footprint 2D của tòa nhà; tòa nhà che camera sẽ mờ đi.

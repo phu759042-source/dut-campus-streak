@@ -937,3 +937,32 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .map-promo-art span:nth-child(1) { left: 9px; height: 18px; opacity: 0.85; }
 .map-promo-art span:nth-child(2) { left: 21px; height: 30px; }
 .map-promo-art span:nth-child(3) { left: 33px; height: 23px; opacity: 0.9; }
+
+/* ---------- 3D map: walk mode ---------- */
+.map-walk-btn { position: absolute; z-index: 3; left: 16px; bottom: calc(16px + var(--safe-b)); display: flex; gap: 12px; align-items: center; text-align: left; padding: 10px 16px 10px 10px; border: 0; border-radius: 20px; color: #fff; font: inherit; cursor: pointer;
+  background: linear-gradient(135deg, #e5484d, #b8325e 55%, #2f6bff); box-shadow: 0 12px 28px rgba(184, 50, 94, 0.35); transition: transform 0.2s var(--spring); }
+.map-walk-btn:hover { transform: translateY(-2px); }
+.map-walk-btn:active { transform: scale(0.97); }
+.map-walk-btn .grow { display: flex; flex-direction: column; }
+.map-walk-btn b { font-size: 15px; font-weight: 900; }
+.map-walk-btn .small { opacity: 0.9; }
+.map-walk-ico { width: 40px; height: 40px; border-radius: 13px; background: rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.map-page:not(.walking) .overview-hint { bottom: calc(92px + var(--safe-b)); }
+.walking .map-card { bottom: auto; top: calc(68px + var(--safe-t)); }
+.map-mini { position: absolute; z-index: 3; right: 16px; top: calc(68px + var(--safe-t)); width: 132px; height: 132px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: var(--shadow); background: var(--surface-2); }
+.map-mini canvas { width: 100%; height: 100%; display: block; border-radius: 50%; }
+.map-mini-n { position: absolute; inset: -14px; pointer-events: none; display: flex; justify-content: center; }
+.map-mini-n b { font-size: 11px; font-weight: 900; color: #fff; background: #e5484d; border-radius: 999px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
+.map-near { position: absolute; z-index: 3; left: 0; right: 0; margin: 0 auto; width: fit-content; max-width: calc(100% - 32px); bottom: calc(104px + var(--safe-b)); display: flex; gap: 8px; align-items: center; padding: 9px 10px 9px 14px; border: 0; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer;
+  color: var(--text); background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: var(--shadow-lg); }
+.map-near .icon { color: #e5484d; }
+.map-near-key { font-size: 12px; font-weight: 800; color: #fff; background: var(--primary); padding: 4px 9px; border-radius: 999px; }
+@media (pointer: fine) { .map-near { bottom: calc(26px + var(--safe-b)); } .walking .map-hint { bottom: calc(76px + var(--safe-b)); } }
+.joy { position: absolute; z-index: 3; left: 22px; bottom: calc(28px + var(--safe-b)); width: 124px; height: 124px; border-radius: 50%; touch-action: none;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12)); border: 2px solid rgba(255, 255, 255, 0.55); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.joy-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: linear-gradient(135deg, #2f6bff, #6b4dff); box-shadow: 0 6px 16px rgba(47, 107, 255, 0.45); pointer-events: none; }
+.joy-jump { position: absolute; z-index: 3; right: 26px; bottom: calc(44px + var(--safe-b)); width: 78px; height: 78px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); color: #fff; touch-action: none; cursor: pointer;
+  background: linear-gradient(135deg, #e5484d, #c2313a); box-shadow: 0 8px 22px rgba(194, 49, 58, 0.4); display: flex; align-items: center; justify-content: center; }
+.joy-jump:active { transform: scale(0.92); }
+.joy-jump-arrow { width: 0; height: 0; border: 13px solid transparent; border-bottom: 18px solid #fff; border-top: 0; }
+.walk-hint-m { bottom: calc(170px + var(--safe-b)) !important; }
