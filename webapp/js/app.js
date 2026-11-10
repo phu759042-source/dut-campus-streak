@@ -14,6 +14,7 @@ import { AchievementsPage, AboutPage } from './pages/misc.js';
 import { SharedLinkPage } from './pages/sharelink.js';
 import { syncPush } from './push.js';
 import { InstallButton } from './install.js';
+import { UploadIndicator } from './uploads.js';
 
 const PUBLIC = ['/login', '/register', '/forgot', '/reset'];
 
@@ -59,6 +60,7 @@ function Shell({ path, children }) {
       <div class="side-foot muted small">DUT Campus Streak · Web</div>
     </aside>
     <main class="main" key=${path}>${children}</main>
+    <${UploadIndicator} path=${path} />
     <nav class=${'bottom-nav' + (navIndex < 0 ? ' no-active' : '')} style=${`--i:${Math.max(0, navIndex)}`}>
       <span class="bn-pill"></span>
       ${NAV.map((n) => html`<a href=${n.href} class=${'bn-item' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)} aria-label=${n.label}>

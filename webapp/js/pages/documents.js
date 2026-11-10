@@ -4,6 +4,7 @@ import { Icon, Spinner, Skeleton, ErrorBox, Empty, openSheet, confirmDialog, pro
 import { PageHeader } from './shared.js';
 import { getPreview, previewKind } from '../preview.js';
 import { publishShareCard } from '../sharecard.js';
+import { enqueueUploads, UploadPanel, useUploads } from '../uploads.js';
 import { appStore } from '../lib.js';
 
 const BUCKET = 'student-documents';
@@ -149,8 +150,9 @@ export function DocumentsPage() {
   const parentId = stack.length ? stack[stack.length - 1].id : null;
   const uid = currentUser().id;
 
-  async function load() {
-    setError(null); setItems(null);
+  async function load(soft = false) {
+    setError(null);
+    if (!soft) setItems(null);
     let q = supabase.from('documents').select().eq('user_id', uid);
     q = parentId ? q.eq('parent_id', parentId) : q.is('parent_id', null);
     const { data, error: err } = await q.order('item_type', { ascending: false }).order('name');
@@ -166,6 +168,9 @@ export function DocumentsPage() {
     }
   }
   useEffect(() => { exitSelect(); load(); }, [parentId]);
+  // A background upload into this folder finished: refresh the list without flashing.
+  const uploads = useUploads();
+  useEffect(() => { if (uploads.doneTick && uploads.lastDoneParent === parentId) load(true); }, [uploads.doneTick]);
 
   // ---------- multi-select ----------
   function exitSelect() { setSelectMode(false); setSelected(new Set()); }
@@ -241,28 +246,9 @@ export function DocumentsPage() {
     load();
   }
 
-  async function upload(files) {
+  function upload(files) {
     if (!files?.length) return;
-    setBusy(true);
-    let ok = 0;
-    try {
-      for (const file of files) {
-        const rawExt = extOf(file.name);
-        const safeExt = /^[a-z0-9]{1,10}$/.test(rawExt) ? rawExt : 'bin';
-        const path = `${uid}/${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}.${safeExt}`;
-        const mime = mimeOf(file.name);
-        const { error: e1 } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: mime, upsert: false });
-        if (e1) throw e1;
-        const { error: e2 } = await supabase.from('documents').insert({
-          user_id: uid, name: file.name, item_type: 'file', parent_id: parentId, storage_path: path, mime_type: mime, file_size: file.size,
-        });
-        if (e2) { await supabase.storage.from(BUCKET).remove([path]); throw e2; }
-        ok++;
-      }
-      toast(`Đã tải lên ${ok} tệp.`, 'success');
-    } catch (e) { toast('Tải tệp thất bại: ' + errMsg(e), 'error'); }
-    setBusy(false);
-    load();
+    enqueueUploads(files, parentId, stack.length ? stack[stack.length - 1].name : 'Tài liệu của tôi');
   }
 
   async function openFile(it) {
@@ -344,6 +330,7 @@ export function DocumentsPage() {
       <button class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => fileRef.current?.click()}><${Icon} name="upload" size=${18} /> Tải tệp lên</button>
       <button class="btn btn-ghost btn-sm" disabled=${busy} onClick=${createFolder}><${Icon} name="folder" size=${18} /> Thư mục mới</button>
     </div>`}
+    <${UploadPanel} />
     <input ref=${fileRef} type="file" multiple class="hidden" onChange=${(e) => { upload([...e.target.files]); e.target.value = ''; }} />
     <div class="gap-top"></div>
     ${error ? html`<${ErrorBox} message=${error} onRetry=${load} />`
