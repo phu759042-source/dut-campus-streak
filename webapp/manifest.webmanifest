@@ -1,0 +1,26 @@
+{
+  "name": "DUT Campus Streak",
+  "short_name": "Campus Streak",
+  "description": "Check-in lớp học, giữ lửa streak và đua bảng xếp hạng.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1020",
+  "theme_color": "#2f6bff",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "https://cdn.jsdelivr.net/gh/phu759042-source/dut-campus-streak@abec9614caea31d1ea23587c98f918b243a8b8b4/assets/icon/dut_campus_streak.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
