@@ -18,6 +18,7 @@ const sessions = [1, 1, 2, 3, 4, 5].map((d, i) => ({ id: 's' + i, subject_id: 's
 const tasks = [
   { id: 'd1', title: 'Nộp bài tập Giải tích', description: 'Chương 3, bài 1-10', deadline_at: new Date(Date.now() + 3 * 3600e3).toISOString(), created_at: new Date(Date.now() - 86400e3).toISOString(), is_completed: false },
   { id: 'd2', title: 'Báo cáo đồ án Web', description: null, deadline_at: new Date(Date.now() + 5 * 86400e3).toISOString(), created_at: new Date(Date.now() - 86400e3).toISOString(), is_completed: false },
+  { id: 'd4', title: 'Tự nhập điểm thành viên sau khi hoàn thành bài môn triết trên link', description: 'Link: https://dueudn-my.sharepoint.com/:x:/g/personal/lamtuelam_due_udn_vn/IQDl_E9nTMvdTY7ZZHXk1OOJAaed8ZBnYCY0RSCT6sjy6jM?e=LGfn5C sau deadline link sẽ bị xóa', deadline_at: new Date(Date.now() - 2 * 86400e3).toISOString(), created_at: new Date(Date.now() - 5 * 86400e3).toISOString(), completed_at: new Date(Date.now() - 3 * 86400e3).toISOString(), is_completed: true },
   { id: 'd3', title: 'Quiz Vật lý', deadline_at: new Date(Date.now() - 3600e3).toISOString(), created_at: new Date(Date.now() - 3 * 86400e3).toISOString(), is_completed: false },
 ];
 const docs = [

@@ -71,7 +71,7 @@ export function AboutPage() {
   return html`<div class="page narrow">
     <${PageHeader} title="Liên hệ & Giới thiệu" />
     <section class="about-hero pop-in">
-      <img src=${`${ASSET_BASE}/icon/dut_campus_streak.png`} alt="" width="88" height="88" />
+      <img src="/icon-192.png" alt="" width="88" height="88" />
       <div class="about-name">DUT Campus Streak</div>
       <div class="muted small">Phiên bản web ${APP_VERSION}</div>
     </section>

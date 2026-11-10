@@ -66,7 +66,9 @@ function TaskForm({ task, close }) {
   </form>`;
 }
 
-function TaskCard({ t, index, onEdit, onComplete, onDelete }) {
+const WEEKDAY = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+function taskState(t) {
   const deadline = new Date(t.deadline_at);
   const created = new Date(t.created_at || t.updated_at || Date.now() - 86400000);
   const left = deadline - Date.now();
@@ -74,10 +76,25 @@ function TaskCard({ t, index, onEdit, onComplete, onDelete }) {
   const total = Math.max(1, deadline - created);
   const pct = t.is_completed ? 1 : Math.min(1, Math.max(0, 1 - left / total));
   const urgency = t.is_completed ? 'done' : overdue ? 'overdue' : left < 3600e3 * 6 ? 'hot' : left < 86400e3 * 2 ? 'warm' : 'calm';
-  return html`<div class=${'task slide-up u-' + urgency} style=${`--d:${index * 50}ms`}>
+  return { deadline, left, overdue, pct, urgency };
+}
+
+/** Render text with clickable links (long URLs wrap instead of overflowing). */
+function Linkified({ text }) {
+  const parts = String(text || '').split(/(https?:\/\/[^\s]+)/g);
+  return parts.map((part, i) => (i % 2
+    ? html`<a class="link task-link" href=${part} target="_blank" rel="noopener noreferrer">${part}</a>`
+    : part));
+}
+
+function TaskCard({ t, index, onOpen, onEdit, onComplete, onDelete }) {
+  const { deadline, left, overdue, pct, urgency } = taskState(t);
+  const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
+  return html`<div class=${'task slide-up u-' + urgency} style=${`--d:${index * 50}ms`} role="button" tabindex="0"
+      onClick=${onOpen} onKeyDown=${(e) => { if (e.key === 'Enter') onOpen(); }}>
     <div class="task-main">
-      <div class="task-title">${t.title}</div>
-      ${t.description && html`<div class="muted small">${t.description}</div>`}
+      <div class="task-title clamp-2">${t.title}</div>
+      ${t.description && html`<div class="muted small clamp-2 task-desc">${t.description}</div>`}
       <div class="task-meta">
         <span><${Icon} name="calendar" size=${14} /> Hạn: ${fmtDeadline(deadline)}</span>
         ${t.is_completed ? html`<span class="chip chip-success">Đã hoàn thành</span>`
@@ -85,12 +102,45 @@ function TaskCard({ t, index, onEdit, onComplete, onDelete }) {
           : html`<span class="countdown-chip">${remaining(left)}</span>`}
       </div>
       ${!t.is_completed && html`<div class="task-bar"><span style=${`width:${pct * 100}%`}></span></div>`}
-      ${overdue && html`<div class="small muted">Nhiệm vụ chưa hoàn thành — bạn có thể gia hạn hoặc đánh dấu hoàn thành.</div>`}
     </div>
     <div class="task-actions">
-      ${!t.is_completed && html`<button class="btn btn-sm btn-success" onClick=${onComplete}><${Icon} name="check" size=${16} stroke=${3} /> Hoàn thành</button>`}
-      ${!t.is_completed && html`<button class="icon-btn" aria-label="Chỉnh sửa / gia hạn" title="Chỉnh sửa / gia hạn" onClick=${onEdit}><${Icon} name="edit" size=${18} /></button>`}
-      <button class="icon-btn" aria-label="Xóa" title="Xóa" onClick=${onDelete}><${Icon} name="trash" size=${18} /></button>
+      ${!t.is_completed && html`<button class="btn btn-sm btn-success" onClick=${stop(onComplete)}><${Icon} name="check" size=${16} stroke=${3} /> Hoàn thành</button>`}
+      ${!t.is_completed && html`<button class="icon-btn" aria-label="Chỉnh sửa / gia hạn" title="Chỉnh sửa / gia hạn" onClick=${stop(onEdit)}><${Icon} name="edit" size=${18} /></button>`}
+      <button class="icon-btn" aria-label="Xóa" title="Xóa" onClick=${stop(onDelete)}><${Icon} name="trash" size=${18} /></button>
+    </div>
+  </div>`;
+}
+
+function TaskDetail({ t, close }) {
+  useTick(1000);
+  const { deadline, left, overdue, pct, urgency } = taskState(t);
+  const completedAt = t.completed_at ? new Date(t.completed_at) : null;
+  const createdAt = t.created_at ? new Date(t.created_at) : null;
+  const lateDone = completedAt && completedAt > deadline;
+  return html`<div class=${'task-detail u-' + urgency}>
+    <div class="td-hero">
+      <div class="td-status">
+        ${t.is_completed ? html`<span class="chip chip-success"><${Icon} name="check" size=${13} stroke=${3} /> Đã hoàn thành</span>`
+          : overdue ? html`<span class="chip chip-red">Quá hạn</span>` : html`<span class="chip chip-blue">Đang làm</span>`}
+      </div>
+      <h2 class="td-title">${t.title}</h2>
+      ${!t.is_completed && html`<div class="td-count">${overdue ? `Đã trễ ${remaining(-left).replace('Còn ', '')}` : remaining(left).startsWith('Còn') ? remaining(left) : `Còn ${remaining(left)}`}</div>`}
+      ${!t.is_completed && html`<div class="task-bar td-bar"><span style=${`width:${pct * 100}%`}></span></div>`}
+    </div>
+    <div class="td-grid">
+      <div class="td-cell"><${Icon} name="calendar" size=${18} /><div><span>Ngày hạn</span><b>${WEEKDAY[deadline.getDay()]}, ${fmtDeadline(deadline).split(' ')[0]}</b></div></div>
+      <div class="td-cell"><${Icon} name="clock" size=${18} /><div><span>Giờ hạn</span><b>${fmtDeadline(deadline).split(' ')[1]}</b></div></div>
+      ${completedAt && html`<div class="td-cell"><${Icon} name="checkCircle" size=${18} /><div><span>Hoàn thành lúc</span><b>${fmtDeadline(completedAt)}${lateDone ? ' (trễ hạn)' : ''}</b></div></div>`}
+      ${createdAt && html`<div class="td-cell"><${Icon} name="plus" size=${18} /><div><span>Tạo lúc</span><b>${fmtDeadline(createdAt)}</b></div></div>`}
+    </div>
+    <div class="td-section">
+      <div class="field-label">Nội dung</div>
+      <div class="td-desc">${t.description ? html`<${Linkified} text=${t.description} />` : html`<span class="muted">Không có mô tả.</span>`}</div>
+    </div>
+    <div class="dialog-actions td-actions">
+      <button class="btn btn-ghost" onClick=${() => close('delete')}><${Icon} name="trash" size=${16} /> Xóa</button>
+      ${!t.is_completed && html`<button class="btn btn-ghost" onClick=${() => close('edit')}><${Icon} name="edit" size=${16} /> Sửa / gia hạn</button>`}
+      ${!t.is_completed && html`<button class="btn btn-success" onClick=${() => close('complete')}><${Icon} name="check" size=${16} stroke=${3} /> Hoàn thành</button>`}
     </div>
   </div>`;
 }
@@ -124,6 +174,12 @@ export function DeadlinesPage() {
     toast('Đã hoàn thành nhiệm vụ!', 'success');
     showMeme(late ? 'deadlineFailure' : 'deadlineSuccess');
   }
+  async function showDetail(t) {
+    const action = await openSheet(({ close }) => html`<${TaskDetail} t=${t} close=${close} />`, { title: 'Chi tiết Deadline' });
+    if (action === 'edit') edit(t);
+    if (action === 'complete') complete(t);
+    if (action === 'delete') remove(t);
+  }
   async function remove(t) {
     if (!(await confirmDialog({ title: 'Xóa nhiệm vụ?', message: `"${t.title}" sẽ bị xóa.`, confirmText: 'Xóa', danger: true }))) return;
     const { error: err } = await supabase.from('deadline_tasks').delete().eq('id', t.id);
@@ -144,6 +200,6 @@ export function DeadlinesPage() {
       : !shown.length ? html`<${Empty} icon="flag" title=${tab === 'open' ? 'Chưa có Deadline nào' : 'Chưa hoàn thành nhiệm vụ nào'} text=${tab === 'open' ? 'Tạo nhiệm vụ để theo dõi thời hạn.' : ''}>
           ${tab === 'open' && html`<button class="btn btn-primary" onClick=${() => edit(null)}><${Icon} name="plus" size=${18} /> Tạo nhiệm vụ</button>`}<//>`
       : html`<div class="stack-sm">${shown.map((t, i) => html`<${TaskCard} key=${t.id} t=${t} index=${i}
-          onEdit=${() => edit(t)} onComplete=${() => complete(t)} onDelete=${() => remove(t)} />`)}</div>`}
+          onOpen=${() => showDetail(t)} onEdit=${() => edit(t)} onComplete=${() => complete(t)} onDelete=${() => remove(t)} />`)}</div>`}
   </div>`;
 }

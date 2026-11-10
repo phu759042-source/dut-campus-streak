@@ -2,6 +2,7 @@ import { html, useState, useEffect, useRef } from 'preact';
 import { supabase, currentUser, errMsg, fmtBytes, readLocal, writeLocal } from '../lib.js';
 import { Icon, Spinner, Skeleton, ErrorBox, Empty, openSheet, confirmDialog, promptDialog, toast } from '../ui.js';
 import { PageHeader } from './shared.js';
+import { getPreview, previewKind } from '../preview.js';
 
 const BUCKET = 'student-documents';
 const MIME = {
@@ -24,6 +25,38 @@ function fileTone(name) {
   if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(e)) return ['IMG', 'violet'];
   if (['zip', 'rar'].includes(e)) return ['ZIP', 'gray'];
   return [(e || 'FILE').slice(0, 4).toUpperCase(), 'gray'];
+}
+
+
+/** Thumbnail tile: real preview for images, PDFs, Office and text files (lazy, when visible). */
+function DocThumb({ item, folder, label, tone, grid, thumb }) {
+  const ref = useRef();
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const kind = folder ? null : previewKind(item);
+  useEffect(() => {
+    if (!kind || kind === 'image' || !ref.current) return;
+    let alive = true;
+    const io = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      setLoading(true);
+      getPreview(item).then((p) => { if (alive) { setPreview(p); setLoading(false); } });
+    }, { rootMargin: '200px' });
+    io.observe(ref.current);
+    return () => { alive = false; io.disconnect(); };
+  }, [item.storage_path]);
+
+  const img = thumb || (preview?.type === 'image' ? preview.url : null);
+  const badge = !folder && html`<span class=${'doc-badge tone-' + tone}>${label}</span>`;
+  let body;
+  if (folder) body = html`<${Icon} name="folder" size=${grid ? 40 : 24} />`;
+  else if (img) body = html`<img src=${img} alt="" loading="lazy" class=${kind === 'pdf' || kind === 'office' ? 'page-img' : ''} />`;
+  else if (preview?.type === 'text') body = html`<div class="doc-paper"><b>${preview.title}</b><span>${preview.text}</span></div>`;
+  else body = html`<b class="doc-label">${label}</b>`;
+  return html`<span ref=${ref} class=${'doc-thumb tone-' + tone + (img || preview ? ' has-preview' : '') + (loading ? ' loading' : '')}>
+    ${body}${(img || preview) && badge}${preview?.pages > 1 && grid ? html`<span class="doc-pages">${preview.pages} trang</span>` : null}
+  </span>`;
 }
 
 export function DocumentsPage() {
@@ -173,9 +206,7 @@ export function DocumentsPage() {
             const thumb = !folder && thumbs[it.storage_path];
             return html`<div key=${it.id} class="doc slide-up" style=${`--d:${Math.min(i, 15) * 30}ms`}>
               <button class="doc-main" onClick=${() => activate(it)}>
-                <span class=${'doc-thumb tone-' + tone}>
-                  ${thumb ? html`<img src=${thumb} alt="" loading="lazy" />` : folder ? html`<${Icon} name="folder" size=${grid ? 40 : 24} />` : html`<b>${label}</b>`}
-                </span>
+                <${DocThumb} item=${it} folder=${folder} label=${label} tone=${tone} grid=${grid} thumb=${thumb} />
                 <span class="doc-info"><span class="doc-name">${it.name}</span>
                   <span class="muted small">${folder ? 'Thư mục' : fmtBytes(it.file_size)}</span></span>
               </button>

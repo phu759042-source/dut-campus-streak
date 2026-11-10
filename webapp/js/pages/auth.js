@@ -1,6 +1,6 @@
 import { html, useState } from 'preact';
 import { supabase, errMsg, ensureCurrentUserData, appStore } from '../lib.js';
-import { Icon, IconInput, PasswordInput, Spinner, toast, Flame } from '../ui.js';
+import { Icon, IconInput, PasswordInput, Spinner, toast } from '../ui.js';
 import { navigate } from '../router.js';
 
 function AuthShell({ title, subtitle, children }) {
@@ -11,7 +11,7 @@ function AuthShell({ title, subtitle, children }) {
     </div>
     <div class="auth-card pop-in">
       <div class="auth-brand">
-        <div class="brand-mark"><${Flame} size=${40} /></div>
+        <img class="brand-mark" src="/icon-192.png" alt="" width="56" height="56" />
         <div>
           <div class="brand-name">DUT Campus Streak</div>
           <div class="brand-tag">Đi học đều, giữ lửa streak</div>

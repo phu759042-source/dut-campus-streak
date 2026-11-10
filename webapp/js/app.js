@@ -1,6 +1,6 @@
 import { html, render, useState, useEffect } from 'preact';
 import { supabase, appStore, applyTheme, loadThemeFromServer, ensureCurrentUserData, loadMyProfile, readLocal } from './lib.js';
-import { Icon, Spinner, Flame, mountHosts } from './ui.js';
+import { Icon, Spinner, mountHosts } from './ui.js';
 import { usePath, match, navigate } from './router.js';
 import { LoginPage, RegisterPage, ForgotPage, ResetPasswordPage } from './pages/auth.js';
 import { HomePage, useStore } from './pages/home.js';
@@ -43,11 +43,11 @@ const SIDE_EXTRA = [
 
 function Shell({ path, children }) {
   const active = (href) => (href === '/' ? path === '/' || path.startsWith('/class') : path.startsWith(href));
-  const navIndex = Math.max(0, NAV.findIndex((n) => active(n.href)));
+  const navIndex = NAV.findIndex((n) => active(n.href)); // -1 on pages not in the bottom bar
   const go = (href) => (e) => { e.preventDefault(); navigate(href); };
   return html`<div class="shell">
     <aside class="sidebar">
-      <a class="side-brand" href="/" onClick=${go('/')}><${Flame} size=${34} /><span>Campus<b>Streak</b></span></a>
+      <a class="side-brand" href="/" onClick=${go('/')}><img class="brand-logo" src="/icon-96.png" alt="" width="36" height="36" /><span>Campus<b>Streak</b></span></a>
       <nav>
         ${[...NAV, ...SIDE_EXTRA].map((n) => html`<a href=${n.href} class=${'side-link' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)}>
           <${Icon} name=${n.icon} size=${20} /><span>${n.label}</span></a>`)}
@@ -55,7 +55,7 @@ function Shell({ path, children }) {
       <div class="side-foot muted small">DUT Campus Streak · Web</div>
     </aside>
     <main class="main" key=${path}>${children}</main>
-    <nav class="bottom-nav" style=${`--i:${navIndex}`}>
+    <nav class=${'bottom-nav' + (navIndex < 0 ? ' no-active' : '')} style=${`--i:${Math.max(0, navIndex)}`}>
       <span class="bn-pill"></span>
       ${NAV.map((n) => html`<a href=${n.href} class=${'bn-item' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)} aria-label=${n.label}>
         <${Icon} name=${n.icon} size=${22} /><span>${n.label}</span></a>`)}
@@ -64,7 +64,7 @@ function Shell({ path, children }) {
 }
 
 function Splash() {
-  return html`<div class="splash"><${Flame} size=${72} /><${Spinner} size=${22} /></div>`;
+  return html`<div class="splash"><img class="splash-logo" src="/icon-192.png" alt="" width="84" height="84" /><${Spinner} size=${22} /></div>`;
 }
 
 function App() {

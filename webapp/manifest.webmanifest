@@ -7,20 +7,11 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0b1020",
-  "theme_color": "#2f6bff",
+  "theme_color": "#1048d6",
   "lang": "vi",
   "icons": [
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "https://cdn.jsdelivr.net/gh/phu759042-source/dut-campus-streak@abec9614caea31d1ea23587c98f918b243a8b8b4/assets/icon/dut_campus_streak.png",
-      "sizes": "1254x1254",
-      "type": "image/png",
-      "purpose": "any"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
