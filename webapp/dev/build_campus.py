@@ -33,6 +33,16 @@ ZONES = {
     'X': [1328750183, 1328750184],
 }
 
+# Real data from students (overrides OSM / estimates).
+OVERRIDES = {
+    1551964032: {'levels': 10, 'height': 42, 'floor_area': 7330, 'estimated': False},  # Nhà S
+}
+# Khu A: OSM draws the two back blocks far too deep and swallows the courtyards (fish ponds, trees).
+# Keep only a ~12 m strip at the back of each block; the rest becomes a courtyard with a pond.
+A_BACK = [1043659297, 1043659298]
+A_FRONT = 1043659296
+BACK_DEPTH = 12.0
+
 ways = {e['id']: e for e in els if e['type'] == 'way' and e.get('geometry')}
 campus = ways[968341228]
 cpts = [pt(p) for p in campus['geometry']]
@@ -55,6 +65,41 @@ def ring(e):
     return pts
 
 
+def clip(poly, nx, nz, c, keep_below=True):
+    # Sutherland-Hodgman against the half-plane dot(p, n) <= c (or >= c)
+    sgn = 1 if keep_below else -1
+    f = lambda p: sgn * (p[0] * nx + p[1] * nz - c)
+    out = []
+    for i in range(len(poly)):
+        a, b = poly[i - 1], poly[i]
+        fa, fb = f(a), f(b)
+        if fb <= 0:
+            if fa > 0:
+                t = fa / (fa - fb); out.append([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
+            out.append(b)
+        elif fa <= 0:
+            t = fa / (fa - fb); out.append([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
+    return [[round(x, 1), round(z, 1)] for x, z in out]
+
+
+def centroid(pts):
+    return [sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)]
+
+
+def split_back(pts, front_c):
+    # long axis = direction of the longest edge; normal points towards the front block
+    cx, cz = centroid(pts)
+    i = max(range(len(pts)), key=lambda k: math.dist(pts[k - 1], pts[k]))
+    ang = math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0])
+    nx, nz = -math.sin(ang), math.cos(ang)
+    if (front_c[0] - cx) * nx + (front_c[1] - cz) * nz < 0:
+        nx, nz = -nx, -nz
+    back = min(p[0] * nx + p[1] * nz for p in pts)
+    keep = clip(pts, nx, nz, back + BACK_DEPTH, True)
+    yard = clip(pts, nx, nz, back + BACK_DEPTH, False)
+    return keep, yard, (math.cos(ang), math.sin(ang), nx, nz)
+
+
 zone_of = {}
 for z, ids in ZONES.items():
     for i in ids:
@@ -72,6 +117,15 @@ for e in ways.values():
         if t.get('building') == 'construction':
             continue
         lv = t.get('building:levels')
+        if e['id'] in A_BACK:
+            pts, yard, (ux, uz, nx, nz) = split_back(pts, centroid(ring(ways[A_FRONT])))
+            if len(yard) >= 3:
+                areas.append({'kind': 'grass', 'pts': yard, 'name': 'Sân trong khu A'})
+                c = centroid(yard)
+                hw, hd = 7.0, 2.6  # pond 14 m x 5.2 m along the block
+                areas.append({'kind': 'water', 'name': 'Hồ cá', 'pts': [
+                    [round(c[0] + ux * a * hw + nx * b * hd, 1), round(c[1] + uz * a * hw + nz * b * hd, 1)]
+                    for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]})
         a = area(pts)
         zone = zone_of.get(e['id'])
         if lv:
@@ -82,10 +136,12 @@ for e in ways.values():
             levels = 4 if a > 500 else 3
         else:
             levels = 3 if a > 400 else 2
-        buildings.append({
+        b = {
             'id': e['id'], 'zone': zone, 'name': t.get('name'), 'kind': t.get('amenity') or t.get('building'),
             'levels': min(levels, 8), 'estimated': not lv, 'pts': pts,
-        })
+        }
+        b.update(OVERRIDES.get(e['id'], {}))
+        buildings.append(b)
     elif 'highway' in t and t['highway'] in ROAD_W:
         roads.append({'w': ROAD_W[t['highway']], 'foot': t['highway'] in ('footway', 'path', 'cycleway'), 'name': t.get('name'), 'pts': pts})
     else:

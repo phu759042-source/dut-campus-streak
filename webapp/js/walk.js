@@ -329,9 +329,14 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
     onNear?.(null);
     st.nearIdx = -1;
   }
-  function teleport(x, z) {
+  function teleport(x, z, lookAt) {
     [st.x, st.z] = freeSpot(x, z);
     st.y = 0; st.vy = 0; st.t = 0.6; // short glide
+    if (lookAt) {
+      st.heading = Math.atan2(lookAt[0] - st.x, lookAt[1] - st.z);
+      st.yaw = st.heading + Math.PI; // camera behind, looking at the building
+      if (!st.fp) st.pitch = Math.max(st.pitch, 0.25);
+    }
   }
 
   return {

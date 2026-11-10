@@ -16,7 +16,7 @@ const ZONE_META = {
   G: { title: 'Khu G' }, H: { title: 'Khu H' }, I: { title: 'Khu I' }, K: { title: 'Khu K' },
   L: { title: 'Khu L', sub: 'Trung tâm Học liệu', keywords: 'thu vien hoc lieu trung tam hoc lieu library' },
   M: { title: 'Khu M' }, N: { title: 'Khu N' }, P: { title: 'Khu P' },
-  S: { title: 'Nhà S' }, X: { title: 'Khu X' },
+  S: { title: 'Nhà S', facts: ['10 tầng nổi, cao 42 m', 'Tổng diện tích sàn 7.330 m²'] }, X: { title: 'Khu X' },
 };
 const GROUPS = { C: 'Khu C (C1, C2, C3)', E: 'Khu E (E1, E2)' };
 
@@ -38,7 +38,7 @@ function buildTargets(scene, data, A) {
   for (const [z, list] of Object.entries(byZone)) {
     const m = ZONE_META[z] || { title: `Khu ${z}` };
     const osm = [...new Set(list.map((b) => b.name).filter(Boolean))].filter((n) => norm(n) !== norm(m.title));
-    T.push(fromBuildings(z, m.title, m.sub, list, { zone: z, letter: m.group || z, osm, keywords: m.keywords || '', label: true }));
+    T.push(fromBuildings(z, m.title, m.sub, list, { zone: z, letter: m.group || z, osm, keywords: m.keywords || '', label: true, facts: m.facts }));
   }
   for (const [g, title] of Object.entries(GROUPS)) {
     const list = scene.buildings.filter((b) => b.zone && ZONE_META[b.zone]?.group === g);
@@ -89,6 +89,10 @@ function search(targets, q) {
   }
   return out.slice(0, 8);
 }
+
+// "Front" of a place = its side towards the bottom of the map (main road / entrances, like the blue circle at Khu A).
+const centerOf = (t) => [(t.box.minX + t.box.maxX) / 2, (t.box.minZ + t.box.maxZ) / 2];
+const frontOf = (t) => (t.kind === 'poi' ? centerOf(t) : [(t.box.minX + t.box.maxX) / 2, t.box.maxZ + 5]);
 
 function roomLetter(room) {
   const m = String(room || '').trim().toUpperCase().match(/^([A-Z])\s*\d/);
@@ -303,7 +307,7 @@ export function MapPage() {
     if (!scene) return;
     scene.setSelected(t ? t.buildings : []);
     if (t && fly) {
-      if (scene.walking()) scene.teleport((t.box.minX + t.box.maxX) / 2, (t.box.minZ + t.box.maxZ) / 2); // walk mode: jump there
+      if (scene.walking()) scene.teleport(...frontOf(t), centerOf(t)); // walk mode: appear in front of it
       else if (t.kind === 'poi') scene.flyTo([t.anchor[0], 0, t.anchor[2]], 140);
       else scene.focusBox(t.box, t.height);
     }
@@ -315,10 +319,9 @@ export function MapPage() {
   function startWalk(t) {
     const scene = sceneRef.current;
     if (!scene) return;
-    const at = t ? [(t.box.minX + t.box.maxX) / 2, (t.box.minZ + t.box.maxZ) / 2] : null;
     setSel(null); scene.setSelected([]);
     setHint(false);
-    scene.startWalk(at);
+    scene.startWalk(t ? frontOf(t) : null, t ? centerOf(t) : null);
     setWalking(true);
     setWalkHint(true);
     setTimeout(() => setWalkHint(false), 9000);
@@ -405,6 +408,7 @@ export function MapPage() {
       </div>
       <div class="map-card-body">
         ${sel.letter && html`<div class="map-fact"><${Icon} name="school" size=${16} /><span>Phòng học có mã bắt đầu bằng <b>${sel.letter}</b> (ví dụ ${sel.letter}201).</span></div>`}
+        ${(sel.facts || []).map((f) => html`<div class="map-fact"><${Icon} name="info" size=${16} /><span>${f}</span></div>`)}
         ${sel.group && html`<div class="map-fact"><${Icon} name="grid" size=${16} /><span>Gồm ${sel.key === 'C' ? 'các dãy C1, C2, C3' : 'các dãy E1, E2'}.</span></div>`}
         ${sel.osm?.length > 0 && html`<div class="map-fact"><${Icon} name="info" size=${16} /><span>Tên trên OpenStreetMap: ${sel.osm.join(', ')}</span></div>`}
         ${here.length > 0 && html`<div class="map-today">

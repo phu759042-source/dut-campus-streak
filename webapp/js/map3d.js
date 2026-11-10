@@ -214,8 +214,13 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const buildings = [];
   const pickables = [];
   for (const b of data.buildings) {
-    const h = b.levels * FLOOR_H + 0.8;
+    const h = b.height || b.levels * FLOOR_H + 0.8; // real height when known (e.g. Nhà S 42 m)
     const geo = new THREE.ExtrudeGeometry(toShape(b.pts), { depth: h, bevelEnabled: false });
+    if (b.height) {
+      // stretch the window texture so it shows exactly `levels` rows of windows
+      const uv = geo.getAttribute('uv'), k = (b.levels * FLOOR_H) / b.height;
+      for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * k);
+    }
     geo.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geo, [roofMat(roofColor(b)), wallMat]);
     mesh.castShadow = mesh.receiveShadow = true;
@@ -334,13 +339,14 @@ export function createCampus(container, data, { dark = false, mobile = false, on
 
   // ---------- walk mode ----------
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
-  function startWalk(at) {
+  function startWalk(at, lookAt) {
     let x, z, facing;
     if (at) {
-      // start just outside the chosen place, facing it
+      // start in front of the chosen place, facing it
       [x, z] = walker.freeSpot(at[0], at[1]);
-      facing = Math.atan2(at[0] - x, at[1] - z);
-      if (!Number.isFinite(facing) || (x === at[0] && z === at[1])) facing = Math.PI; // default: walk "up" the map
+      const t = lookAt || at;
+      facing = Math.atan2(t[0] - x, t[1] - z);
+      if (!Number.isFinite(facing) || (x === t[0] && z === t[1])) facing = Math.PI; // default: walk "up" the map
     } else {
       const gate = data.pois.find((p) => p.id === 'gate-main');
       const [gx, gz] = gate ? gate.at : [0, 0];
@@ -457,7 +463,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     bounds: all,
     flyTo, focusBox, goHome, faceNorth, setSelected, setTheme, requestRender,
     startWalk, stopWalk, walking: () => walker.state.on,
-    setJoy: (x, y) => walker.setJoy(x, y), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z) => walker.teleport(x, z),
+    setJoy: (x, y) => walker.setJoy(x, y), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt) => walker.teleport(x, z, lookAt),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       disposed = true;
