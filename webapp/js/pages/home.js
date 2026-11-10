@@ -36,7 +36,9 @@ export function CountUp({ value, ms = 900 }) {
       if (p < 1) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    // rAF is paused in background tabs: make sure the final value is always shown.
+    const done = setTimeout(() => { cancelAnimationFrame(raf); setV(to); }, ms + 100);
+    return () => { cancelAnimationFrame(raf); clearTimeout(done); };
   }, [value]);
   return html`<span>${v}</span>`;
 }
