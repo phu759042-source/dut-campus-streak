@@ -7,6 +7,7 @@ import { Icon, Avatar, Flame, Skeleton, ErrorBox, Empty, openSheet, useTick } fr
 import { navigate } from '../router.js';
 import { showAbsenceSheet, AbsenceBadge } from './absence.js';
 import { GamesSection } from '../games.js';
+import { InstallButton } from '../install.js';
 import { pushStatus, enablePush, pushPromptDismissed, dismissPushPrompt } from '../push.js';
 import { toast } from '../ui.js';
 
@@ -226,7 +227,7 @@ export function HomePage() {
           <span class="home-name">${name || 'Sinh viên'}</span>
         </span>
       </button>
-      <span class="home-meta">${profile?.class_name ? html`<span class="chip">${profile.class_name}</span>` : null}</span>
+      <span class="home-meta"><${InstallButton} />${profile?.class_name ? html`<span class="chip class-chip">${profile.class_name}</span>` : null}</span>
     </header>
 
     <div class="home-grid">

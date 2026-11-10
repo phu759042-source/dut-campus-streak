@@ -5,6 +5,7 @@ import { Icon, Avatar, Spinner, Skeleton, Empty, toast } from '../ui.js';
 import { navigate } from '../router.js';
 import { DocThumb, fileTone } from './documents.js';
 import { previewKind } from '../preview.js';
+import { InstallButton } from '../install.js';
 
 async function call(body) {
   const res = await invokeFunction('shared-documents', body);
@@ -73,13 +74,14 @@ export function SharedLinkPage({ token }) {
 
   const brand = html`<a class="share-brand" href="/" onClick=${(e) => { e.preventDefault(); navigate(loggedIn ? '/' : '/login'); }}>
     <img src="/icon-96.png" alt="" width="34" height="34" /><span>Campus<b>Streak</b></span></a>`;
+  const top = html`<div class="share-top">${brand}<${InstallButton} /></div>`;
 
-  if (error) return html`<div class="share-page"><div class="page narrow">${brand}
+  if (error) return html`<div class="share-page"><div class="page narrow">${top}
     <${Empty} icon="ban" title="Không mở được link" text=${error}>
       <button class="btn btn-primary" onClick=${() => navigate(loggedIn ? '/' : '/login')}>Về Campus Streak</button><//></div></div>`;
 
   return html`<div class="share-page"><div class="page">
-    ${brand}
+    ${top}
     ${!data ? html`<${Skeleton} h=${120} r=${24} /><${Skeleton} h=${170} count=${2} />` : html`
       <section class="share-hero pop-in">
         <${Avatar} url=${data.owner.avatar_url} name=${data.owner.display_name} size=${52} ring />

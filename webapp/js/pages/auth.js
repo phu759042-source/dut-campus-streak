@@ -2,6 +2,7 @@ import { html, useState } from 'preact';
 import { supabase, errMsg, ensureCurrentUserData, appStore } from '../lib.js';
 import { Icon, IconInput, PasswordInput, Spinner, toast } from '../ui.js';
 import { navigate } from '../router.js';
+import { InstallButton } from '../install.js';
 
 function AuthShell({ title, subtitle, children }) {
   return html`<div class="auth">
@@ -9,6 +10,7 @@ function AuthShell({ title, subtitle, children }) {
       <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>
       <div class="auth-grid"></div>
     </div>
+    <div class="auth-install"><${InstallButton} variant="light" /></div>
     <div class="auth-card pop-in">
       <div class="auth-brand">
         <img class="brand-mark" src="/icon-192.png" alt="" width="56" height="56" />

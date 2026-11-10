@@ -11,6 +11,7 @@ import { Icon, Avatar, Spinner, Skeleton, openSheet, confirmDialog, toast, Field
 import { navigate } from '../router.js';
 import { PageHeader } from './shared.js';
 import { useStore } from './home.js';
+import { InstallButton } from '../install.js';
 
 // ------------------------------------------------------------------
 // Image cropper (drag to move, slider / wheel / pinch to zoom)
@@ -359,6 +360,7 @@ export function ProfilePage() {
         <span class="grow"><b>Giao diện tối</b><br /><span class="muted small">${dark ? 'Đang dùng giao diện tối' : 'Đang dùng giao diện sáng'}</span></span>
         <input type="checkbox" class="switch" checked=${dark} onChange=${(e) => saveTheme(e.target.checked ? 'dark' : 'light')} />
       </label>
+      <${InstallButton} variant="setting" />
       <${PushSetting} />
       <button class="setting" onClick=${() => navigate('/achievements')}><span class="list-icon amber"><${Icon} name="trophy" /></span><span class="grow"><b>Thành tích</b></span><${Icon} name="chevron" size=${18} /></button>
       <button class="setting" onClick=${() => navigate('/about')}><span class="list-icon blue"><${Icon} name="info" /></span><span class="grow"><b>Liên hệ & Giới thiệu</b></span><${Icon} name="chevron" size=${18} /></button>

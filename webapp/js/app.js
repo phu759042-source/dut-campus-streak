@@ -13,6 +13,7 @@ import { ProfilePage } from './pages/profile.js';
 import { AchievementsPage, AboutPage } from './pages/misc.js';
 import { SharedLinkPage } from './pages/sharelink.js';
 import { syncPush } from './push.js';
+import { InstallButton } from './install.js';
 
 const PUBLIC = ['/login', '/register', '/forgot', '/reset'];
 
@@ -54,6 +55,7 @@ function Shell({ path, children }) {
         ${[...NAV, ...SIDE_EXTRA].map((n) => html`<a href=${n.href} class=${'side-link' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)}>
           <${Icon} name=${n.icon} size=${20} /><span>${n.label}</span></a>`)}
       </nav>
+      <${InstallButton} variant="side" />
       <div class="side-foot muted small">DUT Campus Streak · Web</div>
     </aside>
     <main class="main" key=${path}>${children}</main>
