@@ -11,6 +11,7 @@ const isAndroid = /Android/i.test(ua);
 const isMobile = isIOS || isAndroid;
 const isFirefox = /Firefox|FxiOS/i.test(ua);
 const isSamsung = /SamsungBrowser/i.test(ua);
+const isOpera = /OPR\/|Opera|OPX\//i.test(ua);
 const isMacSafari = !isIOS && /Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome|Chromium|Edg/.test(ua);
 
 export const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -50,7 +51,10 @@ function Guide() {
     ];
   } else if (isAndroid) {
     title = 'Cài trên Android';
-    steps = isSamsung ? [
+    steps = isOpera ? [
+      html`Bấm nút <b>menu</b> <span class="kbd">⋮</span> của Opera.`,
+      html`Chọn <b>“Thêm vào…”</b> → <b>“Màn hình chính”</b> (hoặc <b>“Cài đặt”</b>).`,
+    ] : isSamsung ? [
       html`Bấm nút <b>menu</b> <span class="kbd">≡</span> ở thanh dưới của Samsung Internet.`,
       html`Chọn <b>“Thêm trang vào”</b> → <b>“Màn hình chờ”</b>.`,
     ] : isFirefox ? [
@@ -64,6 +68,13 @@ function Guide() {
   } else if (isMacSafari) {
     title = 'Cài trên Mac (Safari)';
     steps = [html`Trên thanh menu chọn <b>Tệp</b> → <b>“Thêm vào Dock”</b>.`, html`Bấm <b>Thêm</b>. Campus Streak sẽ nằm trong Dock như một app.`];
+  } else if (isOpera) {
+    title = 'Opera trên máy tính chưa hỗ trợ cài app';
+    steps = [
+      html`Mở <b>www.campusstreak.com</b> bằng <b>Edge</b> (có sẵn trên Windows) hoặc <b>Chrome</b>.`,
+      html`Bấm nút <b>Cài app</b> ở góc trên → <b>Cài đặt</b>. Campus Streak sẽ có trong menu Start và taskbar như một app riêng; bạn vẫn dùng Opera bình thường.`,
+      html`Hoặc trong Opera: bấm <span class="kbd">Ctrl</span> + <span class="kbd">D</span> để lưu trang, hay thêm vào <b>Speed Dial</b> để mở nhanh.`,
+    ];
   } else if (isFirefox) {
     title = 'Firefox chưa hỗ trợ cài app';
     steps = [html`Mở <b>www.campusstreak.com</b> bằng <b>Chrome</b> hoặc <b>Edge</b>.`, html`Bấm nút <b>Cài app</b> ở góc trên.`];
