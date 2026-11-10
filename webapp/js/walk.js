@@ -1,6 +1,7 @@
 // Walk mode for the 3D campus map: a small low-poly student you steer around the campus.
 // Desktop: WASD / arrows to move, Shift to run, Space to jump, drag the mouse to turn the camera, wheel to zoom,
-// E to open info about the building you are next to, Esc to leave.
+// E to open info about the building you are next to, O to lock the mouse (mouse-look), Esc to leave.
+// Zooming all the way in switches to a first-person view.
 // Phones: on-screen joystick (push far to run), jump button, drag anywhere else to turn the camera.
 // Collisions: the student is a 0.45 m circle pushed out of building footprints (2D, cheap and stable).
 import * as THREE from 'three';
@@ -49,7 +50,7 @@ function makeStudent() {
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
-export function createWalker({ scene, camera, el, data, pickables, limits, onNear, onInteract, onExit }) {
+export function createWalker({ scene, camera, el, data, pickables, limits, onNear, onInteract, onExit, onView }) {
   const s = makeStudent();
   s.group.visible = s.blob.visible = false;
   scene.add(s.group, s.blob);
@@ -57,8 +58,9 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
   const solids = data.buildings.map((b, i) => ({ pts: b.pts, box: bbox([b.pts]), i }));
   const st = {
     on: false, x: 0, z: 0, y: 0, vy: 0, heading: 0, yaw: 0, pitch: 0.3, dist: 8, phase: 0, speed: 0,
-    keys: new Set(), joy: { x: 0, y: 0 }, jumpReq: false, t: 0, nearIdx: -1, nearTimer: 0,
+    keys: new Set(), joy: { x: 0, y: 0 }, jumpReq: false, t: 0, nearIdx: -1, nearTimer: 0, fp: false,
   };
+  const FP_DIST = 2.2; // zooming closer than this switches to first person
 
   // ---------- collision ----------
   function nearestEdge(pts, x, z) {
@@ -116,7 +118,10 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
     if (MOVE_KEYS.includes(e.code)) { st.keys.add(e.code); e.preventDefault(); }
     if (e.code === 'Space') { st.jumpReq = true; e.preventDefault(); }
     if (e.code === 'KeyE' || e.code === 'Enter') onInteract?.(st.nearIdx >= 0 ? data.buildings[st.nearIdx] : null);
-    if (e.code === 'Escape') onExit?.();
+    if (e.code === 'KeyO') { toggleLock(); e.preventDefault(); }
+    if (e.code === 'KeyF' || e.code === 'KeyV') setFirstPerson(!st.fp);
+    // Esc first releases a locked mouse (the browser does that); only a separate Esc leaves walk mode.
+    if (e.code === 'Escape' && !locked() && performance.now() - unlockedAt > 400) onExit?.();
   }
   function keyup(e) { st.keys.delete(e.code); }
   const blur = () => st.keys.clear();
@@ -124,27 +129,70 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
   window.addEventListener('keyup', keyup);
   window.addEventListener('blur', blur);
 
-  // drag to turn the camera, wheel to zoom
+  const emitView = () => onView?.({ fp: st.fp, locked: locked() });
+  const minPitch = () => (st.fp ? -1.3 : 0.04);
+  function turn(dx, dy) {
+    st.yaw -= dx;
+    st.pitch = THREE.MathUtils.clamp(st.pitch + dy, minPitch(), st.fp ? 1.3 : 1.2);
+  }
+
+  // O: lock the mouse to the view (pointer lock) -> moving the mouse turns the camera, no click needed
+  const locked = () => document.pointerLockElement === el;
+  let unlockedAt = 0;
+  function toggleLock() {
+    if (!st.on) return;
+    if (locked()) { document.exitPointerLock(); return; }
+    const fail = (e) => { console.warn('pointer lock', e); onView?.({ fp: st.fp, locked: false, lockError: true }); };
+    const fallback = () => {
+      try { const p = el.requestPointerLock(); if (p && p.catch) p.catch(fail); } catch (e) { fail(e); }
+    };
+    if (!el.requestPointerLock) return fail(new Error('unsupported'));
+    try {
+      const p = el.requestPointerLock({ unadjustedMovement: true });
+      if (p && p.catch) p.catch(fallback);
+    } catch { fallback(); }
+  }
+  const lockChange = () => { if (!locked()) unlockedAt = performance.now(); drag = null; emitView(); };
+  document.addEventListener('pointerlockchange', lockChange);
+  const mousemove = (e) => { if (st.on && locked()) turn(e.movementX * 0.0024, e.movementY * 0.0021); };
+  document.addEventListener('mousemove', mousemove);
+
+  // zoom; past FP_DIST the camera goes into the student's head (first person)
+  function setFirstPerson(on) {
+    if (on === st.fp) return;
+    st.fp = on;
+    if (on) { st.dist = FP_DIST; st.pitch = Math.min(st.pitch, 0.06); }
+    else { st.dist = Math.max(st.dist, 3); st.pitch = Math.max(st.pitch, 0.12); }
+    emitView();
+  }
+  function zoomBy(f) {
+    if (!st.on) return;
+    if (st.fp) { if (f > 1.0001) { setFirstPerson(false); st.dist = 3; } return; }
+    const nd = st.dist * f;
+    if (nd < FP_DIST) setFirstPerson(true);
+    else st.dist = Math.min(26, nd);
+  }
+
+  // drag to turn the camera (when the mouse is not locked), wheel to zoom
   let drag = null;
-  el.addEventListener('pointerdown', (e) => { if (st.on) { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; } });
+  el.addEventListener('pointerdown', (e) => { if (st.on && !locked()) { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; } });
   const pointermove = (e) => {
-    if (!st.on || !drag || drag.id !== e.pointerId) return;
-    st.yaw -= (e.clientX - drag.x) * 0.0062;
-    st.pitch = THREE.MathUtils.clamp(st.pitch + (e.clientY - drag.y) * 0.0042, 0.04, 1.2);
+    if (!st.on || !drag || drag.id !== e.pointerId || locked()) return;
+    turn((e.clientX - drag.x) * 0.0062, (e.clientY - drag.y) * 0.0042);
     drag.x = e.clientX; drag.y = e.clientY;
   };
   window.addEventListener('pointermove', pointermove);
   const endDrag = (e) => { if (drag && drag.id === e.pointerId) drag = null; };
   window.addEventListener('pointerup', endDrag);
   window.addEventListener('pointercancel', endDrag);
-  el.addEventListener('wheel', (e) => { if (!st.on) return; e.preventDefault(); st.dist = THREE.MathUtils.clamp(st.dist * (1 + e.deltaY * 0.0012), 3, 26); }, { passive: false });
+  el.addEventListener('wheel', (e) => { if (!st.on) return; e.preventDefault(); zoomBy(1 + THREE.MathUtils.clamp(e.deltaY, -120, 120) * 0.0012); }, { passive: false });
   // two-finger pinch zoom on phones
   const touches = new Map();
   let pinch = null;
-  el.addEventListener('touchstart', (e) => { for (const t of e.changedTouches) touches.set(t.identifier, t); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), dist: st.dist }; drag = null; } }, { passive: true });
+  el.addEventListener('touchstart', (e) => { for (const t of e.changedTouches) touches.set(t.identifier, t); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) }; drag = null; } }, { passive: true });
   el.addEventListener('touchmove', (e) => {
     for (const t of e.changedTouches) touches.set(t.identifier, t);
-    if (st.on && pinch && touches.size === 2) { const [a, b] = [...touches.values()]; const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); st.dist = THREE.MathUtils.clamp(pinch.dist * (pinch.d / (d || 1)), 3, 26); }
+    if (st.on && pinch && touches.size === 2) { const [a, b] = [...touches.values()]; const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); if (d > 0) { zoomBy(pinch.d / d); pinch.d = d; } }
   }, { passive: true });
   const touchEnd = (e) => { for (const t of e.changedTouches) touches.delete(t.identifier); if (touches.size < 2) pinch = null; };
   el.addEventListener('touchend', touchEnd, { passive: true });
@@ -223,11 +271,26 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
     s.blob.position.set(st.x, 0.4, st.z);
     s.blob.scale.setScalar(1 - Math.min(0.5, st.y * 0.25));
 
-    // camera follows smoothly (slower right after entering, so it glides in from the overview)
-    cameraTarget(dt);
-    const follow = st.t < 1.4 ? 2.6 : 9;
-    camera.position.lerp(want, 1 - Math.exp(-dt * follow));
-    camera.lookAt(look);
+    const near = st.fp ? 0.12 : 1;
+    if (camera.near !== near) { camera.near = near; camera.updateProjectionMatrix(); }
+    s.group.visible = s.blob.visible = !st.fp;
+    if (st.fp) {
+      // first person: camera sits in the head and looks where the mouse points
+      setOccluders([]);
+      camPitch += (st.pitch - camPitch) * Math.min(1, dt * 25);
+      const cp = Math.cos(camPitch);
+      dir.set(Math.sin(st.yaw) * cp, Math.sin(camPitch), Math.cos(st.yaw) * cp).normalize();
+      look.set(st.x, st.y + 1.74 + (st.speed > 0.2 && st.y === 0 ? Math.sin(st.phase * 2) * 0.035 : 0), st.z);
+      camera.position.copy(look);
+      want.copy(look).sub(dir);
+      camera.lookAt(want);
+    } else {
+      // camera follows smoothly (slower right after entering, so it glides in from the overview)
+      cameraTarget(dt);
+      const follow = st.t < 1.4 ? 2.6 : 9;
+      camera.position.lerp(want, 1 - Math.exp(-dt * follow));
+      camera.lookAt(look);
+    }
 
     // nearby building (checked a few times per second)
     st.nearTimer -= dt;
@@ -249,13 +312,17 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
     st.y = 0; st.vy = 0; st.speed = 0; st.t = 0; st.nearIdx = -1; st.nearTimer = 0;
     st.heading = facing ?? 0;
     st.yaw = st.heading + Math.PI; // camera behind the student
-    st.pitch = 0.32; st.dist = 8; camPitch = 0.32;
+    st.pitch = 0.32; st.dist = 8; camPitch = 0.32; st.fp = false;
     st.keys.clear(); st.joy.x = st.joy.y = 0;
     s.group.visible = s.blob.visible = true;
     st.on = true;
+    emitView();
   }
   function exit() {
+    if (locked()) document.exitPointerLock();
     st.on = false;
+    st.fp = false;
+    if (camera.near !== 1) { camera.near = 1; camera.updateProjectionMatrix(); }
     st.keys.clear(); st.joy.x = st.joy.y = 0;
     s.group.visible = s.blob.visible = false;
     setOccluders([]);
@@ -272,6 +339,7 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
     enter, exit, update, teleport, freeSpot,
     setJoy(x, y) { st.joy.x = x; st.joy.y = y; },
     jump() { st.jumpReq = true; },
+    toggleLock, setFirstPerson, isLocked: locked,
     dispose() {
       window.removeEventListener('keydown', keydown);
       window.removeEventListener('keyup', keyup);
@@ -279,6 +347,9 @@ export function createWalker({ scene, camera, el, data, pickables, limits, onNea
       window.removeEventListener('pointerup', endDrag);
       window.removeEventListener('pointermove', pointermove);
       window.removeEventListener('pointercancel', endDrag);
+      document.removeEventListener('pointerlockchange', lockChange);
+      document.removeEventListener('mousemove', mousemove);
+      if (locked()) document.exitPointerLock();
     },
   };
 }

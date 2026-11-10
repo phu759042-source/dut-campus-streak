@@ -966,3 +966,12 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .joy-jump:active { transform: scale(0.92); }
 .joy-jump-arrow { width: 0; height: 0; border: 13px solid transparent; border-bottom: 18px solid #fff; border-top: 0; }
 .walk-hint-m { bottom: calc(170px + var(--safe-b)) !important; }
+
+/* walk mode: mouse lock + first person */
+.map-crosshair { position: absolute; z-index: 3; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(15, 27, 61, 0.55); pointer-events: none; }
+.map-lock-chip { position: absolute; z-index: 3; left: 16px; bottom: calc(16px + var(--safe-b)); font-size: 12.5px; padding: 7px 12px; border-radius: 12px; color: var(--text); background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: var(--shadow); pointer-events: none; max-width: calc(100% - 32px); }
+.map-lock-chip.on { color: #fff; background: rgba(47, 107, 255, 0.92); }
+@media (pointer: fine) { .map-near { bottom: calc(60px + var(--safe-b)); } .walking .map-hint { bottom: calc(110px + var(--safe-b)); } }
+.joy-eye { position: absolute; z-index: 3; right: 40px; bottom: calc(136px + var(--safe-b)); width: 52px; height: 52px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  background: rgba(15, 27, 61, 0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.joy-eye.on { background: linear-gradient(135deg, #2f6bff, #6b4dff); }

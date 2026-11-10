@@ -188,6 +188,9 @@ export function MapPage() {
   const [walking, setWalking] = useState(false);
   const [near, setNear] = useState(null);
   const [walkHint, setWalkHint] = useState(false);
+  const [view, setView] = useState({ fp: false, locked: false });
+  const selRef = useRef(null);
+  selRef.current = sel;
   const miniRef = useRef();
   const mmRef = useRef(null);
   const mobile = isMobile();
@@ -220,7 +223,11 @@ export function MapPage() {
             select(targetFor(b), { fly: false });
           },
           onNear: (b) => setNear(b ? targetFor(b) : null),
-          onInteract: (b) => { if (b) select(targetFor(b), { fly: false }); },
+          onInteract: (b) => { if (selRef.current) select(null); else if (b) select(targetFor(b), { fly: false }); }, // E toggles the card
+          onView: (v) => {
+            if (v.lockError) toast('Trình duyệt chưa cho khóa chuột. Bấm vào bản đồ một lần rồi nhấn O lại nhé.', 'info', 4000);
+            setView({ fp: v.fp, locked: v.locked });
+          },
           onExitWalk: () => exitWalk(),
           onFrame: ({ project, compass: c, distance, walk }) => {
             if (walk) drawMinimap(miniRef.current, mmRef.current, walk);
@@ -320,6 +327,7 @@ export function MapPage() {
   function exitWalk() {
     sceneRef.current?.stopWalk();
     setWalking(false);
+    setView({ fp: false, locked: false });
     setNear(null);
     setWalkHint(false);
   }
@@ -362,9 +370,14 @@ export function MapPage() {
     ${state === 'ready' && walking && html`<div class="map-mini"><canvas ref=${miniRef}></canvas><span class="map-mini-n" style=${`transform: rotate(${compass}rad)`}><b>N</b></span></div>`}
     ${state === 'ready' && walking && near && !sel && html`<button class="map-near pop-in" key=${near.key} onClick=${() => select(near, { fly: false })}>
       <${Icon} name="pin" size=${16} /><span>Gần <b>${near.title}</b></span><span class="map-near-key">${mobile ? 'Chạm để xem' : 'Nhấn E'}</span></button>`}
-    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy · kéo chuột để xoay · lăn chuột để zoom · <b>E</b> xem tòa nhà · <b>Esc</b> thoát</div>`}
+    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà · <b>Esc</b> thoát</div>`}
+    ${state === 'ready' && walking && (view.fp || view.locked) && html`<div class="map-crosshair" aria-hidden="true"></div>`}
+    ${state === 'ready' && walking && !mobile && html`<div class=${'map-lock-chip' + (view.locked ? ' on' : '')}>${view.locked
+      ? html`<b>Đang khóa chuột</b> · di chuột để nhìn · nhấn <b>O</b> hoặc <b>Esc</b> để mở`
+      : html`Nhấn <b>O</b> để khóa chuột và nhìn quanh${view.fp ? '' : html` · lăn chuột để zoom`}`}${view.fp ? html` · <b>Góc nhìn thứ nhất</b>` : ''}</div>`}
     ${state === 'ready' && walking && walkHint && mobile && html`<div class="map-hint pop-in walk-hint-m">Kéo cần bên trái để đi (đẩy hết cỡ để chạy) · vuốt màn hình để xoay · 2 ngón để zoom</div>`}
     ${state === 'ready' && walking && mobile && html`<${Joystick} onMove=${(x, y) => sceneRef.current?.setJoy(x, y)} />
+      <button class=${'joy-eye' + (view.fp ? ' on' : '')} aria-label="Đổi góc nhìn" onClick=${() => sceneRef.current?.setFirstPerson(!view.fp)}><${Icon} name="eye" size=${22} /></button>
       <button class="joy-jump" aria-label="Nhảy" onPointerDown=${(e) => { e.preventDefault(); sceneRef.current?.jump(); }}><span class="joy-jump-arrow"></span></button>`}
     ${state === 'ready' && !walking && !sel && html`<button class="map-walk-btn pop-in" onClick=${() => startWalk(null)}>
       <span class="map-walk-ico">🚶</span><span class="grow"><b>Đi dạo quanh trường</b><span class="small">Nhập vai sinh viên, xuất phát từ cổng chính</span></span></button>`}

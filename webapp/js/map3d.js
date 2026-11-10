@@ -148,7 +148,7 @@ function rng(seed) {
 }
 
 // ---------- the scene ----------
-export function createCampus(container, data, { dark = false, mobile = false, onPick, onFrame, onNear, onInteract, onExitWalk } = {}) {
+export function createCampus(container, data, { dark = false, mobile = false, onPick, onFrame, onNear, onInteract, onExitWalk, onView } = {}) {
   let needs = true, raf = 0, disposed = false;
   function requestRender() { needs = true; }
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -333,7 +333,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   });
 
   // ---------- walk mode ----------
-  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, limits: LIM, onNear, onInteract, onExit: onExitWalk });
+  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
   function startWalk(at) {
     let x, z, facing;
     if (at) {
@@ -370,6 +370,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const el = renderer.domElement;
   el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; anim = null; });
   el.addEventListener('pointerup', (e) => {
+    if (document.pointerLockElement) return; // mouse-look: clicks are not for picking
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6 || performance.now() - down.t > 600) return;
     const r = el.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -456,7 +457,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     bounds: all,
     flyTo, focusBox, goHome, faceNorth, setSelected, setTheme, requestRender,
     startWalk, stopWalk, walking: () => walker.state.on,
-    setJoy: (x, y) => walker.setJoy(x, y), jump: () => walker.jump(), teleport: (x, z) => walker.teleport(x, z),
+    setJoy: (x, y) => walker.setJoy(x, y), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z) => walker.teleport(x, z),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       disposed = true;
