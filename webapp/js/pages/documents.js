@@ -141,7 +141,11 @@ export function DocumentsPage() {
   const [busy, setBusy] = useState(false);
   const [grid, setGrid] = useState(readLocal('cs-docs-grid') === '1');
   const [dragging, setDragging] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [progress, setProgress] = useState(null); // { done, total } while deleting many
   const fileRef = useRef();
+  const press = useRef({ timer: null, fired: false, x: 0, y: 0 });
   const parentId = stack.length ? stack[stack.length - 1].id : null;
   const uid = currentUser().id;
 
@@ -161,7 +165,71 @@ export function DocumentsPage() {
       setThumbs(map);
     }
   }
-  useEffect(() => { load(); }, [parentId]);
+  useEffect(() => { exitSelect(); load(); }, [parentId]);
+
+  // ---------- multi-select ----------
+  function exitSelect() { setSelectMode(false); setSelected(new Set()); }
+  function toggle(it) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(it.id)) next.delete(it.id); else next.add(it.id);
+      if (!next.size) setSelectMode(false);
+      return next;
+    });
+  }
+  function startSelect(it) { setSelectMode(true); setSelected(new Set([it.id])); navigator.vibrate?.(25); }
+  const allSelected = !!items && items.length > 0 && selected.size === items.length;
+  const selectAll = () => setSelected(allSelected ? new Set() : new Set(items.map((x) => x.id)));
+
+  // Long-press (touch or mouse) on a tile enters selection mode.
+  const pressHandlers = (it) => ({
+    onPointerDown: (e) => {
+      if (e.button > 0) return;
+      const p = press.current;
+      p.fired = false; p.x = e.clientX; p.y = e.clientY;
+      clearTimeout(p.timer);
+      p.timer = setTimeout(() => { p.fired = true; if (selectMode) toggle(it); else startSelect(it); }, 480);
+    },
+    onPointerMove: (e) => {
+      const p = press.current;
+      if (Math.abs(e.clientX - p.x) > 10 || Math.abs(e.clientY - p.y) > 10) clearTimeout(p.timer);
+    },
+    onPointerUp: () => clearTimeout(press.current.timer),
+    onPointerLeave: () => clearTimeout(press.current.timer),
+    onPointerCancel: () => clearTimeout(press.current.timer),
+    onContextMenu: (e) => { if (press.current.fired || selectMode) e.preventDefault(); },
+  });
+  function onTileClick(e, it) {
+    if (press.current.fired) { press.current.fired = false; return; } // the long-press already handled it
+    if (selectMode) return toggle(it);
+    if (e.ctrlKey || e.metaKey) return startSelect(it);
+    activate(it);
+  }
+
+  async function removeSelected() {
+    const chosen = items.filter((x) => selected.has(x.id));
+    if (!chosen.length) return;
+    const folders = chosen.filter((x) => x.item_type === 'folder').length;
+    const files = chosen.length - folders;
+    const what = [folders ? `${folders} thư mục` : '', files ? `${files} tệp` : ''].filter(Boolean).join(' và ');
+    const ok = await confirmDialog({
+      title: allSelected ? 'Xóa tất cả?' : `Xóa ${chosen.length} mục?`, danger: true, confirmText: 'Xóa',
+      message: `${what} sẽ bị xóa${folders ? ', kể cả mọi tệp bên trong các thư mục' : ''}. Bạn không thể hoàn tác.`,
+    });
+    if (!ok) return;
+    setBusy(true);
+    setProgress({ done: 0, total: chosen.length });
+    let failed = 0;
+    for (let k = 0; k < chosen.length; k++) {
+      try { await deleteRecursive(chosen[k]); } catch { failed++; }
+      setProgress({ done: k + 1, total: chosen.length });
+    }
+    setProgress(null);
+    setBusy(false);
+    exitSelect();
+    toast(failed ? `Đã xóa ${chosen.length - failed} mục, ${failed} mục bị lỗi.` : `Đã xóa ${chosen.length} mục.`, failed ? 'error' : 'success');
+    load();
+  }
 
   async function createFolder() {
     const name = await promptDialog({ title: 'Tạo thư mục', placeholder: 'Tên thư mục' });
@@ -261,16 +329,22 @@ export function DocumentsPage() {
     onDrop=${(e) => { e.preventDefault(); setDragging(false); upload([...e.dataTransfer.files]); }}>
     <${PageHeader} title="Tài liệu" actions=${html`
       ${busy && html`<${Spinner} size=${20} />`}
+      ${items?.length > 0 && !selectMode && html`<button class="btn btn-ghost btn-sm" onClick=${() => setSelectMode(true)}><${Icon} name="checkCircle" size=${16} /> Chọn</button>`}
       <button class="icon-btn" aria-label="Đổi kiểu hiển thị" onClick=${toggleGrid}><${Icon} name=${grid ? 'list' : 'grid'} /></button>`} />
     <div class="crumbs">
       <button class=${!stack.length ? 'active' : ''} onClick=${() => setStack([])}><${Icon} name="home" size=${15} /> Tài liệu của tôi</button>
       ${stack.map((f, i) => html`<span class="crumb-sep">›</span><button class=${i === stack.length - 1 ? 'active' : ''} onClick=${() => setStack(stack.slice(0, i + 1))}>${f.name}</button>`)}
     </div>
-    <div class="row gap wrap">
+    ${selectMode ? html`<div class="select-bar pop-in">
+        <button class="icon-btn" aria-label="Thoát chọn" onClick=${exitSelect}><${Icon} name="x" size=${20} /></button>
+        <b class="grow">${progress ? `Đang xóa ${progress.done}/${progress.total}…` : selected.size ? `Đã chọn ${selected.size}` : 'Chạm để chọn'}</b>
+        <button class="btn btn-ghost btn-sm" disabled=${busy} onClick=${selectAll}>${allSelected ? 'Bỏ chọn' : 'Chọn tất cả'}</button>
+        <button class="btn btn-danger btn-sm" disabled=${busy || !selected.size} onClick=${removeSelected}><${Icon} name="trash" size=${16} /> Xóa</button>
+      </div>` : html`<div class="row gap wrap">
       <button class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => fileRef.current?.click()}><${Icon} name="upload" size=${18} /> Tải tệp lên</button>
       <button class="btn btn-ghost btn-sm" disabled=${busy} onClick=${createFolder}><${Icon} name="folder" size=${18} /> Thư mục mới</button>
-      <input ref=${fileRef} type="file" multiple class="hidden" onChange=${(e) => { upload([...e.target.files]); e.target.value = ''; }} />
-    </div>
+    </div>`}
+    <input ref=${fileRef} type="file" multiple class="hidden" onChange=${(e) => { upload([...e.target.files]); e.target.value = ''; }} />
     <div class="gap-top"></div>
     ${error ? html`<${ErrorBox} message=${error} onRetry=${load} />`
       : !items ? html`<${Skeleton} h=${64} count=${4} />`
@@ -280,13 +354,15 @@ export function DocumentsPage() {
             const folder = it.item_type === 'folder';
             const [label, tone] = folder ? ['', 'amber'] : fileTone(it.name);
             const thumb = !folder && thumbs[it.storage_path];
-            return html`<div key=${it.id} class="doc slide-up" style=${`--d:${Math.min(i, 15) * 30}ms`}>
-              <button class="doc-main" onClick=${() => activate(it)}>
+            const isSel = selected.has(it.id);
+            return html`<div key=${it.id} class=${'doc slide-up' + (selectMode ? ' selecting' : '') + (isSel ? ' selected' : '')} style=${`--d:${Math.min(i, 15) * 30}ms`}>
+              <button class="doc-main" onClick=${(e) => onTileClick(e, it)} ...${pressHandlers(it)}>
+                ${selectMode && html`<span class=${'doc-check' + (isSel ? ' on' : '')}>${isSel && html`<${Icon} name="check" size=${14} stroke=${3.2} />`}</span>`}
                 <${DocThumb} item=${it} folder=${folder} label=${label} tone=${tone} grid=${grid} thumb=${thumb} />
                 <span class="doc-info"><span class="doc-name">${it.name}</span>
                   <span class="muted small">${folder ? 'Thư mục' : fmtBytes(it.file_size)}</span></span>
               </button>
-              <button class="icon-btn doc-more" aria-label="Tùy chọn" onClick=${() => menu(it)}><${Icon} name="more" /></button>
+              ${!selectMode && html`<button class="icon-btn doc-more" aria-label="Tùy chọn" onClick=${() => menu(it)}><${Icon} name="more" /></button>`}
             </div>`;
           })}
         </div>`}
