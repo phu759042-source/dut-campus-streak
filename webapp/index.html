@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>DUT Campus Streak</title>
+  <meta name="description" content="Check-in lớp học bằng ảnh biển phòng, giữ lửa streak và đua bảng xếp hạng cùng sinh viên DUT." />
+  <meta name="theme-color" content="#eef4ff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Campus Streak" />
+  <meta property="og:title" content="DUT Campus Streak" />
+  <meta property="og:description" content="Đi học đều, giữ lửa streak." />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="https://cdn.jsdelivr.net/gh/phu759042-source/dut-campus-streak@abec9614caea31d1ea23587c98f918b243a8b8b4/assets/icon/dut_campus_streak.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://gmwurbvhhzgdikogxiqb.supabase.co" />
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try {
+      var t = localStorage.getItem('cs-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "preact": "https://cdn.jsdelivr.net/npm/htm@3.1.1/preact/standalone.module.js",
+        "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm"
+      }
+    }
+  </script>
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div class="splash"><div class="splash-flame"></div></div>
+  </div>
+  <noscript>Hãy bật JavaScript để dùng DUT Campus Streak.</noscript>
+</body>
+</html>
