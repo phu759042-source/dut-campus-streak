@@ -6,6 +6,7 @@ import { html, useState, useEffect } from 'preact';
 import { supabase, SUPABASE_URL, SUPABASE_KEY, createStore, currentUser, errMsg, fmtBytes } from './lib.js';
 import { Icon } from './ui.js';
 import { navigate } from './router.js';
+import { useDeletes, deleteStats } from './deletes.js';
 
 const BUCKET = 'student-documents';
 const PARALLEL = 2;
@@ -197,13 +198,24 @@ export function UploadPanel() {
 /** Small floating chip shown on other pages while uploads run. */
 export function UploadIndicator({ path }) {
   const { items } = useUploads();
-  if (!items.length || path.startsWith('/documents')) return null;
-  const st = uploadStats(items);
-  if (!st.active && !st.errors) return null;
+  const { jobs } = useDeletes();
+  if (path.startsWith('/documents')) return null;
+  const up = uploadStats(items);
+  const del = deleteStats(jobs);
+  const showUp = items.length && (up.active || up.errors);
+  const showDel = jobs.length && (del.active || del.errors);
+  if (!showUp && !showDel) return null;
+  // Upload first if both run; the Documents page shows both panels.
+  const st = showUp ? up : del;
+  const label = showUp
+    ? (up.active ? `Đang tải ${up.done}/${up.count}` : `${up.errors} tệp lỗi`)
+    : (del.active ? `Đang xóa ${del.finished}/${del.count}` : `${del.errors} mục xóa lỗi`);
+  const extra = showUp && showDel && del.active ? ' · đang xóa' : '';
+  const err = (showUp ? !up.active && up.errors : !del.active && del.errors);
   const R = 15, C = 2 * Math.PI * R;
-  return html`<button class=${'upload-chip pop-in' + (st.errors && !st.active ? ' err' : '')} onClick=${() => navigate('/documents')} aria-label="Xem tiến trình tải lên">
+  return html`<button class=${'upload-chip pop-in' + (err ? ' err' : '') + (!showUp ? ' del' : '')} onClick=${() => navigate('/documents')} aria-label="Xem tiến trình">
     <svg width="38" height="38" viewBox="0 0 38 38"><circle cx="19" cy="19" r=${R} class="uc-bg" /><circle cx="19" cy="19" r=${R} class="uc-fg"
       stroke-dasharray=${C} stroke-dashoffset=${C * (1 - st.pct / 100)} /></svg>
-    <span><b>${st.active ? `Đang tải ${st.done}/${st.count}` : `${st.errors} tệp lỗi`}</b><small>${st.pct}% · Tài liệu</small></span>
+    <span><b>${label}</b><small>${st.pct}% · Tài liệu${extra}</small></span>
   </button>`;
 }
