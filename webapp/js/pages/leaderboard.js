@@ -5,7 +5,6 @@ import { PageHeader } from './shared.js';
 
 const PAGE_SIZE = 50;
 const name = (r) => String(r.display_name || '').trim() || 'Sinh viên';
-const code = (r) => String(r.student_code || '').trim() || 'Chưa có MSSV';
 const cls = (r) => String(r.class_name || '').trim() || 'Chưa có lớp';
 const num = (v) => Number(v) || 0;
 
@@ -16,7 +15,7 @@ function ProfileSheet({ row, rank, metric }) {
     <div class="pcard-avatar"><${Avatar} url=${row.avatar_url} name=${name(row)} size=${88} ring /></div>
     <div class="pcard-body">
       <div class="pcard-name">${name(row)} ${me && html`<span class="chip chip-blue">Bạn</span>`}</div>
-      <div class="muted">${cls(row)} · ${code(row)}</div>
+      <div class="muted">${cls(row)}</div>
       <div class="pcard-stats">
         <div><b>#${rank}</b><span>Hạng ${metric === 'weekly' ? 'tuần' : 'ngày'}</span></div>
         <div><b>🔥 ${num(row.current_streak)}</b><span>Streak ngày</span></div>
@@ -137,7 +136,7 @@ export function LeaderboardPage() {
               style=${`--d:${Math.min(i, 12) * 35}ms` + (r.banner_url ? `;--banner:url('${r.banner_url}')` : '')} onClick=${() => open(r)}>
             <span class="lb-rank">${r.rank}</span>
             <${Avatar} url=${r.avatar_url} name=${name(r)} size=${42} />
-            <span class="grow lb-who"><b>${name(r)}</b><span class="small muted">${cls(r)} · ${code(r)}</span></span>
+            <span class="grow lb-who"><b>${name(r)}</b><span class="small muted">${cls(r)}</span></span>
             <span class="lb-score">${metric === 'weekly' ? html`<b>${num(r.weekly_streak)}</b><small>tuần</small>` : html`<b>${num(r.current_streak)}</b><small>ngày</small>`}</span>
           </button>`)}
         </div>

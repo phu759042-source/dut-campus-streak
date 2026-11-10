@@ -456,7 +456,7 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .lb-score small { font-size: 11px; color: var(--muted); }
 .pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 16px; font-weight: 700; }
 .pcard { margin: -4px -20px -20px; }
-.pcard-banner { aspect-ratio: 2.4; background: var(--hero); background-size: cover; background-position: center; }
+.pcard-banner { aspect-ratio: 2; background: var(--hero); background-size: cover; background-position: center; }
 .pcard-avatar { margin-top: -48px; display: flex; justify-content: center; }
 .pcard-body { text-align: center; padding: 8px 20px 24px; }
 .pcard-name { font-size: 20px; font-weight: 900; display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -550,7 +550,7 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 
 /* ---------- profile ---------- */
 .profile-hero { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 26px; box-shadow: var(--shadow); overflow: hidden; margin-bottom: 14px; padding-bottom: 18px; text-align: center; }
-.profile-banner { display: block; width: 100%; aspect-ratio: 2.4; background: var(--hero); background-size: cover; background-position: center; position: relative; }
+.profile-banner { display: block; width: 100%; aspect-ratio: 2; background: var(--hero); background-size: cover; background-position: center; position: relative; }
 .banner-edit, .avatar-edit { position: absolute; display: inline-flex; align-items: center; gap: 6px; background: rgba(0, 0, 0, 0.5); color: #fff; font-size: 12px; font-weight: 700; backdrop-filter: blur(6px); }
 .banner-edit { right: 12px; bottom: 12px; padding: 6px 10px; border-radius: 999px; }
 .profile-avatar { position: relative; margin-top: -52px; display: inline-block; }

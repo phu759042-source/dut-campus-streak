@@ -6,7 +6,7 @@ import {
 import { pushStatus, enablePush, disablePush, isPushOn, sendTestPush } from '../push.js';
 
 /** Banner shape used everywhere (profile, leaderboard card, cropper). */
-export const BANNER_ASPECT = 2.4;
+export const BANNER_ASPECT = 2;
 import { Icon, Avatar, Spinner, Skeleton, openSheet, confirmDialog, toast, Field, PasswordInput } from '../ui.js';
 import { navigate } from '../router.js';
 import { PageHeader } from './shared.js';
@@ -201,7 +201,7 @@ export function ProfilePage() {
   async function load() {
     await ensureCurrentUserData().catch(() => {});
     const p = await loadMyProfile();
-    const o = { name: p.display_name || '', email: p.email || '', code: p.student_code || '', klass: p.class_name || '', avatar_url: p.avatar_url, banner_url: p.banner_url };
+    const o = { name: p.display_name || '', email: p.email || '', klass: p.class_name || '', avatar_url: p.avatar_url, banner_url: p.banner_url };
     setOrig(o); setF(o); setAvatar(null); setBanner(null);
   }
   useEffect(() => { load().catch((e) => toast(errMsg(e), 'error')); }, []);
@@ -211,7 +211,7 @@ export function ProfilePage() {
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const changed = f.name.trim() !== orig.name || f.email.trim().toLowerCase() !== orig.email.toLowerCase() ||
-    f.code.trim() !== orig.code || f.klass.trim() !== orig.klass || avatar || banner;
+    f.klass.trim() !== orig.klass || avatar || banner;
 
   async function chooseAvatar() {
     const file = await pickFile();
@@ -265,7 +265,7 @@ export function ProfilePage() {
 
   async function save() {
     const user = currentUser();
-    const name = f.name.trim(), email = f.email.trim(), code = f.code.trim(), klass = f.klass.trim();
+    const name = f.name.trim(), email = f.email.trim(), klass = f.klass.trim();
     if (!name) return toast('Tên hiển thị không được để trống.', 'error');
     setSaving(true);
     try {
@@ -286,8 +286,8 @@ export function ProfilePage() {
             { upsert: true, contentType: 'image/jpeg', cacheControl: '60' });
         }
       }
-      const { error: e1 } = await supabase.from('users').update({ student_code: code, class_name: klass }).eq('id', user.id);
-      if (e1) throw e1.code === '23505' ? new Error(`Mã sinh viên "${code}" đã được sử dụng bởi một tài khoản khác.`) : e1;
+      const { error: e1 } = await supabase.from('users').update({ class_name: klass }).eq('id', user.id);
+      if (e1) throw e1;
       const { error: e2 } = await supabase.from('profiles').update({
         display_name: name, avatar_url: avatarUrl, banner_url: bannerUrl, updated_at: new Date().toISOString(),
       }).eq('id', user.id);
@@ -337,7 +337,7 @@ export function ProfilePage() {
       </button>
       <div class="profile-id">
         <div class="profile-name">${f.name || 'Hồ sơ sinh viên'}</div>
-        <div class="muted small">${f.klass || 'Chưa có lớp'} · ${f.code || 'Chưa có MSSV'}</div>
+        <div class="muted small">${f.klass || 'Chưa có lớp'}</div>
       </div>
     </section>
 
@@ -345,10 +345,7 @@ export function ProfilePage() {
       <h3 class="card-title">Thông tin cá nhân</h3>
       <${Field} label="Tên hiển thị"><input class="input" value=${f.name} onInput=${set('name')} /><//>
       <${Field} label="Email"><input class="input" type="email" value=${f.email} onInput=${set('email')} /><//>
-      <div class="row gap">
-        <${Field} label="Mã sinh viên"><input class="input" value=${f.code} onInput=${set('code')} /><//>
-        <${Field} label="Lớp"><input class="input" value=${f.klass} onInput=${set('klass')} placeholder="VD: 23T_DT1" /><//>
-      </div>
+      <${Field} label="Lớp"><input class="input" value=${f.klass} onInput=${set('klass')} placeholder="VD: 23T_DT1" /><//>
       <button class="btn btn-primary btn-block btn-lg" disabled=${!changed || saving} onClick=${save}>
         ${saving ? html`<${Spinner} size=${18} />` : 'Lưu thay đổi'}</button>
     </section>
