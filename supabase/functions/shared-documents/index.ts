@@ -55,6 +55,15 @@ async function pathInside(root: Doc, id: string): Promise<Doc[] | null> {
   return null;
 }
 
+/** Public URL of the preview card the owner's browser rendered at share time, if it exists. */
+async function cardUrl(ownerId: string, token: string) {
+  const { data } = await admin.storage.from("profile-banners").list(`${ownerId}/share-cards`, { search: token, limit: 1 });
+  const file = data?.find((f) => f.name === `${token}.jpg`);
+  if (!file) return null;
+  const url = admin.storage.from("profile-banners").getPublicUrl(`${ownerId}/share-cards/${token}.jpg`).data.publicUrl;
+  return `${url}?v=${new Date(file.updated_at || file.created_at || Date.now()).getTime()}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -64,6 +73,26 @@ Deno.serve(async (req) => {
   const ctx = await loadShare(body.token);
   if (!ctx) return json({ error: "Link chia sẻ không tồn tại, đã hết hạn hoặc đã bị thu hồi." }, 404);
   const { share, root } = ctx;
+
+  // Summary for link previews (Messenger/Zalo cards). Does not count as a view.
+  if (body.action === "meta") {
+    const { data: owner } = await admin.from("profiles").select("display_name").eq("id", share.owner_id).maybeSingle();
+    let files = 0, folders = 0;
+    if (root.item_type === "folder") {
+      const { data } = await admin.from("documents").select("item_type").eq("parent_id", root.id).eq("user_id", root.user_id);
+      for (const d of data || []) d.item_type === "folder" ? folders++ : files++;
+    }
+    return json({
+      owner: owner?.display_name || "Một sinh viên",
+      name: root.name,
+      item_type: root.item_type,
+      mime_type: root.mime_type,
+      file_size: root.file_size,
+      files, folders,
+      allow_download: share.allow_download,
+      card_url: await cardUrl(share.owner_id, share.token),
+    });
+  }
 
   if (body.action === "list") {
     const folderId = typeof body.folder_id === "string" ? body.folder_id : root.id;

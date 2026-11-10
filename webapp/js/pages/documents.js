@@ -3,6 +3,8 @@ import { supabase, currentUser, errMsg, fmtBytes, readLocal, writeLocal } from '
 import { Icon, Spinner, Skeleton, ErrorBox, Empty, openSheet, confirmDialog, promptDialog, toast } from '../ui.js';
 import { PageHeader } from './shared.js';
 import { getPreview, previewKind } from '../preview.js';
+import { publishShareCard } from '../sharecard.js';
+import { appStore } from '../lib.js';
 
 const BUCKET = 'student-documents';
 const MIME = {
@@ -62,6 +64,9 @@ export function DocThumb({ item, folder, label, tone, grid, thumb, previewOpts }
 
 const SHARE_BASE = `${location.hostname.endsWith('campusstreak.com') ? 'https://www.campusstreak.com' : location.origin}/s/`;
 
+const cardsDone = new Set();
+const ownerName = () => appStore.get().profile?.display_name || 'Một sinh viên';
+
 function ShareSheet({ item }) {
   const [shares, setShares] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -70,13 +75,22 @@ function ShareSheet({ item }) {
       .is('revoked_at', null).order('created_at', { ascending: false });
     if (error) return toast('Không tải được link chia sẻ: ' + errMsg(error), 'error');
     setShares(data || []);
+    // Make sure every active link has its preview card (links created before cards existed, renamed items...).
+    for (const sh of data || []) {
+      if (cardsDone.has(sh.token)) continue;
+      cardsDone.add(sh.token);
+      publishShareCard(sh, item, ownerName());
+    }
   }
   useEffect(() => { load(); }, []);
   async function create() {
     setBusy(true);
-    const { error } = await supabase.from('document_shares').insert({ document_id: item.id, allow_download: true });
+    const { data: created, error } = await supabase.from('document_shares')
+      .insert({ document_id: item.id, allow_download: true }).select().single();
+    if (error) { setBusy(false); return toast('Không tạo được link: ' + errMsg(error), 'error'); }
+    await publishShareCard(created, item, ownerName()); // so the link shows a preview card right away
+    cardsDone.add(created.token);
     setBusy(false);
-    if (error) return toast('Không tạo được link: ' + errMsg(error), 'error');
     load();
   }
   async function update(s, patch) {
