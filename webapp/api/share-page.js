@@ -18,7 +18,7 @@ function fmtBytes(n) {
 async function getMeta(token) {
   if (!/^[a-f0-9]{32}$/.test(token)) return null;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 4000);
+  const timer = setTimeout(() => ctrl.abort(), 8000); // allow for an Edge Function cold start
   try {
     const r = await fetch(`${SUPABASE_URL}/functions/v1/shared-documents`, {
       method: 'POST',
@@ -80,7 +80,8 @@ module.exports = async (req, res) => {
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   // Short CDN cache: revoked links and renamed folders update within a few minutes.
-  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=120, stale-while-revalidate=300');
+  // Never cache a generic page for a share URL (e.g. Supabase was cold), so the next crawl retries.
+  res.setHeader('Cache-Control', meta ? 'public, max-age=0, s-maxage=120, stale-while-revalidate=300' : 'no-store');
   res.statusCode = 200;
   res.end(html);
 };
