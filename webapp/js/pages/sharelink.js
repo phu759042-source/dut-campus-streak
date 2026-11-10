@@ -4,7 +4,7 @@ import { supabase, invokeFunction, fmtBytes, appStore } from '../lib.js';
 import { Icon, Avatar, Spinner, Skeleton, Empty, toast } from '../ui.js';
 import { navigate } from '../router.js';
 import { DocThumb, fileTone } from './documents.js';
-import { previewKind } from '../preview.js';
+import { previewKind, getPreview } from '../preview.js';
 import { InstallButton } from '../install.js';
 import { openViewer } from '../viewer.js';
 import { hideStorageUrl } from '../lib.js';
@@ -41,8 +41,12 @@ export function SharedLinkPage({ token }) {
       const d = await call({ action: 'list', token, folder_id: folderId || undefined });
       setData(d);
       document.title = `${d.root.name} · Chia sẻ từ ${d.owner.display_name}`;
-      const imgs = d.items.filter((it) => it.item_type === 'file' && previewKind(it) === 'image').map((it) => it.id);
-      if (imgs.length) setThumbs(Object.fromEntries(Object.entries(await urlsFor(imgs)).map(([k, v]) => [k, hideStorageUrl(v)])));
+      // Stored thumbnails (small images); files without one are rendered on the fly when visible.
+      const fileIds = d.items.filter((it) => it.item_type === 'file' && previewKind(it)).map((it) => it.id);
+      if (fileIds.length) {
+        const { urls } = await call({ action: 'thumbs', token, ids: fileIds }).catch(() => ({ urls: {} }));
+        setThumbs(Object.fromEntries(Object.entries(urls || {}).map(([k, v]) => [k, hideStorageUrl(v)])));
+      }
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(); }, [folderId]);
@@ -99,7 +103,7 @@ export function SharedLinkPage({ token }) {
           const [label, tone] = folder ? ['', 'amber'] : fileTone(it.name);
           return html`<div key=${it.id} class="doc slide-up" style=${`--d:${Math.min(i, 15) * 30}ms`}>
             <button class="doc-main" onClick=${() => (folder ? setFolderId(it.id) : view(it))}>
-              <${DocThumb} item=${it} folder=${folder} label=${label} tone=${tone} grid=${true} thumb=${thumbs[it.id]} previewOpts=${folder ? null : previewOpts(it)} />
+              <${DocThumb} item=${it} folder=${folder} label=${label} tone=${tone} grid=${true} thumb=${thumbs[it.id]} loadThumb=${folder ? null : () => getPreview(it, previewOpts(it))} />
               <span class="doc-info"><span class="doc-name">${it.name}</span>
                 <span class="muted small">${folder ? 'Thư mục' : fmtBytes(it.file_size)}</span></span>
             </button>

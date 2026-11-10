@@ -7,6 +7,7 @@ import { supabase, SUPABASE_URL, SUPABASE_KEY, createStore, currentUser, errMsg,
 import { Icon } from './ui.js';
 import { navigate } from './router.js';
 import { useDeletes, deleteStats } from './deletes.js';
+import { createThumbFromFile } from './thumbs.js';
 
 const BUCKET = 'student-documents';
 const PARALLEL = 2;
@@ -89,11 +90,13 @@ async function run(it) {
       if (now - last > 120 || loaded === it.size) { last = now; patch(it.id, { loaded }); }
     }, it.id);
     patch(it.id, { loaded: it.size, status: 'saving' });
-    const { error } = await supabase.from('documents').insert({
+    const { data: row, error } = await supabase.from('documents').insert({
       user_id: user.id, name: it.name, item_type: 'file', parent_id: it.parentId,
       storage_path: path, mime_type: mime, file_size: it.size,
-    });
+    }).select('id').single();
     if (error) { await supabase.storage.from(BUCKET).remove([path]); throw error; }
+    // Thumbnail from the local file, so the list never has to download the whole document.
+    await createThumbFromFile(user.id, row.id, { name: it.name, mime_type: mime }, it.file);
     patch(it.id, { status: 'done', file: null });
     uploadStore.set((s) => ({ doneTick: s.doneTick + 1, lastDoneParent: it.parentId }));
   } catch (e) {

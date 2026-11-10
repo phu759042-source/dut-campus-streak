@@ -5,6 +5,7 @@
 import { html, useState, useEffect } from 'preact';
 import { supabase, createStore, currentUser, errMsg } from './lib.js';
 import { Icon } from './ui.js';
+import { thumbPath, forgetThumbs } from './thumbs.js';
 
 const BUCKET = 'student-documents';
 const BATCH = 40;
@@ -49,8 +50,9 @@ async function pump() {
 }
 
 /** All storage paths under a folder (breadth-first, a few queries per level). */
-async function collectFiles(rootId) {
+async function collectFiles(rootId, uid) {
   const paths = [];
+  const ids = [];
   let level = [rootId];
   while (level.length) {
     const next = [];
@@ -60,12 +62,12 @@ async function collectFiles(rootId) {
       if (error) throw error;
       for (const d of data || []) {
         if (d.item_type === 'folder') next.push(d.id);
-        else if (d.storage_path) paths.push(d.storage_path);
+        else if (d.storage_path) { paths.push(d.storage_path, thumbPath(uid, d.id)); ids.push(d.id); }
       }
     }
     level = next;
   }
-  return paths;
+  return { paths, ids };
 }
 
 async function run(job) {
@@ -73,7 +75,10 @@ async function run(job) {
     const uid = currentUser()?.id;
     if (!uid) throw new Error('Phiên đăng nhập đã hết.');
     patch(job.id, { status: 'scanning' });
-    const paths = job.item_type === 'folder' ? await collectFiles(job.docId) : (job.storage_path ? [job.storage_path] : []);
+    // Each file has two objects: the document and its thumbnail (missing thumbnails are simply ignored).
+    const { paths, ids } = job.item_type === 'folder'
+      ? await collectFiles(job.docId, uid)
+      : { paths: job.storage_path ? [job.storage_path, thumbPath(uid, job.docId)] : [], ids: [job.docId] };
     const total = paths.length + 1; // +1 for the database row
     patch(job.id, { status: 'deleting', total, done: 0 });
     for (let k = 0; k < paths.length; k += BATCH) {
@@ -84,6 +89,7 @@ async function run(job) {
     }
     const { error } = await supabase.from('documents').delete().eq('id', job.docId).eq('user_id', uid);
     if (error) throw error;
+    forgetThumbs(uid, ids);
     patch(job.id, { status: 'done', done: total });
     deleteStore.set((s) => ({ doneTick: s.doneTick + 1, lastDoneParent: job.parentId }));
   } catch (e) {
@@ -159,7 +165,7 @@ export function DeletePanel() {
     ${open && html`<div class="up-list">
       ${jobs.map((j) => {
         const pct = j.status === 'done' ? 100 : Math.round((j.done / (j.total || 1)) * 100);
-        const detail = j.status === 'deleting' && j.item_type === 'folder' ? `${pct}% · ${j.done}/${j.total - 1} tệp` : j.status === 'deleting' ? `${pct}%` : STATUS[j.status];
+        const detail = j.status === 'deleting' && j.item_type === 'folder' ? `${pct}% · ${Math.floor(j.done / 2)}/${Math.floor((j.total - 1) / 2)} tệp` : j.status === 'deleting' ? `${pct}%` : STATUS[j.status];
         return html`<div key=${j.id} class=${'up-item s-' + (j.status === 'deleting' || j.status === 'scanning' ? 'uploading' : j.status)}>
           <span class="up-kind"><${Icon} name=${j.item_type === 'folder' ? 'folder' : 'file'} size=${16} /></span>
           <div class="grow">

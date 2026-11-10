@@ -120,6 +120,33 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Signed URLs (7 days) for the stored thumbnails of files inside the share.
+  if (body.action === "thumbs") {
+    const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string").slice(0, 200) as string[] : [];
+    const urls: Record<string, string> = {};
+    if (!ids.length) return json({ urls });
+    const { data: docs } = await admin.from("documents").select(COLS).in("id", ids).eq("user_id", root.user_id);
+    const { data: listed } = await admin.storage.from(BUCKET).list(`${root.user_id}/thumbs`, { limit: 1000 });
+    const have = new Set((listed || []).map((f) => f.name));
+    const parentOk = new Map<string, boolean>();
+    const okIds: string[] = [];
+    for (const doc of (docs || []) as Doc[]) {
+      if (doc.item_type !== "file" || !have.has(`${doc.id}.jpg`)) continue;
+      let ok = doc.id === root.id;
+      if (!ok && doc.parent_id) {
+        if (!parentOk.has(doc.parent_id)) parentOk.set(doc.parent_id, !!(await pathInside(root, doc.parent_id)));
+        ok = parentOk.get(doc.parent_id)!;
+      }
+      if (ok) okIds.push(doc.id);
+    }
+    if (okIds.length) {
+      const { data } = await admin.storage.from(BUCKET)
+        .createSignedUrls(okIds.map((id) => `${root.user_id}/thumbs/${id}.jpg`), 7 * 86400);
+      (data || []).forEach((s, i) => { if (s.signedUrl) urls[okIds[i]] = s.signedUrl; });
+    }
+    return json({ urls });
+  }
+
   if (body.action === "urls") {
     const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string").slice(0, 60) as string[] : [];
     const download = body.download === true;

@@ -2,7 +2,8 @@ import { html, useState, useEffect, useRef } from 'preact';
 import { supabase, currentUser, errMsg, fmtBytes, readLocal, writeLocal } from '../lib.js';
 import { Icon, Spinner, Skeleton, ErrorBox, Empty, openSheet, confirmDialog, promptDialog, toast } from '../ui.js';
 import { PageHeader } from './shared.js';
-import { getPreview, previewKind } from '../preview.js';
+import { previewKind } from '../preview.js';
+import { thumbUrlsFor, ensureThumb } from '../thumbs.js';
 import { publishShareCard } from '../sharecard.js';
 import { openViewer } from '../viewer.js';
 import { hideStorageUrl } from '../lib.js';
@@ -11,6 +12,7 @@ import { enqueueDeletes, DeletePanel, useDeletes, pendingDeleteIds } from '../de
 import { appStore } from '../lib.js';
 
 const BUCKET = 'student-documents';
+const PAGE = 60; // tiles rendered per chunk
 const MIME = {
   pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
   ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -34,34 +36,36 @@ export function fileTone(name) {
 }
 
 
-/** Thumbnail tile: real preview for images, PDFs, Office and text files (lazy, when visible). */
-export function DocThumb({ item, folder, label, tone, grid, thumb, previewOpts }) {
+/**
+ * Thumbnail tile. `thumb` = stored thumbnail URL when known. Otherwise, once the tile scrolls into view,
+ * `loadThumb()` is called (stores a thumbnail for the owner, or renders one on the fly on shared pages).
+ */
+export function DocThumb({ item, folder, label, tone, grid, thumb, loadThumb }) {
   const ref = useRef();
-  const [preview, setPreview] = useState(null);
+  const [url, setUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const kind = folder ? null : previewKind(item);
   useEffect(() => {
-    if (!kind || kind === 'image' || !ref.current) return;
+    if (!kind || thumb || !loadThumb || !ref.current) return;
     let alive = true;
     const io = new IntersectionObserver((entries) => {
       if (!entries.some((e) => e.isIntersecting)) return;
       io.disconnect();
       setLoading(true);
-      getPreview(item, previewOpts).then((p) => { if (alive) { setPreview(p); setLoading(false); } });
-    }, { rootMargin: '200px' });
+      loadThumb().then((r) => { if (alive) { setUrl(typeof r === 'string' ? r : r?.url || null); setLoading(false); } });
+    }, { rootMargin: '300px' });
     io.observe(ref.current);
     return () => { alive = false; io.disconnect(); };
-  }, [item.storage_path]);
+  }, [item.id, thumb]);
 
-  const img = thumb || (preview?.type === 'image' ? preview.url : null);
+  const img = thumb || url;
   const badge = !folder && html`<span class=${'doc-badge tone-' + tone}>${label}</span>`;
   let body;
   if (folder) body = html`<${Icon} name="folder" size=${grid ? 40 : 24} />`;
-  else if (img) body = html`<img src=${img} alt="" loading="lazy" class=${kind === 'pdf' || kind === 'office' ? 'page-img' : ''} />`;
-  else if (preview?.type === 'text') body = html`<div class="doc-paper"><b>${preview.title}</b><span>${preview.text}</span></div>`;
+  else if (img) body = html`<img src=${img} alt="" loading="lazy" decoding="async" class=${kind === 'image' ? '' : 'page-img'} />`;
   else body = html`<b class="doc-label">${label}</b>`;
-  return html`<span ref=${ref} class=${'doc-thumb tone-' + tone + (img || preview ? ' has-preview' : '') + (loading ? ' loading' : '')}>
-    ${body}${(img || preview) && badge}${preview?.pages > 1 && grid ? html`<span class="doc-pages">${preview.pages} trang</span>` : null}
+  return html`<span ref=${ref} class=${'doc-thumb tone-' + tone + (img ? ' has-preview' : '') + (loading ? ' loading' : '')}>
+    ${body}${img && badge}
   </span>`;
 }
 
@@ -149,6 +153,8 @@ export function DocumentsPage() {
   const [selected, setSelected] = useState(() => new Set());
   const fileRef = useRef();
   const press = useRef({ timer: null, fired: false, x: 0, y: 0 });
+  const [shown, setShown] = useState(PAGE); // big folders render in chunks while scrolling
+  const sentinel = useRef();
   const parentId = stack.length ? stack[stack.length - 1].id : null;
   const uid = currentUser().id;
 
@@ -161,18 +167,21 @@ export function DocumentsPage() {
     if (err) return setError('Không tải được tài liệu: ' + errMsg(err));
     const list = (data || []).sort((a, b) => (a.item_type === b.item_type ? a.name.localeCompare(b.name) : a.item_type === 'folder' ? -1 : 1));
     setItems(list);
-    const imgs = list.filter((it) => it.item_type === 'file' && it.storage_path && isImage(it));
-    if (imgs.length) {
-      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(imgs.map((i) => i.storage_path), 3600);
-      const map = {};
-      (signed || []).forEach((s) => { if (s.signedUrl) map[s.path] = hideStorageUrl(s.signedUrl); });
-      setThumbs(map);
-    }
+    const fileIds = list.filter((it) => it.item_type === 'file').map((it) => it.id);
+    if (!soft) setShown(PAGE);
+    if (fileIds.length) setThumbs(await thumbUrlsFor(uid, fileIds));
   }
   useEffect(() => { exitSelect(); load(); }, [parentId]);
   // A background upload into this folder finished: refresh the list without flashing.
   const uploads = useUploads();
   useEffect(() => { if (uploads.doneTick && uploads.lastDoneParent === parentId) load(true); }, [uploads.doneTick]);
+  // Render the next chunk when the end of the list comes into view.
+  useEffect(() => {
+    if (!sentinel.current) return;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setShown((n) => n + PAGE); }, { rootMargin: '600px' });
+    io.observe(sentinel.current);
+    return () => io.disconnect();
+  }, [items, shown]);
   const deletes = useDeletes();
   const deleting = pendingDeleteIds(deletes.jobs);
   useEffect(() => { if (deletes.doneTick && deletes.lastDoneParent === parentId) load(true); }, [deletes.doneTick]);
@@ -325,24 +334,25 @@ export function DocumentsPage() {
       : !items ? html`<${Skeleton} h=${64} count=${4} />`
       : !items.length ? html`<${Empty} icon="folder" title="Thư mục trống" text="Tải tệp lên hoặc kéo thả tệp vào đây." />`
       : html`<div class=${grid ? 'doc-grid' : 'doc-list'}>
-          ${items.map((it, i) => {
+          ${items.slice(0, shown).map((it, i) => {
             const folder = it.item_type === 'folder';
             const [label, tone] = folder ? ['', 'amber'] : fileTone(it.name);
-            const thumb = !folder && thumbs[it.storage_path];
+            const thumb = !folder && thumbs[it.id];
             const isSel = selected.has(it.id);
             const isDel = deleting.has(it.id);
             return html`<div key=${it.id} class=${'doc slide-up' + (selectMode ? ' selecting' : '') + (isSel ? ' selected' : '') + (isDel ? ' deleting' : '')} style=${`--d:${Math.min(i, 15) * 30}ms`}>
               ${isDel && html`<span class="doc-deleting"><${Spinner} size=${18} /> Đang xóa…</span>`}
               <button class="doc-main" disabled=${isDel} onClick=${(e) => onTileClick(e, it)} ...${pressHandlers(it)}>
                 ${selectMode && html`<span class=${'doc-check' + (isSel ? ' on' : '')}>${isSel && html`<${Icon} name="check" size=${14} stroke=${3.2} />`}</span>`}
-                <${DocThumb} item=${it} folder=${folder} label=${label} tone=${tone} grid=${grid} thumb=${thumb} />
+                <${DocThumb} item=${it} folder=${folder} label=${label} tone=${tone} grid=${grid} thumb=${thumb} loadThumb=${folder ? null : () => ensureThumb(uid, it)} />
                 <span class="doc-info"><span class="doc-name">${it.name}</span>
                   <span class="muted small">${folder ? 'Thư mục' : fmtBytes(it.file_size)}</span></span>
               </button>
               ${!selectMode && !isDel && html`<button class="icon-btn doc-more" aria-label="Tùy chọn" onClick=${() => menu(it)}><${Icon} name="more" /></button>`}
             </div>`;
           })}
-        </div>`}
+        </div>
+        ${items.length > shown && html`<div ref=${sentinel} class="doc-more-sentinel"><${Spinner} size=${20} /> Đang hiện thêm…</div>`}`}
     ${dragging && html`<div class="drop-hint"><${Icon} name="upload" size=${40} /> Thả tệp để tải lên</div>`}
   </div>`;
 }

@@ -856,3 +856,5 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .viewer-msg .muted { color: #94a0c4; }
 .viewer-ext { width: 92px; height: 112px; border-radius: 16px; background: #fff; color: #1d2433; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 16px; font-weight: 900; font-size: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); }
 .viewer-text { margin: 0; padding: 18px; white-space: pre-wrap; word-break: break-word; font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace; color: #e8edff; }
+
+.doc-more-sentinel { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 18px; color: var(--muted); font-size: 13px; }
