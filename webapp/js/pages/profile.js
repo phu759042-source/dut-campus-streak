@@ -1,8 +1,12 @@
 import { html, useState, useEffect, useRef } from 'preact';
 import {
   supabase, appStore, currentUser, ensureCurrentUserData, loadMyProfile, saveTheme, errMsg,
-  invokeFunction, loadImage, canvasToBlob, applyTheme,
+  invokeFunction, loadImage, canvasToBlob, applyTheme, resizeToJpeg,
 } from '../lib.js';
+import { pushStatus, enablePush, disablePush, isPushOn, sendTestPush } from '../push.js';
+
+/** Banner shape used everywhere (profile, leaderboard card, cropper). */
+export const BANNER_ASPECT = 2.4;
 import { Icon, Avatar, Spinner, Skeleton, openSheet, confirmDialog, toast, Field, PasswordInput } from '../ui.js';
 import { navigate } from '../router.js';
 import { PageHeader } from './shared.js';
@@ -140,6 +144,41 @@ function ChangePassword({ close }) {
   </form>`;
 }
 
+
+function PushSetting() {
+  const [on, setOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const status = pushStatus();
+  useEffect(() => { isPushOn().then(setOn); }, []);
+  async function toggle(e) {
+    const want = e.target.checked;
+    setBusy(true);
+    try {
+      if (want) { await enablePush(); setOn(true); toast('Đã bật thông báo nhắc deadline 🔔', 'success'); }
+      else { await disablePush(); setOn(false); toast('Đã tắt thông báo trên thiết bị này.', 'info'); }
+    } catch (err) { toast(err.message, 'error', 7000); setOn(await isPushOn()); }
+    setBusy(false);
+  }
+  async function test() {
+    setBusy(true);
+    try { const r = await sendTestPush(); toast(r.sent ? 'Đã gửi thông báo thử. Kiểm tra thanh thông báo nhé!' : 'Chưa có thiết bị nào bật thông báo.', r.sent ? 'success' : 'error'); }
+    catch (err) { toast(err.message, 'error'); }
+    setBusy(false);
+  }
+  const hint = status === 'ios-install' ? 'iPhone: Chia sẻ → "Thêm vào MH chính", mở từ màn hình chính rồi bật.'
+    : status === 'denied' ? 'Trình duyệt đang chặn thông báo. Hãy cho phép trong cài đặt trang web.'
+    : status === 'unsupported' ? 'Trình duyệt này không hỗ trợ thông báo đẩy.'
+    : on ? '7h, 13h, 19h và trước hạn 24h, 6h, 1h, 15 phút' : 'Đang tắt trên thiết bị này';
+  return html`<label class="setting">
+      <span class="list-icon amber"><${Icon} name="bell" /></span>
+      <span class="grow"><b>Thông báo nhắc deadline</b><br /><span class="muted small">${hint}</span></span>
+      ${busy ? html`<${Spinner} size=${20} />` : html`<input type="checkbox" class="switch" checked=${on}
+        disabled=${status === 'unsupported'} onChange=${toggle} />`}
+    </label>
+    ${on && html`<button class="setting" onClick=${test} disabled=${busy}><span class="list-icon green"><${Icon} name="sparkles" /></span>
+      <span class="grow"><b>Gửi thông báo thử</b></span><${Icon} name="chevron" size=${18} /></button>`}`;
+}
+
 export async function logout() {
   await supabase.auth.signOut();
   applyTheme('light');
@@ -179,11 +218,48 @@ export function ProfilePage() {
     const blob = await cropImage(file, { aspect: 1, outW: 512, round: true }, 'Căn chỉnh ảnh đại diện');
     if (blob) setAvatar({ blob, url: URL.createObjectURL(blob) });
   }
-  async function chooseBanner() {
+  // Banner: the uncropped original is kept at <uid>/banner-original.jpg so it can be re-cropped later.
+  const originalUrl = () => supabase.storage.from('profile-banners').getPublicUrl(`${currentUser().id}/banner-original.jpg`).data.publicUrl;
+
+  async function cropBannerFrom(src, original) {
+    const blob = await openSheet(({ close }) => html`<${Cropper} src=${src} aspect=${BANNER_ASPECT} outW=${1440} close=${close} />`,
+      { title: 'Căn chỉnh banner', wide: true });
+    if (blob) setBanner({ blob, url: URL.createObjectURL(blob), original });
+  }
+  async function newBanner() {
     const file = await pickFile();
     if (!file) return;
-    const blob = await cropImage(file, { aspect: 2.4, outW: 1440 }, 'Căn chỉnh banner');
-    if (blob) setBanner({ blob, url: URL.createObjectURL(blob) });
+    const fileUrl = URL.createObjectURL(file);
+    try {
+      // Keep a reasonably sized original for later re-cropping.
+      const original = await resizeToJpeg(await loadImage(fileUrl), 2400, 0.9);
+      await cropBannerFrom(fileUrl, original);
+    } catch (e) { toast(errMsg(e), 'error'); }
+    finally { URL.revokeObjectURL(fileUrl); }
+  }
+  async function editBanner() {
+    // Prefer the pending original, then the stored original, then the current banner itself.
+    if (banner?.original) {
+      const u = URL.createObjectURL(banner.original);
+      try { await cropBannerFrom(u, banner.original); } finally { URL.revokeObjectURL(u); }
+      return;
+    }
+    let src = `${originalUrl()}?v=${Date.now()}`;
+    try { const r = await fetch(src, { method: 'HEAD' }); if (!r.ok) src = null; } catch { src = null; }
+    if (!src) src = f.banner_url;
+    if (!src) return newBanner();
+    await cropBannerFrom(src, null);
+  }
+  async function chooseBanner() {
+    if (!f.banner_url && !banner) return newBanner();
+    const c = await openSheet(({ close }) => html`<div class="stack-sm">
+      <button class="menu-item" onClick=${() => close('edit')}><span class="list-icon violet"><${Icon} name="zoom" /></span>
+        <span class="grow"><b>Chỉnh lại banner hiện tại</b><br /><span class="muted small">Phóng to, thu nhỏ, chọn lại phần hiển thị</span></span></button>
+      <button class="menu-item" onClick=${() => close('new')}><span class="list-icon blue"><${Icon} name="image" /></span>
+        <span class="grow"><b>Chọn ảnh mới</b><br /><span class="muted small">Tải một ảnh khác từ máy</span></span></button>
+    </div>`, { title: 'Banner' });
+    if (c === 'edit') editBanner();
+    if (c === 'new') newBanner();
   }
 
   async function save() {
@@ -204,6 +280,10 @@ export function ProfilePage() {
         const { error } = await supabase.storage.from('profile-banners').upload(path, banner.blob, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' });
         if (error) throw error;
         bannerUrl = `${supabase.storage.from('profile-banners').getPublicUrl(path).data.publicUrl}?v=${Date.now()}`;
+        if (banner.original) {
+          await supabase.storage.from('profile-banners').upload(`${user.id}/banner-original.jpg`, banner.original,
+            { upsert: true, contentType: 'image/jpeg', cacheControl: '60' });
+        }
       }
       const { error: e1 } = await supabase.from('users').update({ student_code: code, class_name: klass }).eq('id', user.id);
       if (e1) throw e1.code === '23505' ? new Error(`Mã sinh viên "${code}" đã được sử dụng bởi một tài khoản khác.`) : e1;
@@ -248,7 +328,7 @@ export function ProfilePage() {
     <${PageHeader} title="Hồ sơ" />
     <section class="profile-hero pop-in">
       <button class="profile-banner" style=${bannerSrc ? `background-image:url('${bannerSrc}')` : ''} onClick=${chooseBanner} disabled=${saving}>
-        <span class="banner-edit"><${Icon} name="image" size=${16} /> Đổi banner</span>
+        <span class="banner-edit"><${Icon} name="image" size=${16} /> Sửa banner</span>
       </button>
       <button class="profile-avatar" onClick=${chooseAvatar} disabled=${saving} aria-label="Đổi ảnh đại diện">
         <${Avatar} url=${avatar?.url || f.avatar_url} name=${f.name} size=${96} ring />
@@ -279,6 +359,7 @@ export function ProfilePage() {
         <span class="grow"><b>Giao diện tối</b><br /><span class="muted small">${dark ? 'Đang dùng giao diện tối' : 'Đang dùng giao diện sáng'}</span></span>
         <input type="checkbox" class="switch" checked=${dark} onChange=${(e) => saveTheme(e.target.checked ? 'dark' : 'light')} />
       </label>
+      <${PushSetting} />
       <button class="setting" onClick=${() => navigate('/achievements')}><span class="list-icon amber"><${Icon} name="trophy" /></span><span class="grow"><b>Thành tích</b></span><${Icon} name="chevron" size=${18} /></button>
       <button class="setting" onClick=${() => navigate('/about')}><span class="list-icon blue"><${Icon} name="info" /></span><span class="grow"><b>Liên hệ & Giới thiệu</b></span><${Icon} name="chevron" size=${18} /></button>
       <button class="setting" onClick=${changePassword}><span class="list-icon green"><${Icon} name="key" /></span><span class="grow"><b>Đổi mật khẩu</b></span><${Icon} name="chevron" size=${18} /></button>

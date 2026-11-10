@@ -13,7 +13,22 @@ Thời khóa biểu (thêm/sửa/xóa mềm, xóa toàn bộ, nhập bảng lị
 Tài liệu (thư mục/tệp, kéo thả), Hồ sơ (avatar, banner có khung cắt, sáng/tối, đổi email/mật khẩu, xóa tài khoản),
 Thành tích, Liên hệ & Giới thiệu.
 
-Chưa có trên web: thông báo nhắc lịch học / deadline (app Android dùng thông báo cục bộ; web cần thêm Web Push + server gửi).
+Riêng bản web có thêm:
+
+- **Chia sẻ tài liệu qua link** (`/s/<mã>`): người nhận không cần đăng nhập, xem trước và mở tệp, tải về nếu được cho phép.
+  Thu hồi link bất cứ lúc nào. Backend: bảng `document_shares` + Edge Function `shared-documents` (service role, chỉ đọc,
+  kiểm tra tệp nằm trong thư mục được chia sẻ, signed URL 10 phút).
+- **Web Push nhắc deadline**: 7h, 13h, 19h (giờ VN) và trước hạn 24h, 6h, 1h, 15 phút, lúc đến hạn — kể cả khi đã đóng trang.
+  Backend: bảng `push_subscriptions`, `push_reminder_log`, RPC `register_push_subscription`, Edge Function `push-reminders`,
+  job pg_cron `push-deadline-reminders` (5 phút/lần, gọi qua pg_net). Khóa VAPID và cron secret nằm trong Supabase Vault
+  (`push_vapid_public`, `push_vapid_private`, `push_vapid_subject`, `push_cron_secret`); khóa công khai cũng có trong `js/push.js`.
+  iPhone: cần “Thêm vào MH chính” và mở từ màn hình chính thì mới bật được thông báo (iOS 16.4+).
+- **Trò chơi nhỏ** trên trang chủ (Lật thẻ — bàn mới mỗi ngày, Toán nhanh, Bắt lửa); điểm lưu trong trình duyệt.
+- **Xem trước tài liệu**: trang đầu PDF (pdf.js), ảnh thu nhỏ hoặc chữ đầu của docx/pptx/xlsx (JSZip), dòng đầu của txt/csv.
+
+Migration: `supabase/migrations/20261110160000_document_shares_and_web_push.sql`; mã Edge Function trong `supabase/functions/`.
+
+Chưa có: nhắc lịch học (app Android vẫn nhắc bằng thông báo cục bộ).
 
 ## Cấu trúc
 

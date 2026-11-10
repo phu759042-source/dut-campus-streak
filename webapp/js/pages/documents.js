@@ -16,7 +16,7 @@ const extOf = (name) => (name.includes('.') ? name.split('.').pop().toLowerCase(
 const mimeOf = (name) => MIME[extOf(name)] || 'application/octet-stream';
 const isImage = (it) => String(it.mime_type || mimeOf(it.name)).startsWith('image/');
 
-function fileTone(name) {
+export function fileTone(name) {
   const e = extOf(name);
   if (e === 'pdf') return ['PDF', 'red'];
   if (['doc', 'docx'].includes(e)) return ['DOC', 'blue'];
@@ -29,7 +29,7 @@ function fileTone(name) {
 
 
 /** Thumbnail tile: real preview for images, PDFs, Office and text files (lazy, when visible). */
-function DocThumb({ item, folder, label, tone, grid, thumb }) {
+export function DocThumb({ item, folder, label, tone, grid, thumb, previewOpts }) {
   const ref = useRef();
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -41,7 +41,7 @@ function DocThumb({ item, folder, label, tone, grid, thumb }) {
       if (!entries.some((e) => e.isIntersecting)) return;
       io.disconnect();
       setLoading(true);
-      getPreview(item).then((p) => { if (alive) { setPreview(p); setLoading(false); } });
+      getPreview(item, previewOpts).then((p) => { if (alive) { setPreview(p); setLoading(false); } });
     }, { rootMargin: '200px' });
     io.observe(ref.current);
     return () => { alive = false; io.disconnect(); };
@@ -57,6 +57,66 @@ function DocThumb({ item, folder, label, tone, grid, thumb }) {
   return html`<span ref=${ref} class=${'doc-thumb tone-' + tone + (img || preview ? ' has-preview' : '') + (loading ? ' loading' : '')}>
     ${body}${(img || preview) && badge}${preview?.pages > 1 && grid ? html`<span class="doc-pages">${preview.pages} trang</span>` : null}
   </span>`;
+}
+
+
+const SHARE_BASE = `${location.hostname.endsWith('campusstreak.com') ? 'https://www.campusstreak.com' : location.origin}/s/`;
+
+function ShareSheet({ item }) {
+  const [shares, setShares] = useState(null);
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    const { data, error } = await supabase.from('document_shares').select('*').eq('document_id', item.id)
+      .is('revoked_at', null).order('created_at', { ascending: false });
+    if (error) return toast('Không tải được link chia sẻ: ' + errMsg(error), 'error');
+    setShares(data || []);
+  }
+  useEffect(() => { load(); }, []);
+  async function create() {
+    setBusy(true);
+    const { error } = await supabase.from('document_shares').insert({ document_id: item.id, allow_download: true });
+    setBusy(false);
+    if (error) return toast('Không tạo được link: ' + errMsg(error), 'error');
+    load();
+  }
+  async function update(s, patch) {
+    const { error } = await supabase.from('document_shares').update(patch).eq('id', s.id);
+    if (error) return toast(errMsg(error), 'error');
+    load();
+  }
+  async function copy(url) {
+    try { await navigator.clipboard.writeText(url); toast('Đã sao chép link.', 'success'); }
+    catch { prompt('Sao chép link này:', url); }
+  }
+  async function shareNative(url) {
+    try { await navigator.share({ title: item.name, text: `Tài liệu "${item.name}" trên Campus Streak`, url }); } catch { /* cancelled */ }
+  }
+  const folder = item.item_type === 'folder';
+  return html`<div class="stack">
+    <div class="share-target"><span class=${'list-icon ' + (folder ? 'amber' : 'blue')}><${Icon} name=${folder ? 'folder' : 'file'} /></span>
+      <span class="grow"><b class="ellipsis">${item.name}</b><br /><span class="muted small">${folder ? 'Người có link xem được mọi tệp trong thư mục này (chỉ đọc).' : 'Người có link xem được tệp này (chỉ đọc).'}</span></span></div>
+    ${shares === null ? html`<div class="center pad"><${Spinner} /></div>`
+      : shares.length === 0 ? html`<button class="btn btn-primary btn-lg btn-block" disabled=${busy} onClick=${create}>
+          ${busy ? html`<${Spinner} size=${18} />` : html`<${Icon} name="sparkles" size=${18} /> Tạo link chia sẻ`}</button>`
+      : shares.map((s) => {
+        const url = SHARE_BASE + s.token;
+        return html`<div class="share-box fade-in" key=${s.id}>
+          <div class="share-url" onClick=${() => copy(url)}>${url}</div>
+          <div class="row gap wrap">
+            <button class="btn btn-primary btn-sm grow" onClick=${() => copy(url)}><${Icon} name="paste" size=${16} /> Sao chép</button>
+            ${navigator.share && html`<button class="btn btn-ghost btn-sm grow" onClick=${() => shareNative(url)}><${Icon} name="upload" size=${16} /> Gửi…</button>`}
+            <a class="btn btn-ghost btn-sm grow" href=${url} target="_blank" rel="noopener"><${Icon} name="eye" size=${16} /> Xem thử</a>
+          </div>
+          <label class="switch-row"><span>Cho phép tải về<br /><span class="muted small">Tắt thì người xem chỉ mở xem được</span></span>
+            <input type="checkbox" class="switch" checked=${s.allow_download} onChange=${(e) => update(s, { allow_download: e.target.checked })} /></label>
+          <div class="row gap share-foot"><span class="muted small grow">${s.view_count || 0} lượt mở · tạo ${new Date(s.created_at).toLocaleDateString('vi-VN')}</span>
+            <button class="btn btn-sm btn-ghost danger-text" onClick=${async () => {
+              if (await confirmDialog({ title: 'Thu hồi link?', message: 'Link này sẽ ngừng hoạt động ngay. Bạn có thể tạo link mới sau.', confirmText: 'Thu hồi', danger: true }))
+                update(s, { revoked_at: new Date().toISOString() });
+            }}>Thu hồi link</button></div>
+        </div>`;
+      })}
+  </div>`;
 }
 
 export function DocumentsPage() {
@@ -169,11 +229,13 @@ export function DocumentsPage() {
       <div class="muted small ellipsis">${it.name}</div>
       ${!folder && html`<button class="menu-item" onClick=${() => close('open')}><span class="list-icon blue"><${Icon} name="eye" /></span><b>Mở</b></button>`}
       ${!folder && html`<button class="menu-item" onClick=${() => close('download')}><span class="list-icon green"><${Icon} name="download" /></span><b>Tải xuống</b></button>`}
+      <button class="menu-item" onClick=${() => close('share')}><span class="list-icon amber"><${Icon} name="users" /></span><b>Chia sẻ qua link</b></button>
       <button class="menu-item" onClick=${() => close('rename')}><span class="list-icon violet"><${Icon} name="edit" /></span><b>Đổi tên</b></button>
       <button class="menu-item" onClick=${() => close('delete')}><span class="list-icon red"><${Icon} name="trash" /></span><b>Xóa</b></button>
     </div>`, { title: folder ? 'Thư mục' : 'Tệp' });
     if (c === 'open') openFile(it);
     if (c === 'download') download(it);
+    if (c === 'share') openSheet(() => html`<${ShareSheet} item=${it} />`, { title: 'Chia sẻ' });
     if (c === 'rename') rename(it);
     if (c === 'delete') remove(it);
   }

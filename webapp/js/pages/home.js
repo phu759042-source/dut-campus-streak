@@ -6,6 +6,9 @@ import {
 import { Icon, Avatar, Flame, Skeleton, ErrorBox, Empty, openSheet, useTick } from '../ui.js';
 import { navigate } from '../router.js';
 import { showAbsenceSheet, AbsenceBadge } from './absence.js';
+import { GamesSection } from '../games.js';
+import { pushStatus, enablePush, pushPromptDismissed, dismissPushPrompt } from '../push.js';
+import { toast } from '../ui.js';
 
 export function useStore() {
   const [s, set] = useState(appStore.get());
@@ -150,6 +153,33 @@ const QUICK = [
   { icon: 'flag', title: 'Deadline', href: '/deadlines', tone: 'rose' },
 ];
 
+
+function PushPrompt() {
+  const [status, setStatus] = useState(pushStatus());
+  const [hidden, setHidden] = useState(pushPromptDismissed());
+  const [busy, setBusy] = useState(false);
+  if (hidden || status === 'granted' || status === 'denied' || status === 'unsupported') return null;
+  async function enable() {
+    setBusy(true);
+    try { await enablePush(); toast('Đã bật thông báo nhắc deadline 🔔', 'success'); setStatus('granted'); }
+    catch (e) { toast(e.message, 'error', 6000); setStatus(pushStatus()); }
+    setBusy(false);
+  }
+  return html`<section class="push-card pop-in">
+    <span class="push-bell"><${Icon} name="bell" size=${24} /></span>
+    <div class="grow">
+      <b>Bật thông báo nhắc deadline?</b>
+      <div class="small">${status === 'ios-install'
+        ? 'Trên iPhone: bấm nút Chia sẻ → "Thêm vào MH chính", mở Campus Streak từ màn hình chính rồi bật ở đây.'
+        : 'Nhắc lúc 7h, 13h, 19h và trước hạn 24 giờ, 6 giờ, 1 giờ, 15 phút — kể cả khi đã đóng trang.'}</div>
+      <div class="row gap push-actions">
+        ${status !== 'ios-install' && html`<button class="btn btn-light btn-sm" disabled=${busy} onClick=${enable}>${busy ? 'Đang bật…' : 'Bật thông báo'}</button>`}
+        <button class="btn btn-sm push-later" onClick=${() => { dismissPushPrompt(); setHidden(true); }}>Để sau</button>
+      </div>
+    </div>
+  </section>`;
+}
+
 export function HomePage() {
   const store = useStore();
   const profile = store.profile;
@@ -215,6 +245,7 @@ export function HomePage() {
       </div>
     </div>
 
+    <${PushPrompt} />
     <div class="section-head"><h2>Truy cập nhanh</h2></div>
     <div class="quick-grid">
       ${QUICK.map((q, i) => html`<button key=${q.href} class=${'quick tone-' + q.tone + ' slide-up'} style=${`--d:${i * 50}ms`} onClick=${() => navigate(q.href)}>
@@ -222,5 +253,8 @@ export function HomePage() {
         <span>${q.title}</span>
       </button>`)}
     </div>
+
+    <div class="section-head"><h2>Trò chơi hôm nay</h2><span class="muted small">Xả stress giữa giờ 🎮</span></div>
+    <${GamesSection} />
   </div>`;
 }

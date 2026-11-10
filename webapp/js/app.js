@@ -11,6 +11,8 @@ import { DeadlinesPage } from './pages/deadlines.js';
 import { DocumentsPage } from './pages/documents.js';
 import { ProfilePage } from './pages/profile.js';
 import { AchievementsPage, AboutPage } from './pages/misc.js';
+import { SharedLinkPage } from './pages/sharelink.js';
+import { syncPush } from './push.js';
 
 const PUBLIC = ['/login', '/register', '/forgot', '/reset'];
 
@@ -75,10 +77,13 @@ function App() {
   useEffect(() => {
     if (session === undefined) return;
     if (store.recovery && path !== '/reset') { navigate('/reset', { replace: true }); return; }
-    if (!session && !PUBLIC.includes(path)) navigate('/login', { replace: true });
+    if (!session && !PUBLIC.includes(path) && !path.startsWith('/s/')) navigate('/login', { replace: true });
     if (session && ['/login', '/register', '/forgot'].includes(path)) navigate('/', { replace: true });
   }, [session, path, store.recovery]);
 
+  // Public share links work without logging in.
+  const shareParams = match('/s/:token', path);
+  if (shareParams) return html`<${SharedLinkPage} token=${shareParams.token} key=${path} />`;
   if (session === undefined) return html`<${Splash} />`;
   if (path === '/login') return html`<${LoginPage} />`;
   if (path === '/register') return html`<${RegisterPage} />`;
@@ -110,6 +115,7 @@ async function onSession(session) {
     try { await ensureCurrentUserData(); } catch (e) { console.warn('ensure user', e); }
     loadThemeFromServer();
     loadMyProfile().catch(() => {});
+    syncPush();
   }
   if (!session) bootstrappedFor = null;
 }

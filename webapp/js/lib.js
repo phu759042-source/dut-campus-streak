@@ -307,6 +307,8 @@ export async function invokeFunction(name, body) {
 export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    // Remote images (e.g. the current banner) must be CORS-enabled so they can be drawn and exported.
+    if (/^https?:/.test(src)) img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Không đọc được ảnh.'));
     img.src = src;

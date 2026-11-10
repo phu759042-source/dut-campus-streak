@@ -112,16 +112,16 @@ async function textPreview(blob) {
   return { type: 'text', title: lines[0].slice(0, 120), text: lines.slice(1, 16).join('\n').slice(0, 700) };
 }
 
-/** Returns a cached promise of { type: 'image', url } | { type: 'text', title, text } | null. */
-export function getPreview(item) {
-  const path = item.storage_path;
+/** Returns a cached promise (optionally with a custom downloader for shared links) of { type: 'image', url } | { type: 'text', title, text } | null. */
+export function getPreview(item, { fetchBlob, key } = {}) {
+  const path = key || item.storage_path;
   const kind = previewKind(item);
   if (!path || !kind || kind === 'image') return Promise.resolve(null);
   if ((item.file_size || 0) > MAX_BYTES) return Promise.resolve(null);
   if (!cache.has(path)) {
     cache.set(path, limit(async () => {
       try {
-        const blob = await download(path);
+        const blob = fetchBlob ? await fetchBlob(item) : await download(item.storage_path);
         if (kind === 'pdf') return await pdfPreview(blob);
         if (kind === 'office') return await officePreview(blob, extOf(item.name));
         if (kind === 'text') return await textPreview(blob);
