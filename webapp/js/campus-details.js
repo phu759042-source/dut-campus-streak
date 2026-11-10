@@ -369,24 +369,86 @@ export function buildGates(pois) {
   return group;
 }
 
-/** Light canopies over parking areas inside the campus (nhà xe). */
+/** Corrugated tin texture (UVs are in metres: one rib every 0.8 m). */
+function tinTexture() {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 8;
+  const g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 64, 0);
+  grd.addColorStop(0, '#8ea3b8'); grd.addColorStop(0.45, '#c9d4de'); grd.addColorStop(0.55, '#d6dee6'); grd.addColorStop(1, '#8ea3b8');
+  g.fillStyle = grd; g.fillRect(0, 0, 64, 8);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1 / 0.8, 1);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Parked motorbikes in rows, filling a parking polygon (keeps the lots from looking empty). */
+function parkBikes(B, pts, rand, fill) {
+  let best = 0, ang = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (L > best) { best = L; ang = Math.atan2(q[1] - p[1], q[0] - p[0]); }
+  }
+  const ux = Math.cos(ang), uz = Math.sin(ang), vx = -uz, vz = ux;
+  let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+  for (const [x, z] of pts) {
+    const u = x * ux + z * uz, v = x * vx + z * vz;
+    minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v);
+  }
+  const inner = offsetPoly(pts, -1.2) || pts;
+  const COLORS = [0xc0392b, 0x1f2a44, 0xe9ecef, 0x2e86c1, 0x7f8c8d, 0x111111, 0xd35400, 0x8e44ad];
+  for (let v = minV + 1.5; v < maxV - 1; v += 3.4) {          // rows (an aisle between every row)
+    for (let u = minU + 0.6; u < maxU - 0.4; u += 0.82) {      // bikes side by side
+      if (rand() > fill) continue;
+      const x = u * ux + v * vx, z = u * uz + v * vz;
+      if (!insideP(inner, x, z)) continue;
+      const jitter = (rand() - 0.5) * 0.25;
+      B.color(0x1b1b1b); B.box(x, z, 0.12, 1.75, 0, 0.55, ang + jitter);                     // wheels
+      B.color(COLORS[Math.floor(rand() * COLORS.length)]); B.box(x, z, 0.42, 1.25, 0.32, 0.45, ang + jitter); // body
+      B.color(0x2b2b2b); B.box(x - vx * 0.15, z - vz * 0.15, 0.32, 0.6, 0.77, 0.1, ang + jitter);        // seat
+      B.color(0x6b7280); B.box(x + vx * 0.72, z + vz * 0.72, 0.6, 0.06, 0.95, 0.06, ang + jitter);       // handlebar
+    }
+  }
+}
+
+/**
+ * Parking lots inside the campus. cover:'roof' (or unspecified) -> tin roof on posts (nhà xe);
+ * cover:'open' -> open-air motorbike lot, no roof. Both get rows of parked motorbikes.
+ */
 export function buildCanopies(areas, boundary) {
   const B = new Builder();
+  const group = new THREE.Group();
+  const tin = new THREE.MeshLambertMaterial({ color: 0xffffff, map: tinTexture(), side: THREE.DoubleSide });
+  const rand = rng(4242);
   for (const a of areas.filter((x) => x.kind === 'parking')) {
-    const c = a.pts.reduce((s, p) => [s[0] + p[0] / a.pts.length, s[1] + p[1] / a.pts.length], [0, 0]);
-    if (!insideP(boundary, c[0], c[1])) continue;
-    const roof = offsetPoly(a.pts, -0.8);
-    if (!roof) continue;
-    B.color(0x7f97b3); B.cap(roof, 3.2); B.band(roof, 3.0, 3.2);
-    B.color(0xb9c2cc);
+    if (!a.pts.some(([x, z]) => insideP(boundary, x, z))) continue; // (centroid of an L-shaped lot can fall outside)
+    const covered = a.cover !== 'open';
+    parkBikes(B, a.pts, rand, covered ? 0.72 : 0.6);
+    if (!covered) continue;
+    const roof = offsetPoly(a.pts, -0.6) || a.pts; // irregular lots: roof follows the lot outline
+    const H = 3.3;
+    // tin roof surface
+    const shape = new THREE.Shape(roof.map(([x, z]) => new THREE.Vector2(x, z)));
+    const geo = new THREE.ShapeGeometry(shape);
+    geo.rotateX(Math.PI / 2);
+    geo.translate(0, H, 0);
+    const m = new THREE.Mesh(geo, tin);
+    m.castShadow = m.receiveShadow = true;
+    group.add(m);
+    // fascia + steel posts every ~6 m along the edge
+    B.color(0x6f8297); B.band(roof, H - 0.25, H);
+    B.color(0x9aa5b1);
     for (let i = 0; i < roof.length; i++) {
       const p = roof[i], q = roof[(i + 1) % roof.length];
       const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
-      const n = Math.max(1, Math.floor(L / 7));
-      for (let k = 0; k < n; k++) { const t = k / n; B.box(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, 0.22, 0.22, 0, 3.0); }
+      const n = Math.max(1, Math.floor(L / 6));
+      for (let k = 0; k < n; k++) { const t = k / n; B.box(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, 0.2, 0.2, 0, H - 0.2); }
     }
   }
-  return B.tris ? B.mesh() : null;
+  if (B.tris) group.add(B.mesh());
+  return group.children.length ? group : null;
 }
 
 /** Street lamps along paths and service roads inside the campus. Returns an object with setNight(). */

@@ -39,6 +39,8 @@ OVERRIDES = {
 }
 # Khu A: OSM draws the two back blocks far too deep and swallows the courtyards (fish ponds, trees).
 # Keep only a ~12 m strip at the back of each block; the rest becomes a courtyard with a pond.
+# Parking: 'roof' = covered by a tin roof (nhà xe), 'open' = open-air motorbike lot (from students)
+PARKING = {1038801125: 'roof', 1038801147: 'open'}
 A_BACK = [1043659297, 1043659298]
 A_FRONT = 1043659296
 BACK_DEPTH = 12.0
@@ -151,7 +153,9 @@ for e in ways.values():
         elif t.get('leisure') == 'park' or t.get('landuse') in ('grass', 'meadow') or t.get('leisure') == 'garden': kind = 'grass'
         elif t.get('amenity') == 'parking': kind = 'parking'
         if kind and len(pts) >= 3:
-            areas.append({'kind': kind, 'pts': pts, 'name': t.get('name')})
+            a = {'kind': kind, 'pts': pts, 'name': t.get('name'), 'id': e['id']}
+            if kind == 'parking' and e['id'] in PARKING: a['cover'] = PARKING[e['id']]
+            areas.append(a)
 
 # running track (multipolygon relation: take its outer ring)
 for e in els:
