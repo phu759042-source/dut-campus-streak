@@ -4,6 +4,8 @@ import { Icon, Spinner, Skeleton, ErrorBox, Empty, openSheet, confirmDialog, pro
 import { PageHeader } from './shared.js';
 import { getPreview, previewKind } from '../preview.js';
 import { publishShareCard } from '../sharecard.js';
+import { openViewer } from '../viewer.js';
+import { hideStorageUrl } from '../lib.js';
 import { enqueueUploads, UploadPanel, useUploads } from '../uploads.js';
 import { enqueueDeletes, DeletePanel, useDeletes, pendingDeleteIds } from '../deletes.js';
 import { appStore } from '../lib.js';
@@ -163,7 +165,7 @@ export function DocumentsPage() {
     if (imgs.length) {
       const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(imgs.map((i) => i.storage_path), 3600);
       const map = {};
-      (signed || []).forEach((s) => { if (s.signedUrl) map[s.path] = s.signedUrl; });
+      (signed || []).forEach((s) => { if (s.signedUrl) map[s.path] = hideStorageUrl(s.signedUrl); });
       setThumbs(map);
     }
   }
@@ -246,16 +248,19 @@ export function DocumentsPage() {
     enqueueUploads(files, parentId, stack.length ? stack[stack.length - 1].name : 'Tài liệu của tôi');
   }
 
-  async function openFile(it) {
-    const win = window.open('', '_blank');
-    const { data, error: err } = await supabase.storage.from(BUCKET).createSignedUrl(it.storage_path, 600);
-    if (err) { win?.close(); return toast('Không mở được tệp: ' + errMsg(err), 'error'); }
-    if (win) win.location = data.signedUrl; else location.href = data.signedUrl;
+  async function signed(it, download) {
+    const { data, error: err } = await supabase.storage.from(BUCKET)
+      .createSignedUrl(it.storage_path, 600, download ? { download: it.name } : undefined);
+    if (err) throw new Error(errMsg(err));
+    return data.signedUrl;
+  }
+  function openFile(it) {
+    openViewer(it, (download) => signed(it, download));
   }
   async function download(it) {
     const { data, error: err } = await supabase.storage.from(BUCKET).createSignedUrl(it.storage_path, 600, { download: it.name });
     if (err) return toast(errMsg(err), 'error');
-    const a = document.createElement('a'); a.href = data.signedUrl; a.download = it.name; a.click();
+    const a = document.createElement('a'); a.href = hideStorageUrl(data.signedUrl); a.download = it.name; a.click();
   }
   async function rename(it) {
     const name = await promptDialog({ title: 'Đổi tên', initial: it.name });

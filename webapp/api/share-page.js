@@ -50,7 +50,10 @@ module.exports = async (req, res) => {
     const action = meta.allow_download ? 'Bấm để xem và tải về' : 'Bấm để xem';
     const description = `${parts.length ? parts.join(' · ') + ' · ' : ''}${action} trên DUT Campus Streak, không cần đăng nhập.`;
     const url = `${SITE}/s/${token}`;
-    const image = meta.card_url || FALLBACK_IMAGE;
+    // Serve the card through our domain (/media is rewritten to Supabase Storage in vercel.json).
+    const image = meta.card_url
+      ? meta.card_url.replace(`${SUPABASE_URL}/storage/v1/object/public/`, `${SITE}/media/`)
+      : FALLBACK_IMAGE;
 
     // Drop the generic tags, then add the share-specific ones.
     html = html

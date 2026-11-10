@@ -1,6 +1,6 @@
 // Shared UI building blocks: icons, dialogs, toasts, flame, confetti, meme feedback.
 import { html, render, useState, useEffect, useRef } from 'preact';
-import { createStore, ASSET_BASE } from './lib.js';
+import { createStore, ASSET_BASE, hideStorageUrl } from './lib.js';
 import { MEMES } from './memes.js';
 
 export { html };
@@ -94,7 +94,7 @@ export function Avatar({ url, name = '', size = 44, ring = false }) {
   const initials = String(name || '?').trim().split(/\s+/).slice(-2).map((w) => w[0]).join('').toUpperCase();
   const style = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px`;
   return html`<span class=${'avatar' + (ring ? ' avatar-ring' : '')} style=${style}>
-    ${url && !broken ? html`<img src=${url} alt="" loading="lazy" onError=${() => setBroken(true)} />` : html`<span>${initials || '?'}</span>`}
+    ${url && !broken ? html`<img src=${hideStorageUrl(url)} alt="" loading="lazy" onError=${() => setBroken(true)} />` : html`<span>${initials || '?'}</span>`}
   </span>`;
 }
 
@@ -196,7 +196,7 @@ let dialogId = 0;
  * Open a sheet. `content` is a component receiving { close }.
  * Returns a promise resolved with the value passed to close().
  */
-export function openSheet(content, { title, wide = false, dismissible = true, center = false } = {}) {
+export function openSheet(content, { title, wide = false, dismissible = true, center = false, full = false } = {}) {
   return new Promise((resolve) => {
     const id = ++dialogId;
     const close = (value) => {
@@ -204,7 +204,7 @@ export function openSheet(content, { title, wide = false, dismissible = true, ce
       setTimeout(() => dialogStore.set((s) => ({ stack: s.stack.filter((d) => d.id !== id) })), 220);
       resolve(value);
     };
-    dialogStore.set((s) => ({ stack: [...s.stack, { id, content, title, wide, dismissible, center, close }] }));
+    dialogStore.set((s) => ({ stack: [...s.stack, { id, content, title, wide, dismissible, center, full, close }] }));
   });
 }
 
@@ -249,7 +249,7 @@ function DialogHost() {
   }, [s.stack]);
   return html`${s.stack.map((d) => {
     const C = d.content;
-    return html`<div key=${d.id} class=${'overlay' + (d.closing ? ' closing' : '') + (d.center ? ' center' : '')}
+    return html`<div key=${d.id} class=${'overlay' + (d.closing ? ' closing' : '') + (d.center ? ' center' : '') + (d.full ? ' full' : '')}
       onClick=${(e) => { if (e.target === e.currentTarget && d.dismissible) d.close(undefined); }}>
       <div class=${'sheet' + (d.wide ? ' wide' : '')} role="dialog" aria-modal="true" aria-label=${d.title || ''}>
         <div class="sheet-handle"></div>

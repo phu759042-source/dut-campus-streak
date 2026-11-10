@@ -44,7 +44,7 @@ async function download(path) {
   return data; // Blob
 }
 
-function loadPdfjs() {
+export function loadPdfjs() {
   pdfjsPromise ??= import(PDFJS).then((lib) => {
     lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
     return lib;

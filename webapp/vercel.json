@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/s/:token", "destination": "/api/share-page?token=:token" },
+    { "source": "/files/:path*", "destination": "https://gmwurbvhhzgdikogxiqb.supabase.co/storage/v1/object/sign/:path*" },
+    { "source": "/media/:path*", "destination": "https://gmwurbvhhzgdikogxiqb.supabase.co/storage/v1/object/public/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

@@ -1,5 +1,5 @@
 import { html, useState, useEffect, useRef } from 'preact';
-import { supabase, currentUser, errMsg } from '../lib.js';
+import { supabase, currentUser, errMsg, hideStorageUrl } from '../lib.js';
 import { Icon, Avatar, Skeleton, ErrorBox, Empty, Segmented, openSheet } from '../ui.js';
 import { PageHeader } from './shared.js';
 
@@ -81,7 +81,7 @@ export function LeaderboardPage() {
     if (ids.length) {
       const { data: banners } = await supabase.rpc('get_public_profile_banners', { p_user_ids: ids });
       const byId = Object.fromEntries((banners || []).filter((b) => b.banner_url).map((b) => [b.user_id, b.banner_url]));
-      list.forEach((r) => { r.banner_url = byId[r.user_id] || null; });
+      list.forEach((r) => { r.banner_url = hideStorageUrl(byId[r.user_id] || null); });
     }
     const val = (r) => num(metric === 'weekly' ? r.weekly_streak : r.current_streak);
     list.sort((a, b) => (num(a.rank) - num(b.rank)) || (val(b) - val(a)) || (num(b.total_check_ins) - num(a.total_check_ins)) || name(a).localeCompare(name(b)));

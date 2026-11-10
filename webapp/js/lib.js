@@ -16,6 +16,18 @@ export const ASSET_BASE =
 
 export const APP_VERSION = '1.1.2-web';
 
+// Storage links go through our own domain (Vercel rewrites /files and /media to Supabase Storage),
+// so users never see the Supabase project address when they open or download a file.
+const STORAGE_PREFIX = `${SUPABASE_URL}/storage/v1/object/`;
+const CAN_PROXY = !/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+export function hideStorageUrl(url) {
+  if (!CAN_PROXY || typeof url !== 'string' || !url.startsWith(STORAGE_PREFIX)) return url;
+  const rest = url.slice(STORAGE_PREFIX.length);
+  if (rest.startsWith('sign/')) return `${location.origin}/files/${rest.slice(5)}`;
+  if (rest.startsWith('public/')) return `${location.origin}/media/${rest.slice(7)}`;
+  return url;
+}
+
 // ------------------------------------------------------------------
 // Tiny reactive store
 // ------------------------------------------------------------------

@@ -6,6 +6,8 @@ import { navigate } from '../router.js';
 import { DocThumb, fileTone } from './documents.js';
 import { previewKind } from '../preview.js';
 import { InstallButton } from '../install.js';
+import { openViewer } from '../viewer.js';
+import { hideStorageUrl } from '../lib.js';
 
 async function call(body) {
   const res = await invokeFunction('shared-documents', body);
@@ -40,7 +42,7 @@ export function SharedLinkPage({ token }) {
       setData(d);
       document.title = `${d.root.name} · Chia sẻ từ ${d.owner.display_name}`;
       const imgs = d.items.filter((it) => it.item_type === 'file' && previewKind(it) === 'image').map((it) => it.id);
-      if (imgs.length) setThumbs(await urlsFor(imgs));
+      if (imgs.length) setThumbs(Object.fromEntries(Object.entries(await urlsFor(imgs)).map(([k, v]) => [k, hideStorageUrl(v)])));
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { load(); }, [folderId]);
@@ -56,18 +58,14 @@ export function SharedLinkPage({ token }) {
     },
   });
 
-  async function view(it) {
-    const win = window.open('', '_blank');
-    try {
-      const urls = await urlsFor([it.id]);
-      if (win) win.location = urls[it.id]; else location.href = urls[it.id];
-    } catch (e) { win?.close(); toast(e.message, 'error'); }
+  function view(it) {
+    openViewer(it, async (download) => (await urlsFor([it.id], download))[it.id], { canDownload: !!data?.share.allow_download });
   }
   async function download(it) {
     setBusyId(it.id);
     try {
       const urls = await urlsFor([it.id], true);
-      const a = document.createElement('a'); a.href = urls[it.id]; a.download = it.name; a.click();
+      const a = document.createElement('a'); a.href = hideStorageUrl(urls[it.id]); a.download = it.name; a.click();
     } catch (e) { toast(e.message, 'error'); }
     setBusyId(null);
   }

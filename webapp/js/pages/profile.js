@@ -1,7 +1,7 @@
 import { html, useState, useEffect, useRef } from 'preact';
 import {
   supabase, appStore, currentUser, ensureCurrentUserData, loadMyProfile, saveTheme, errMsg,
-  invokeFunction, loadImage, canvasToBlob, applyTheme, resizeToJpeg,
+  invokeFunction, loadImage, canvasToBlob, applyTheme, resizeToJpeg, hideStorageUrl,
 } from '../lib.js';
 import { pushStatus, enablePush, disablePush, isPushOn, sendTestPush } from '../push.js';
 
@@ -220,7 +220,7 @@ export function ProfilePage() {
     if (blob) setAvatar({ blob, url: URL.createObjectURL(blob) });
   }
   // Banner: the uncropped original is kept at <uid>/banner-original.jpg so it can be re-cropped later.
-  const originalUrl = () => supabase.storage.from('profile-banners').getPublicUrl(`${currentUser().id}/banner-original.jpg`).data.publicUrl;
+  const originalUrl = () => hideStorageUrl(supabase.storage.from('profile-banners').getPublicUrl(`${currentUser().id}/banner-original.jpg`).data.publicUrl);
 
   async function cropBannerFrom(src, original) {
     const blob = await openSheet(({ close }) => html`<${Cropper} src=${src} aspect=${BANNER_ASPECT} outW=${1440} close=${close} />`,
@@ -247,7 +247,7 @@ export function ProfilePage() {
     }
     let src = `${originalUrl()}?v=${Date.now()}`;
     try { const r = await fetch(src, { method: 'HEAD' }); if (!r.ok) src = null; } catch { src = null; }
-    if (!src) src = f.banner_url;
+    if (!src) src = hideStorageUrl(f.banner_url);
     if (!src) return newBanner();
     await cropBannerFrom(src, null);
   }
@@ -324,7 +324,7 @@ export function ProfilePage() {
   }
 
   const dark = store.theme === 'dark';
-  const bannerSrc = banner?.url || f.banner_url;
+  const bannerSrc = banner?.url || hideStorageUrl(f.banner_url);
   return html`<div class="page narrow">
     <${PageHeader} title="Hồ sơ" />
     <section class="profile-hero pop-in">
