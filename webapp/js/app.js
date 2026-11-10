@@ -16,7 +16,16 @@ import { syncPush } from './push.js';
 import { InstallButton } from './install.js';
 import { UploadIndicator } from './uploads.js';
 
-const PUBLIC = ['/login', '/register', '/forgot', '/reset'];
+const PUBLIC = ['/login', '/register', '/forgot', '/reset', '/map'];
+
+// The 3D map pulls in Three.js, so it is loaded only when opened.
+function LazyMap() {
+  const [Page, setPage] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { import('./pages/map.js').then((m) => setPage(() => m.MapPage)).catch(() => setFailed(true)); }, []);
+  if (failed) return html`<div class="splash"><b>Không tải được bản đồ.</b><button class="btn btn-primary" onClick=${() => location.reload()}>Thử lại</button></div>`;
+  return Page ? html`<${Page} />` : html`<${Splash} />`;
+}
 
 const ROUTES = [
   ['/', HomePage],
@@ -41,6 +50,7 @@ const NAV = [
 ];
 const SIDE_EXTRA = [
   { href: '/documents', icon: 'folder', label: 'Tài liệu' },
+  { href: '/map', icon: 'pin', label: 'Bản đồ trường 3D' },
   { href: '/achievements', icon: 'trophy', label: 'Thành tích' },
   { href: '/checkins-today', icon: 'camera', label: 'Check-in hôm nay' },
 ];
@@ -88,6 +98,7 @@ function App() {
   // Public share links work without logging in.
   const shareParams = match('/s/:token', path);
   if (shareParams) return html`<${SharedLinkPage} token=${shareParams.token} key=${path} />`;
+  if (path === '/map') return html`<${LazyMap} />`;
   if (session === undefined) return html`<${Splash} />`;
   if (path === '/login') return html`<${LoginPage} />`;
   if (path === '/register') return html`<${RegisterPage} />`;

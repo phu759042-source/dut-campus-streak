@@ -247,6 +247,11 @@ export function HomePage() {
     </div>
 
     <${PushPrompt} />
+    <button class="map-promo slide-up" onClick=${() => navigate('/map')}>
+      <span class="map-promo-art" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span class="grow"><b>Bản đồ trường 3D</b><span class="small">Xoay, phóng to, tìm phòng học như F305 ngay trên mô hình DUT.</span></span>
+      <${Icon} name="chevron" size=${20} />
+    </button>
     <div class="section-head"><h2>Truy cập nhanh</h2></div>
     <div class="quick-grid">
       ${QUICK.map((q, i) => html`<button key=${q.href} class=${'quick tone-' + q.tone + ' slide-up'} style=${`--d:${i * 50}ms`} onClick=${() => navigate(q.href)}>

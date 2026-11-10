@@ -55,7 +55,8 @@ export function MissionPage({ id }) {
       <h2>${c.subject}</h2>
       <div class="mission-meta">
         <span><${Icon} name="clock" size=${16} /> ${fmtRange(c.startTime, c.endTime)}</span>
-        <span><${Icon} name="pin" size=${16} /> Phòng ${c.room}</span>
+        ${/^[A-Za-z]\s*\d/.test(c.room || '') ? html`<a class="mission-room-link" href=${`/map?room=${encodeURIComponent(c.room)}`} onClick=${(e) => { e.preventDefault(); navigate(`/map?room=${encodeURIComponent(c.room)}`); }}><${Icon} name="pin" size=${16} /> Phòng ${c.room} · Xem trên bản đồ</a>`
+          : html`<span><${Icon} name="pin" size=${16} /> Phòng ${c.room}</span>`}
         ${c.teacher && html`<span><${Icon} name="user" size=${16} /> ${c.teacher}</span>`}
         ${(c.isMakeup || reported) && html`<${AbsenceBadge} c=${c} />`}
       </div>

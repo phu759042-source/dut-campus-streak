@@ -104,3 +104,14 @@ Trình duyệt chỉ dùng **publishable key** (trong `js/lib.js`). Không bao g
    Server kiểm tra giờ, đọc biển phòng bằng Gemini và ghi `check_ins`. Client không có quyền ghi `check_ins`.
 
 Camera trên web cần HTTPS (hoặc `localhost`).
+
+## Bản đồ trường 3D (`/map`)
+
+- Trang công khai (không cần đăng nhập), dùng Three.js 0.169 qua import map; chỉ tải khi mở `/map`.
+- Dữ liệu: `data/campus.json`, sinh từ bản trích OpenStreetMap `dev/osm/dut-osm.json` (© OpenStreetMap contributors, ODbL) bằng
+  `python -I -X utf8 dev/build_campus.py`. Toạ độ tính bằng mét, xoay giống bản đồ khuôn viên chính thức
+  (đường Nguyễn Lương Bằng ở dưới, Ngô Sĩ Liên bên phải).
+- Tên khu (A, B, C1–C3, D, E1, E2, F, G, H, I, K, L, M, N, P, S, X) được gán theo id OSM trong `ZONES` của script.
+  Số tầng lấy từ OSM nếu có, còn lại là ước lượng (`estimated: true`). Sửa script rồi chạy lại để cập nhật.
+- Tìm kiếm: mã phòng (vd `F305`) dẫn tới khu theo chữ cái đầu; link sâu `/map?k=F` hoặc `/map?room=F305`.
+- Code: `js/map3d.js` (cảnh 3D, vẽ theo yêu cầu, không vẽ liên tục), `js/pages/map.js` (giao diện, nhãn, thẻ thông tin).
