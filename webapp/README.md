@@ -123,3 +123,6 @@ Camera trên web cần HTTPS (hoặc `localhost`).
 - Chi tiết công trình (`js/campus-details.js`): mặt tường theo khu (trắng có hành lang, kem, gạch nâu khu F, kính Nhà S,
   Trung tâm Học liệu mái xanh), mái dốc ngói đỏ cho H/F/N/P/X/E1, tường chắn mái + cụm máy trên mái, chân tường,
   sảnh mái che, tường rào (`walls` trong campus.json, có va chạm), cổng có biển tên, mái che bãi xe, đèn đường, hàng cây ven đường.
+- Đi vào bên trong (`js/interiors.js`): Căn tin cạnh Khu E1 (cửa trước + cửa hông, 5 bàn ăn, tủ lạnh nước, quầy cà phê, bếp
+  phía sau quầy phục vụ; mái tự ẩn khi đứng trong) và Khu E1 có hành lang tầng 1–2 + cầu thang ở đầu gần căn tin.
+  Bộ đi bộ hỗ trợ sàn tầng 2, bậc thang (ramp) và tường/lan can chỉ chặn ở đúng độ cao.

@@ -136,7 +136,7 @@ function horn() {
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
-export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], limits, onNear, onInteract, onExit, onView }) {
+export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], extraWalls = [], surfaces = [], indoor = [], limits, onNear, onInteract, onExit, onView }) {
   const s = makeStudent();
   s.group.scale.setScalar(SCALE);
   const rig = new THREE.Group(); // position + heading; holds the student and the vehicles
@@ -146,13 +146,33 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   rig.visible = s.blob.visible = false;
   scene.add(rig, s.blob);
 
-  const solids = data.buildings.map((b, i) => ({ pts: b.pts, box: bbox([b.pts]), i }));
+  const solids = data.buildings.map((b, i) => ({ pts: b.pts, box: bbox([b.pts]), i, hollow: !!b.hollow }));
   for (const pts of extraSolids) solids.push({ pts, box: bbox([pts]), i: -1 }); // gate structures (no info card)
   // perimeter wall segments (thin, so only a distance check)
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) {
     const a = w[i], b = w[i + 1];
-    wallSegs.push({ a, b, minX: Math.min(a[0], b[0]) - 1, maxX: Math.max(a[0], b[0]) + 1, minZ: Math.min(a[1], b[1]) - 1, maxZ: Math.max(a[1], b[1]) + 1 });
+    wallSegs.push({ a, b, minX: Math.min(a[0], b[0]) - 1, maxX: Math.max(a[0], b[0]) + 1, minZ: Math.min(a[1], b[1]) - 1, maxZ: Math.max(a[1], b[1]) + 1, y0: -9, y1: 99 });
+  }
+  // interior walls / railings only block at their own height (railings upstairs don't stop you downstairs)
+  for (const w of extraWalls) wallSegs.push({ a: w.a, b: w.b, y0: w.y0, y1: w.y1, minX: Math.min(w.a[0], w.b[0]) - 1, maxX: Math.max(w.a[0], w.b[0]) + 1, minZ: Math.min(w.a[1], w.b[1]) - 1, maxZ: Math.max(w.a[1], w.b[1]) + 1 });
+  // walkable surfaces above the ground: 2nd-floor slabs and stairs (ramps)
+  const surf = surfaces.map((s) => ({ ...s, box: bbox([s.pts]) }));
+  const STEP = 0.6, HEAD = 1.75;
+  /** Ground height at (x, z) for someone standing at height y, and whether the spot is blocked (a step too high). */
+  function groundAt(x, z, y) {
+    let g = 0, blocked = false;
+    for (const s of surf) {
+      if (x < s.box.minX || x > s.box.maxX || z < s.box.minZ || z > s.box.maxZ || !inside(s.pts, x, z)) continue;
+      let h = s.y;
+      if (s.ramp) {
+        const t = THREE.MathUtils.clamp(((x - s.ramp.o[0]) * s.ramp.u[0] + (z - s.ramp.o[1]) * s.ramp.u[1]) / s.ramp.len, 0, 1);
+        h = s.ramp.y0 + (s.ramp.y1 - s.ramp.y0) * t;
+      }
+      if (h <= y + STEP) g = Math.max(g, h);
+      else if (h < y + HEAD) blocked = true; // would walk into the stairs / slab edge
+    }
+    return { g, blocked };
   }
   const st = {
     on: false, x: 0, z: 0, y: 0, vy: 0, heading: 0, yaw: 0, pitch: 0.3, dist: 8, phase: 0, speed: 0,
@@ -178,6 +198,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     for (let it = 0; it < 4; it++) {
       let moved = false;
       for (const b of solids) {
+        if (b.hollow) continue;
         if (x < b.box.minX - R || x > b.box.maxX + R || z < b.box.minZ - R || z > b.box.maxZ + R) continue;
         const ins = inside(b.pts, x, z);
         const { d, bx, bz } = nearestEdge(b.pts, x, z);
@@ -191,6 +212,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       }
       for (const s of wallSegs) {
         if (x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
+        if (!(st.y + 0.15 < s.y1 && st.y + 1.5 > s.y0)) continue; // not at this wall's height
         const { d, bx, bz } = nearestEdge([s.a, s.b], x, z);
         const r = R + 0.18;
         if (d < r) { const nx = (x - bx) / (d || 1), nz = (z - bz) / (d || 1); x = bx + nx * r; z = bz + nz * r; moved = true; }
@@ -201,7 +223,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     z = THREE.MathUtils.clamp(z, limits.minZ, limits.maxZ);
     return [x, z];
   }
-  const blocked = (x, z) => solids.some((b) => x > b.box.minX - R && x < b.box.maxX + R && z > b.box.minZ - R && z < b.box.maxZ + R
+  const blocked = (x, z) => solids.some((b) => !b.hollow && x > b.box.minX - R && x < b.box.maxX + R && z > b.box.minZ - R && z < b.box.maxZ + R
     && (inside(b.pts, x, z) || nearestEdge(b.pts, x, z).d < R + 0.3));
   /** Closest free spot to (x, z), searching outwards in rings. */
   function freeSpot(x, z) {
@@ -335,16 +357,21 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       faded.add(m);
     }
   }
-  let camPitch = 0.3;
+  let camPitch = 0.3, camDist = 6.5;
   function cameraTarget(dt) {
     look.set(st.x, st.y + EYE, st.z);
-    camPitch += (st.pitch - camPitch) * Math.min(1, dt * 6);
+    // inside a room (canteen, roof hidden): come closer and look down from above the walls
+    const inRoom = indoor.some((p) => inside(p, st.x, st.z));
+    const wantPitch = inRoom ? Math.max(st.pitch, 1.05) : st.pitch;
+    const wantDist = inRoom ? THREE.MathUtils.clamp(st.dist, 6, 9) : st.dist;
+    camPitch += (wantPitch - camPitch) * Math.min(1, dt * 6);
+    camDist += (wantDist - camDist) * Math.min(1, dt * 6);
     const cp = Math.cos(camPitch);
     dir.set(Math.sin(st.yaw) * cp, Math.sin(camPitch), Math.cos(st.yaw) * cp).normalize();
-    ray.set(look, dir); ray.far = st.dist;
+    ray.set(look, dir); ray.far = camDist;
     const hits = ray.intersectObjects(pickables, false);
     setOccluders([...new Set(hits.map((h) => h.object))]);
-    want.copy(look).addScaledVector(dir, st.dist);
+    want.copy(look).addScaledVector(dir, camDist);
     if (want.y < 0.6) want.y = 0.6;
   }
 
@@ -371,7 +398,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
         const h = Math.atan2(mx, mz);
         st.heading += wrap(h - st.heading) * Math.min(1, dt * 12);
         const nx = st.x + (mx / mag) * st.speed * dt, nz = st.z + (mz / mag) * st.speed * dt;
-        [st.x, st.z] = resolve(nx, nz);
+        const [qx, qz] = resolve(nx, nz);
+        if (!groundAt(qx, qz, st.y).blocked) { st.x = qx; st.z = qz; }
       }
     } else {
       // bike: throttle / brake on W-S (joystick up-down), steer with A-D (joystick left-right)
@@ -386,7 +414,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       st.heading -= st.steer * 1.8 * grip * dt;
       const sx = Math.sin(st.heading), sz = Math.cos(st.heading);
       const ox = st.x, oz = st.z;
-      [st.x, st.z] = resolve(st.x + sx * st.v * dt, st.z + sz * st.v * dt);
+      const [qx, qz] = resolve(st.x + sx * st.v * dt, st.z + sz * st.v * dt);
+      if (!groundAt(qx, qz, st.y).blocked) { st.x = qx; st.z = qz; }
       const moved = Math.hypot(st.x - ox, st.z - oz), want = Math.abs(st.v * dt);
       if (want > 0.02 && moved < want * 0.55) st.v *= 0.55; // bumped into something
       st.speed = Math.abs(st.v);
@@ -394,18 +423,24 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       if (st.t - st.lastTurn > 1.2 && st.speed > 0.6) st.yaw += wrap(st.heading + Math.PI - st.yaw) * Math.min(1, dt * 2.2);
       if (st.jumpReq) horn();
     }
-    // jump + gravity (on foot only)
-    if (st.jumpReq && st.y <= 0.001 && !riding) st.vy = JUMP_V;
+    // floors / stairs under the feet, jump + gravity
+    const { g } = groundAt(st.x, st.z, st.y);
+    st.ground = g;
+    if (st.y < g) { st.y = g; st.vy = 0; }                 // stepped up (stairs)
+    if (st.jumpReq && st.y <= g + 0.001 && !riding) st.vy = JUMP_V;
     st.jumpReq = false;
-    st.vy -= GRAVITY * dt;
-    st.y = Math.max(0, st.y + st.vy * dt);
-    if (st.y === 0 && st.vy < 0) st.vy = 0;
+    if (st.y > g + 0.001 || st.vy > 0) {
+      st.vy -= GRAVITY * dt;
+      st.y = Math.max(g, st.y + st.vy * dt);
+      if (st.y === g && st.vy < 0) st.vy = 0;
+      if (st.y - g < 0.35 && st.vy <= 0 && st.y > g) st.y = g; // walking down stairs: stick to the steps
+    }
 
     // animate limbs (or the riding pose)
     const moving = Math.min(1, st.speed / RUN);
     st.phase += dt * (3 + st.speed * 1.9);
     const swing = Math.sin(st.phase) * Math.min(0.95, 0.25 + moving * 1.1) * (st.speed > 0.2 ? 1 : 0);
-    const air = st.y > 0.05 ? 0.6 : 0;
+    const air = st.y > (st.ground || 0) + 0.05 ? 0.6 : 0;
     const ease = Math.min(1, dt * 14);
     if (riding) {
       const V = kit[st.mode];
@@ -414,7 +449,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       s.group.rotation.x = 0.12;
       for (const w of V.wheels) w.rotation.x += (st.v * dt) / V.wheelR;
       V.fork.rotation.y = -st.steer * 0.38;
-      rig.position.set(st.x, 0, st.z);
+      rig.position.set(st.x, st.y, st.z);
       rig.rotation.set(0, st.heading, st.steer * 0.2 * Math.min(1, st.speed / 6)); // lean into turns
       s.blob.scale.set(1.1, 1.9, 1);
     } else {
@@ -422,14 +457,14 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       s.legR.rotation.x += (-swing - air * 0.3 - s.legR.rotation.x) * ease;
       s.armL.rotation.x += (-swing * 0.85 - air - s.armL.rotation.x) * ease;
       s.armR.rotation.x += (swing * 0.85 - air - s.armR.rotation.x) * ease;
-      const bob = st.speed > 0.2 && st.y === 0 ? Math.abs(Math.sin(st.phase)) * 0.045 : Math.sin(st.t * 2) * 0.01;
+      const bob = st.speed > 0.2 && st.y === (st.ground || 0) ? Math.abs(Math.sin(st.phase)) * 0.045 : Math.sin(st.t * 2) * 0.01;
       s.group.position.set(0, bob, 0);
       s.group.rotation.x = 0;
       rig.position.set(st.x, st.y, st.z);
       rig.rotation.set(0, st.heading, 0);
       s.blob.scale.setScalar(0.8 * (1 - Math.min(0.5, st.y * 0.25)));
     }
-    s.blob.position.set(st.x, 0.4, st.z);
+    s.blob.position.set(st.x, st.ground > 0.1 ? st.ground + 0.03 : 0.4, st.z);
     s.blob.rotation.z = st.heading;
 
     const near = st.fp ? 0.12 : 1;

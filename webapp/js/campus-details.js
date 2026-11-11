@@ -117,7 +117,7 @@ export function wallMaterials() {
 
 // ---------------- polygon helpers ----------------
 function signedArea(p) { let a = 0; for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += p[j][0] * p[i][1] - p[i][0] * p[j][1]; return a / 2; }
-function insideP(pts, x, z) {
+export function insideP(pts, x, z) {
   let c = false;
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
     const [xi, zi] = pts[i], [xj, zj] = pts[j];
@@ -165,7 +165,7 @@ export function offsetPoly(pts, d) {
 const perimeter = (p) => p.reduce((s, q, i) => s + Math.hypot(q[0] - p[(i + 1) % p.length][0], q[1] - p[(i + 1) % p.length][1]), 0);
 
 // ---------------- merged vertex-coloured geometry ----------------
-class Builder {
+export class Builder {
   constructor() { this.pos = []; this.col = []; this.c = new THREE.Color(); }
   color(hex) { this.c.set(hex); return this; }
   tri(a, b, c) {
@@ -199,6 +199,13 @@ class Builder {
     this.cap(r, y0 + h);
   }
   get tris() { return this.pos.length / 9; }
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    g.computeVertexNormals();
+    return g;
+  }
   mesh(opts = {}) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
@@ -356,6 +363,7 @@ export function buildBuildingDetails(buildings) {
   const rand = rng(77);
   for (const b of buildings) {
     const start = B.tris;
+    if (b.hollow) { ranges.push([start, start, b]); continue; } // walk-in building: built by interiors.js
     const st = styleOf(b);
     const wallHex = WALLS[st.wall].base;
     const h = b.height;
@@ -364,13 +372,14 @@ export function buildBuildingDetails(buildings) {
     if (plinth) { B.color(shade(wallHex, 0.72)); B.band(plinth, 0, 0.9); B.ringCap(plinth, b.pts, 0.9); }
     if (b.zone === 'S') { towerS(b, B, extras, glowMats); ranges.push([start, B.tris, b]); continue; }
 
-    const thickness = (2 * Math.abs(signedArea(b.pts))) / (perimeter(b.pts) || 1);
+    const rp = b.roofPts || b.pts; // E1: the roof also covers the open corridor
+    const thickness = (2 * Math.abs(signedArea(rp))) / (perimeter(rp) || 1);
     let roofDone = false;
     if (st.roof === 'hip') {
       // pitched roof: eaves overhang, then slopes up to an inset ridge outline
-      const eave = offsetPoly(b.pts, 0.7) || b.pts;
+      const eave = offsetPoly(rp, 0.7) || rp;
       for (const k of [0.46, 0.38, 0.3, 0.22, 0.15, 0.1]) {
-        const inset = offsetPoly(b.pts, -thickness * k);
+        const inset = offsetPoly(rp, -thickness * k);
         if (!inset) continue;
         const rise = thickness * k * 0.62;
         B.color(shade(st.roofColor, 0.82)); B.band(eave, h - 0.25, h + 0.05);          // fascia
@@ -408,7 +417,7 @@ export function buildBuildingDetails(buildings) {
       }
     }
     // entrance canopy on the "front" (bottom of the map) of large zone buildings
-    if (b.zone && Math.abs(signedArea(b.pts)) > 700) {
+    if (b.zone && !b.corridor && Math.abs(signedArea(b.pts)) > 700) {
       let best = null;
       if (b.entrance_edge != null) { const e = outEdge(b.pts, b.entrance_edge); best = { a: e.a, c: e.c, L: e.L, mz: e.mz }; }
       for (let i = 0; i < b.pts.length && b.entrance_edge == null; i++) {

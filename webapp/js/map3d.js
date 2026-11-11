@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWalker } from './walk.js';
+import { prepareInteriors, buildInteriors } from './interiors.js';
 import { styleOf, wallMaterials, buildBuildingDetails, buildWalls, buildGates, buildCanopies, buildLamps, avenueTreeSpots } from './campus-details.js';
 
 export const FLOOR_H = 3.4;
@@ -193,8 +194,14 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const roofMat = (c) => { if (!roofMats.has(c)) roofMats.set(c, new THREE.MeshLambertMaterial({ color: c })); return roofMats.get(c); };
   const buildings = [];
   const pickables = [];
+  prepareInteriors(data); // canteen becomes walk-in, E1 gets its corridor
   for (const b of data.buildings) {
     const h = b.height || b.levels * FLOOR_H + 0.8; // real height when known (e.g. Nhà S 42 m)
+    if (b.hollow) {
+      const [cx, cz] = centroid(b.pts);
+      buildings.push({ ...b, height: h, center: [cx, cz], area: polyArea(b.pts), mesh: null });
+      continue;
+    }
     const geo = new THREE.ExtrudeGeometry(toShape(b.pts), { depth: h, bevelEnabled: false });
     if (b.height) {
       // stretch the window texture so it shows exactly `levels` rows of windows
@@ -216,6 +223,11 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   // roofs, parapets, plinths, rooftop units, entrance canopies (one merged mesh)
   const details = buildBuildingDetails(buildings);
   scene.add(details.mesh, details.extras);
+  // walk-in canteen + E1 corridors/stairs
+  const inter = buildInteriors(buildings);
+  scene.add(inter.group);
+  for (const b of buildings) if (b.hollow) b.mesh = inter.meshFor.get(b.id) || null;
+  pickables.push(...inter.occluders);
   const clickables = [...pickables, details.mesh];
   // perimeter wall, gates, parking canopies
   if (data.walls?.length) scene.add(buildWalls(data.walls));
@@ -327,6 +339,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     walls.setNight(isDark, P.wall);
     lamps.setNight(isDark);
     details.setNight(isDark);
+    inter.setNight(isDark);
     hemi.color.set(P.hemiSky); hemi.groundColor.set(P.hemiGround); hemi.intensity = P.hemi;
     sun.intensity = P.sun;
     sun.color.set(isDark ? 0xaabbff : 0xfff4e0);
@@ -378,7 +391,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   });
 
   // ---------- walk mode ----------
-  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: gates.solids, limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
+  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids], extraWalls: inter.walls, surfaces: inter.surfaces, indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
   function startWalk(at, lookAt) {
     let x, z, facing;
     if (at) {
@@ -402,6 +415,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   }
   function stopWalk() {
     treeOcclusion(null, null);
+    inter.update(null);
     if (!walker.state.on) return;
     const { x, z } = walker.state;
     walker.exit();
@@ -450,6 +464,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     if (walker.state.on) {
       const look = walker.update(dt);
       treeOcclusion(camera.position, look);
+      inter.update(walker.state);
       controls.target.copy(look); // used for label distance
       needs = true;
     } else if (anim) {
@@ -493,7 +508,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     },
     /** debug: advance walk mode by `sec` seconds at 60 fps synchronously, then draw */
     _step(sec) {
-      for (let i = 0; i < Math.round(sec * 60); i++) if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); treeOcclusion(camera.position, l); }
+      for (let i = 0; i < Math.round(sec * 60); i++) if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); treeOcclusion(camera.position, l); inter.update(walker.state); }
       needs = true;
       last = performance.now();
       const w = walker.state;

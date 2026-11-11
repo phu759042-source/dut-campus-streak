@@ -36,6 +36,11 @@ ZONES = {
 # Real data from students (overrides OSM / estimates).
 OVERRIDES = {
     1551964032: {'levels': 10, 'height': 42, 'floor_area': 7330, 'estimated': False, 'entrance_edge': 5},  # Nhà S: main door under the core
+    # canteen next to Khu E1: walk-in interior (tables, drinks fridges, coffee bar, kitchen)
+    1328750198: {'name': 'Căn tin', 'kind': 'canteen', 'interior': 'canteen', 'levels': 1, 'height': 4.2, 'estimated': False, 'entrance_edge': 3},
+    1043659299: {'name': 'Căn tin KTX'},
+    # Khu E1: open corridor along the front on both floors, staircase at the end next to the canteen
+    968341226: {'corridor': {'edge': 3, 'depth': 2.6}, 'entrance_edge': 3},
 }
 # Khu A: OSM draws the two back blocks far too deep and swallows the courtyards (fish ponds, trees).
 # Keep only a ~12 m strip at the back of each block; the rest becomes a courtyard with a pond.
