@@ -505,7 +505,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     bounds: all,
     flyTo, focusBox, goHome, faceNorth, setSelected, setTheme, requestRender,
     startWalk, stopWalk, walking: () => walker.state.on,
-    setJoy: (x, y) => walker.setJoy(x, y), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt) => walker.teleport(x, z, lookAt),
+    setJoy: (x, y) => walker.setJoy(x, y), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt) => walker.teleport(x, z, lookAt),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       disposed = true;
