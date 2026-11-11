@@ -1,7 +1,7 @@
 // /map: 3D map of the DUT campus. Public (no login needed) so new students can explore it.
 // Three.js is loaded only when this page opens.
 import { html, useState, useEffect, useRef } from 'preact';
-import { appStore, loadTodayClasses, fmtTime, readLocal, writeLocal } from '../lib.js';
+import { appStore, loadTodayClasses, fmtTime, readLocal, writeLocal, supabase } from '../lib.js';
 import { Icon, Spinner, toast } from '../ui.js';
 import { back } from '../router.js';
 
@@ -197,6 +197,32 @@ function mapNight() {
   return v === 'night' ? true : v === 'day' ? false : appIsDark();
 }
 
+// Live viewers (Supabase Realtime presence: every open map tab joins one channel, nothing is stored)
+// and the visit counter (hit_page_view RPC: one visit per browser session, totals for all time and today).
+function useMapStats() {
+  const [online, setOnline] = useState(0);
+  const [visits, setVisits] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    let counted = false;
+    try { counted = sessionStorage.getItem('cs-map-visit') === '1'; } catch { /* storage off */ }
+    const load = (count) => supabase.rpc('hit_page_view', { p_page: 'map', p_count: count }).then(({ data, error }) => {
+      if (!alive || error || !data) return;
+      if (count) { counted = true; try { sessionStorage.setItem('cs-map-visit', '1'); } catch { /* storage off */ } }
+      setVisits(data);
+    }, () => {});
+    load(!counted);
+    const timer = setInterval(() => { if (!document.hidden) load(false); }, 120000);
+    const key = (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()).slice(2);
+    const ch = supabase.channel('map-online', { config: { presence: { key } } });
+    ch.on('presence', { event: 'sync' }, () => { if (alive) setOnline(Object.keys(ch.presenceState()).length); })
+      .subscribe((status) => { if (status === 'SUBSCRIBED') ch.track({ at: Date.now() }); });
+    return () => { alive = false; clearInterval(timer); supabase.removeChannel(ch); };
+  }, []);
+  return { online, visits };
+}
+const fmtCount = (n) => Number(n || 0).toLocaleString('vi-VN');
+
 export function MapPage() {
   const host = useRef();
   const labelsRef = useRef();
@@ -233,6 +259,7 @@ export function MapPage() {
   const [night, setNight] = useState(mapNight);
   const dataRef = useRef(null);
   const loggedIn = !!appStore.get().session;
+  const stats = useMapStats();
 
   useEffect(() => {
     document.title = 'Bản đồ DUT 3D · Campus Streak';
@@ -424,6 +451,10 @@ export function MapPage() {
       </div>
     </div>
 
+    ${state === 'ready' && stats.online > 0 && html`<div class="map-stats pop-in" title=${stats.visits ? `Hôm nay: ${fmtCount(stats.visits.today)} lượt · Tổng: ${fmtCount(stats.visits.total)} lượt` : 'Số người đang mở bản đồ'}>
+      <span class="map-live-dot" aria-hidden="true"></span><span><b>${fmtCount(stats.online)}</b> đang xem</span>
+      ${stats.visits && html`<span class="map-stats-sep" aria-hidden="true"></span><span><b>${fmtCount(stats.visits.total)}</b> lượt<span class="map-stats-long"> truy cập</span></span>`}
+    </div>`}
     ${state === 'ready' && walking && html`<div class="map-mini"><canvas ref=${miniRef}></canvas><span class="map-mini-n" style=${`transform: rotate(${compass}rad)`}><b>N</b></span></div>`}
     ${state === 'ready' && walking && timeBtn('walk-time')}
     ${state === 'ready' && walking && pinsBtn('walk-pins')}
