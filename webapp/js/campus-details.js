@@ -605,20 +605,22 @@ export function buildGates(pois, center = [0, 0]) {
       for (const fw of [-1.6, 1.6]) { const [cx, cz] = P(-3.7, 1.2 + fw); B.box(cx, cz, 0.6, 0.6, 0, 3.2, across); solids.push(rect(cx, cz, 0.6, 0.6, across)); }
       B.color(0xb85c46); B.box(gx, gz, 6.6, 7, 0, 0.25, across);                      // red tiled step
       solids.push(rect(gx, gz, 6, 6.5, across));
-      // tall blue billboard behind/left of the guard house, facing the street
-      const [bx, bz] = P(-12.8, 0.6);
+      // tall blue billboard beside the guard house, turned to face the driveway (as in the photo)
+      const alongF = Math.atan2(fz, fx);
+      const [bx, bz] = P(-12.2, 1.5);
       const board = texturedPanel(5.2, 6.6, 0.5, billboardTex(), 0x1d4fb8, false);
       board.position.set(bx, 3.3 + 2.4, bz);
-      board.rotation.y = faceOut; // textured +z face toward the street
+      board.rotation.y = Math.atan2(-fz, fx); // panel runs along the driveway, textured face toward the road
       group.add(board);
-      B.color(0x1d4fb8); B.box(bx, bz, 5.2, 0.5, 0, 2.4, across);
-      solids.push(rect(bx, bz, 5.2, 0.6, across));
-      // flag pole on the billboard
-      const [fpx, fpz] = P(-11.4, 0.6);
-      B.color(0xd9dde3); B.box(fpx, fpz, 0.12, 0.12, 9, 4.2, across);
+      B.color(0x1d4fb8); B.box(bx, bz, 5.2, 0.5, 0, 2.4, alongF);
+      solids.push(rect(bx, bz, 5.2, 0.6, alongF));
+      // flag pole at the inner end of the billboard
+      const [fpx, fpz] = P(-12.2, 1.5 + 2.45);
+      B.color(0xd9dde3); B.box(fpx, fpz, 0.12, 0.12, 9, 4.2, alongF);
       const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.2), new THREE.MeshLambertMaterial({ map: flagTex(), side: THREE.DoubleSide }));
-      flag.position.set(fpx + rx * 0.95, 12.5, fpz + rz * 0.95);
-      flag.rotation.y = faceOut;
+      const [flx, flz] = P(-12.2, 1.5 + 2.45 - 0.95);
+      flag.position.set(flx, 12.5, flz);
+      flag.rotation.y = Math.atan2(-fz, fx);
       group.add(flag);
     }
 
@@ -637,10 +639,10 @@ export function buildGates(pois, center = [0, 0]) {
       solids.push(rect(cx, cz, 1.4, 1.4, across));
     }
 
-    // RIGHT: terracotta stone sign on a grass planter, turned a little toward the road
+    // RIGHT: terracotta stone sign on a grass planter, set straight along the street
     {
       const [sx, sz] = P(11.6, -1.2);
-      const ang = across - 0.25;
+      const ang = across;
       B.color(0xb0563f); B.box(sx, sz, 9.2, 3.2, 0, 0.55, ang);         // planter curb
       B.color(0x6fbf5a); B.box(sx, sz, 8.8, 2.8, 0.55, 0.06, ang);       // grass
       const sign = texturedPanel(7.4, 2.9, 0.55, stoneSignTex(), 0x9c4d39, true);
