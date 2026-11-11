@@ -260,7 +260,8 @@ function logoMaterial() {
 function towerS(b, B, group, glowMats) {
   const h = b.height, pts = b.pts;
   const E = outEdge(pts, b.entrance_edge ?? 0);
-  const at = (u, n) => [E.mx + E.ux * u + E.nx * n, E.mz + E.uz * u + E.nz * n]; // u along the front, n outwards
+  // u along the front, n outwards; the core sits 1 m proud of the footprint so its recess stays in front of the wall
+  const at = (u, n) => [E.mx + E.ux * u + E.nx * (n + 1), E.mz + E.uz * u + E.nz * (n + 1)];
   // white corner piers (not at the core: the lettering band runs across it)
   B.color(0xf3f5f7);
   pts.forEach((p, i) => {
@@ -274,42 +275,67 @@ function towerS(b, B, group, glowMats) {
   const slab2 = offsetPoly(pts, 0.9) || pts;
   B.color(0xe9edf1); B.band(slab2, h - 3.85, h - 3.55); B.cap(slab2, h - 3.55); B.cap(slab2, h - 3.85);
 
-  // central core: built slightly proud of the walls (no shared planes -> no flicker)
-  const depth = 9, top = h + 4.2, half = E.L / 2 + 0.2;
-  const core = [at(-half, 0.3), at(half, 0.3), at(half, -depth), at(-half, -depth)];
-  B.color(0xeef0f3); B.band(core, 0, top); B.cap(core, top);
-  const coreTop = offsetPoly(core, 0.5) || core;
-  B.color(0xf8f9fa); B.band(coreTop, top, top + 0.5); B.cap(coreTop, top + 0.5); B.cap(coreTop, top);
-  // grey louvre strip down the middle of the core, from the canopy up to the lettering band
-  const [lx, lz] = at(0, 0.5);
-  B.color(0x9aa3ad); B.box(lx, lz, 3.4, 0.4, 4.4, h - 3.6 - 4.4, E.ang);
+  // central core: two white pilasters proud of the walls with the grey louvre strip RECESSED between them
+  const depth = 9, top = h + 4.2, half = E.L / 2 + 0.2, LW = 3.4, REC = -0.8;
+  B.color(0xeef0f3);
+  const coreBack = [at(-half, REC), at(half, REC), at(half, -depth), at(-half, -depth)];
+  B.band(coreBack, 0, top); B.cap(coreBack, top);
+  for (const sd of [-1, 1]) {
+    const pil = [at(sd * half, 0.3), at(sd * LW / 2, 0.3), at(sd * LW / 2, REC - 0.05), at(sd * half, REC - 0.05)];
+    B.band(pil, 0, top); B.cap(pil, top);
+  }
+  const coreTop = offsetPoly([at(-half, 0.3), at(half, 0.3), at(half, -depth), at(-half, -depth)], 0.5);
+  if (coreTop) { B.color(0xf8f9fa); B.band(coreTop, top, top + 0.5); B.cap(coreTop, top + 0.5); B.cap(coreTop, top); }
+  // louvres inside the recess: dark backing + light horizontal-looking vertical fins, canopy up to the roof
+  const [lx, lz] = at(0, REC + 0.05);
+  B.color(0x8d96a1); B.box(lx, lz, LW, 0.1, 4.3, top - 0.4 - 4.3, E.ang);
   B.color(0xd4d9df);
-  for (let k = -6; k <= 6; k++) { const [fx, fz] = at(k * 0.27, 0.78); B.box(fx, fz, 0.07, 0.18, 4.4, h - 3.6 - 4.4, E.ang); }
+  for (let k = -5; k <= 5; k++) { const [fx, fz] = at(k * 0.3, REC + 0.2); B.box(fx, fz, 0.07, 0.2, 4.3, top - 0.4 - 4.3, E.ang); }
   // glass lobby + entrance canopy at the main door
-  const [gx, gz] = at(0, 0.45);
+  const [gx, gz] = at(0, 0.4);
   B.color(0x7fb9de); B.box(gx, gz, E.L - 1.2, 0.2, 0.2, 3.6, E.ang);
   const [cx, cz] = at(0, 2.4);
   B.color(0xf7f7f5); B.box(cx, cz, E.L + 1, 4.4, 3.9, 0.4, E.ang);
   B.color(0xdedbd3);
   for (const sx of [-E.L / 2, E.L / 2]) { const [px, pz] = at(sx, 4.2); B.box(px, pz, 0.35, 0.35, 0, 3.9, E.ang); }
 
-  // emblem on the top of the core
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 4.6), logoMaterial());
-  const [ex, ez] = at(0, 0.36);
-  logo.position.set(ex, top - 2.6, ez);
-  logo.rotation.y = E.rot;
-  group.add(logo); glowMats.push(logo.material);
-
-  // white band across the top floor (from the wings out to the core plane) carrying the school name
+  // white band across the top floor carrying the school name; it is CUT at the core so the emblem shows
   const bandW = Math.min(30, E.L + 22), bandY0 = h - 3.4, bandH = 2.3;
-  const [bx, bz] = at(0, 0.45 - 2.375);
-  B.color(0xf4f6f8); B.box(bx, bz, bandW, 4.75, bandY0, bandH, E.ang); // front 0.15 m proud of the core
+  B.color(0xf4f6f8);
+  for (const sd of [-1, 1]) {
+    const w = bandW / 2 - half;
+    const [bx, bz] = at(sd * (half + w / 2), 0.45 - 2.875);
+    B.box(bx, bz, w, 5.75, bandY0, bandH, E.ang);
+  }
   const text = new THREE.Mesh(new THREE.PlaneGeometry(bandW - 2, 1.85), nameSign(bandW - 2, 1.85));
   const [tx, tz] = at(0, 0.45 + 0.06);
   text.position.set(tx, bandY0 + bandH / 2, tz);
   text.rotation.y = E.rot;
   text.renderOrder = 2;
   group.add(text); glowMats.push(text.material);
+
+  // emblem at the top of the core, in front of everything, its lower edge just above the lettering
+  const LOGO = 4.6;
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(LOGO, LOGO), logoMaterial());
+  const [ex, ez] = at(0, 0.62);
+  logo.position.set(ex, bandY0 + bandH + 0.15 + LOGO / 2, ez);
+  logo.rotation.y = E.rot;
+  group.add(logo); glowMats.push(logo.material);
+  B.color(0xe6e9ed); { const [qx, qz] = at(0, 0.45); B.box(qx, qz, LOGO + 0.3, 0.3, bandY0 + bandH + 0.05, LOGO + 0.2, E.ang); } // panel frame
+
+  // two Vietnamese flags on vertical poles standing in the louvre recess, centred on the core
+  const flagMat = new THREE.MeshLambertMaterial({ map: flagTex(), side: THREE.DoubleSide });
+  const POLE_TOP = 17.8, FW = 1.2, FH = 0.8;
+  for (const u of [-0.15, 1.35]) {
+    const [px, pz] = at(u, -0.25);
+    B.color(0xd9dde2); B.box(px, pz, 0.08, 0.08, 4.3, POLE_TOP - 4.3, E.ang);   // pole from the canopy up
+    B.color(0xf1c40f); B.box(px, pz, 0.14, 0.14, POLE_TOP, 0.12, E.ang);        // finial
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(FW, FH), flagMat);
+    const [fx, fz] = at(u - FW / 2 - 0.05, -0.25);
+    f.position.set(fx, POLE_TOP - FH / 2 - 0.05, fz);
+    f.rotation.y = E.rot;
+    group.add(f);
+  }
 
   // the name again on the left side face, on a white band (seen in the side photos)
   const left = outEdge(pts, ((b.entrance_edge ?? 0) + pts.length - 3) % pts.length);
@@ -319,19 +345,6 @@ function towerS(b, B, group, glowMats) {
     m.position.set(left.mx + left.nx * 0.12, h - 2.2, left.mz + left.nz * 0.12);
     m.rotation.y = left.rot;
     group.add(m); glowMats.push(m.material);
-  }
-
-  // two Vietnamese flags on vertical poles fixed to the core, below the lettering
-  const flagMat = new THREE.MeshLambertMaterial({ map: flagTex(), side: THREE.DoubleSide });
-  for (const u of [-2.4, -3.6]) {
-    const [px, pz] = at(u, 0.9);
-    B.color(0xc9ced4); B.box(px, pz, 0.08, 0.08, 15, 4.2, E.ang);              // vertical pole
-    for (const y of [15.6, 18.6]) { const [qx, qz] = at(u, 0.6); B.box(qx, qz, 0.06, 0.6, y, 0.06, E.ang); } // wall brackets
-    const f = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.0), flagMat);
-    const [fx, fz] = at(u - 0.78, 0.9);
-    f.position.set(fx, 18.55, fz);
-    f.rotation.y = E.rot; // hangs flat beside the pole, parallel to the facade
-    group.add(f);
   }
 }
 
