@@ -153,7 +153,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const hemi = new THREE.HemisphereLight(0xffffff, 0xb7c4a8, 1.1);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff4e0, 2);
-  sun.position.set(-260, 420, -180); // late-morning sun from the east/north-east
+  sun.position.set(190, 430, 250); // afternoon sun from the south-west: lights the main fronts (bottom of the map)
   sun.castShadow = true;
   sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
   Object.assign(sun.shadow.camera, { left: -520, right: 520, top: 480, bottom: -480, near: 50, far: 1300 });
@@ -215,7 +215,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
 
   // roofs, parapets, plinths, rooftop units, entrance canopies (one merged mesh)
   const details = buildBuildingDetails(buildings);
-  scene.add(details.mesh);
+  scene.add(details.mesh, details.extras);
   const clickables = [...pickables, details.mesh];
   // perimeter wall, gates, parking canopies
   if (data.walls?.length) scene.add(buildWalls(data.walls));
@@ -243,6 +243,19 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const isBlocked = (x, z, m = 3) => blockedBoxes.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && inside(p, x, z));
   const lamps = buildLamps(data.roads, data.boundary, (x, z) => isBlocked(x, z, 1.5));
   scene.add(lamps.group);
+  // keep the area in front of main doors clear of trees
+  const doors = [];
+  for (const b of data.buildings) {
+    if (b.entrance_edge == null) continue;
+    const a = b.pts[b.entrance_edge], c = b.pts[(b.entrance_edge + 1) % b.pts.length];
+    const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
+    let nx = c[1] - a[1], nz = -(c[0] - a[0]); const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L;
+    if (inside(b.pts, mx + nx, mz + nz)) { nx = -nx; nz = -nz; }
+    doors.push([mx + nx * 6, mz + nz * 6]);
+  }
+  const nearDoor = (x, z) => doors.some(([dx, dz]) => (x - dx) ** 2 + (z - dz) ** 2 < 11 * 11);
+  let treeSpots = [], trunksMesh = null, crownsMesh = null;
+  const treeHidden = new Set();
   {
     const rand = rng(20261110);
     const spots = [];
@@ -252,7 +265,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       for (let k = 0, tries = 0; k < n && tries < n * 6; tries++) {
         const x = bb.minX + rand() * (bb.maxX - bb.minX), z = bb.minZ + rand() * (bb.maxZ - bb.minZ);
         if (!inside(g, x, z)) continue;
-        if (isBlocked(x, z)) continue;
+        if (isBlocked(x, z) || nearDoor(x, z)) continue;
         if (!inside(data.boundary, x, z)) continue;
         spots.push([x, z, 0.75 + rand() * 0.6, rand()]);
         k++;
@@ -260,7 +273,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     }
     // avenue trees along the campus roads (like the boulevard from the main gate)
     for (const t of avenueTreeSpots(data.roads, data.boundary, (x, z) => isBlocked(x, z, 2.5), rand)) {
-      if (!spots.some((s) => Math.abs(s[0] - t[0]) + Math.abs(s[1] - t[1]) < 4)) spots.push(t);
+      if (!nearDoor(t[0], t[1]) && !spots.some((s) => Math.abs(s[0] - t[0]) + Math.abs(s[1] - t[1]) < 4)) spots.push(t);
     }
     const trunkG = new THREE.CylinderGeometry(0.25, 0.35, 3, 5); trunkG.translate(0, 1.5, 0);
     const crownG = new THREE.IcosahedronGeometry(2.6, 0); crownG.translate(0, 4.6, 0);
@@ -275,6 +288,34 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     });
     trunks.castShadow = crowns.castShadow = true;
     scene.add(trunks, crowns);
+    treeSpots = spots; trunksMesh = trunks; crownsMesh = crowns;
+  }
+  /** Walk mode: hide trees standing between the camera and the student (like the x-ray on buildings). */
+  const tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), ts = new THREE.Vector3(), tp = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  function setTree(i, visible) {
+    const [x, z, sc, r] = treeSpots[i];
+    tq.setFromAxisAngle(up, r * 6.28);
+    tm.compose(tp.set(x, 0, z), tq, ts.setScalar(visible ? sc : 0));
+    trunksMesh.setMatrixAt(i, tm); crownsMesh.setMatrixAt(i, tm);
+  }
+  function treeOcclusion(cam, look) {
+    if (!trunksMesh) return;
+    const want = new Set();
+    if (cam && look) {
+      const ax = cam.x, az = cam.z, bx = look.x, bz = look.z;
+      const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+      for (let i = 0; i < treeSpots.length; i++) {
+        const [x, z, sc] = treeSpots[i];
+        if (Math.abs(x - ax) > 40 && Math.abs(x - bx) > 40) continue;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+        const px = ax + dx * t - x, pz = az + dz * t - z;
+        if (px * px + pz * pz < (3.2 * sc) ** 2 && cam.y < 8 * sc + 2) want.add(i);
+      }
+    }
+    let changed = false;
+    for (const i of treeHidden) if (!want.has(i)) { setTree(i, true); treeHidden.delete(i); changed = true; }
+    for (const i of want) if (!treeHidden.has(i)) { setTree(i, false); treeHidden.add(i); changed = true; }
+    if (changed) { trunksMesh.instanceMatrix.needsUpdate = true; crownsMesh.instanceMatrix.needsUpdate = true; }
   }
 
   // theme
@@ -285,6 +326,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     for (const k of ['ground', 'campus', 'road', 'foot', 'grass', 'water', 'parking', 'pitch', 'track']) matOf(k).color.set(P[k]);
     walls.setNight(isDark, P.wall);
     lamps.setNight(isDark);
+    details.setNight(isDark);
     hemi.color.set(P.hemiSky); hemi.groundColor.set(P.hemiGround); hemi.intensity = P.hemi;
     sun.intensity = P.sun;
     sun.color.set(isDark ? 0xaabbff : 0xfff4e0);
@@ -359,6 +401,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     requestRender();
   }
   function stopWalk() {
+    treeOcclusion(null, null);
     if (!walker.state.on) return;
     const { x, z } = walker.state;
     walker.exit();
@@ -406,6 +449,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     last = now;
     if (walker.state.on) {
       const look = walker.update(dt);
+      treeOcclusion(camera.position, look);
       controls.target.copy(look); // used for label distance
       needs = true;
     } else if (anim) {
@@ -449,7 +493,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     },
     /** debug: advance walk mode by `sec` seconds at 60 fps synchronously, then draw */
     _step(sec) {
-      for (let i = 0; i < Math.round(sec * 60); i++) if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); }
+      for (let i = 0; i < Math.round(sec * 60); i++) if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); treeOcclusion(camera.position, l); }
       needs = true;
       last = performance.now();
       const w = walker.state;

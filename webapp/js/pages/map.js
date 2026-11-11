@@ -92,7 +92,19 @@ function search(targets, q) {
 
 // "Front" of a place = its side towards the bottom of the map (main road / entrances, like the blue circle at Khu A).
 const centerOf = (t) => [(t.box.minX + t.box.maxX) / 2, (t.box.minZ + t.box.maxZ) / 2];
-const frontOf = (t) => (t.kind === 'poi' ? centerOf(t) : [(t.box.minX + t.box.maxX) / 2, t.box.maxZ + 5]);
+function doorOf(t) {
+  const b = (t.buildings || []).find((x) => x.entrance_edge != null);
+  if (!b) return null;
+  const p = b.pts, i = b.entrance_edge, a = p[i], c = p[(i + 1) % p.length];
+  const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
+  let nx = c[1] - a[1], nz = -(c[0] - a[0]);
+  const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L;
+  const c2 = centerOf(t);
+  if ((mx + nx - c2[0]) ** 2 + (mz + nz - c2[1]) ** 2 < (mx - c2[0]) ** 2 + (mz - c2[1]) ** 2) { nx = -nx; nz = -nz; }
+  return { spot: [mx + nx * 7, mz + nz * 7], door: [mx, mz] };
+}
+const frontOf = (t) => (t.kind === 'poi' ? centerOf(t) : doorOf(t)?.spot || [(t.box.minX + t.box.maxX) / 2, t.box.maxZ + 5]);
+const lookOf = (t) => doorOf(t)?.door || centerOf(t);
 
 function roomLetter(room) {
   const m = String(room || '').trim().toUpperCase().match(/^([A-Z])\s*\d/);
@@ -321,7 +333,7 @@ export function MapPage() {
     if (!scene) return;
     scene.setSelected(t ? t.buildings : []);
     if (t && fly) {
-      if (scene.walking()) scene.teleport(...frontOf(t), centerOf(t)); // walk mode: appear in front of it
+      if (scene.walking()) scene.teleport(...frontOf(t), lookOf(t)); // walk mode: appear in front of it
       else if (t.kind === 'poi') scene.flyTo([t.anchor[0], 0, t.anchor[2]], 140);
       else scene.focusBox(t.box, t.height);
     }
@@ -335,7 +347,7 @@ export function MapPage() {
     if (!scene) return;
     setSel(null); scene.setSelected([]);
     setHint(false);
-    scene.startWalk(t ? frontOf(t) : null, t ? centerOf(t) : null);
+    scene.startWalk(t ? frontOf(t) : null, t ? lookOf(t) : null);
     setWalking(true);
     setWalkHint(true);
     setTimeout(() => setWalkHint(false), 9000);

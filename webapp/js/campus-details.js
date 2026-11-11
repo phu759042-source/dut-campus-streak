@@ -28,7 +28,7 @@ const WALLS = {
   cream: { base: '#efe2c4', kind: 'window', win: '#6f8aa6', frame: '#fbf7ee' },
   brick: { base: '#b8724c', kind: 'window', win: '#5f7896', frame: '#f3e6d4', brick: true },
   classic: { base: '#eef1f4', kind: 'window', win: '#6d8fb2', frame: '#ffffff', wide: true },
-  glass: { base: '#e9eef3', kind: 'glass', win: '#5c8fc0' },
+  glass: { base: '#f1f3f5', kind: 'glass', win: '#5c8fc0' },
   glassLight: { base: '#f6f7f8', kind: 'window', win: '#7fa9cf', frame: '#ffffff', wide: true, tall: true },
   dorm: { base: '#ecd8b5', kind: 'corridor', rail: '#f7ead2', shade: '#8b7a66' },
   hall: { base: '#dde5ee', kind: 'window', win: '#7b97b8', frame: '#f4f7fa', wide: true },
@@ -65,13 +65,16 @@ function facadeTextures(style, seed) {
       g.fillStyle = s.rail || '#ffffff'; g.fillRect(0, y0 + floorH * 0.58, W, floorH * 0.24);
       n.fillStyle = 'rgba(255,215,140,0.25)'; n.fillRect(0, y0 + floorH * 0.18, W, floorH * 0.4);
     } else if (s.kind === 'glass') {
-      const grd = g.createLinearGradient(0, y0, 0, y0 + floorH);
-      grd.addColorStop(0, '#7fb0dc'); grd.addColorStop(1, s.win);
-      g.fillStyle = grd; g.fillRect(0, y0 + floorH * 0.1, W, floorH * 0.84);
-      g.fillStyle = 'rgba(255,255,255,0.85)';
-      for (let x = 0; x <= W; x += W / 6) g.fillRect(x - 1.5, y0, 3, floorH);
-      g.fillStyle = s.base; g.fillRect(0, y0, W, floorH * 0.1);
-      for (let k = 0; k < 6; k++) if (rand() > 0.3) { n.fillStyle = '#ffe1a0'; n.fillRect(k * W / 6 + 3, y0 + floorH * 0.14, W / 6 - 6, floorH * 0.76); }
+      // Nhà S: cyan-blue glass ribbon windows between white floor spandrels
+      g.fillStyle = s.base; g.fillRect(0, y0, W, floorH);
+      const gy = y0 + floorH * 0.3, gh = floorH * 0.62;
+      const grd = g.createLinearGradient(0, gy, 0, gy + gh);
+      grd.addColorStop(0, '#b4e2f5'); grd.addColorStop(0.5, '#6db9e3'); grd.addColorStop(1, '#3d8ccc');
+      g.fillStyle = grd; g.fillRect(0, gy, W, gh);
+      g.fillStyle = 'rgba(255,255,255,0.75)';
+      for (let x = 0; x <= W; x += W / 8) g.fillRect(x - 1, gy, 2, gh);
+      g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(0, gy + gh, W, 3);
+      for (let k = 0; k < 8; k++) if (rand() > 0.3) { n.fillStyle = '#ffe1a0'; n.fillRect(k * W / 8 + 2, gy + 2, W / 8 - 4, gh - 4); }
     } else {
       for (let b = 0; b < 3; b++) {
         const ww = bayW * (s.wide ? 0.66 : 0.46), wh = floorH * (s.tall ? 0.66 : 0.5);
@@ -213,7 +216,95 @@ const shade = (hex, k) => { const c = new THREE.Color(hex); c.multiplyScalar(k);
  * Roofs, parapets, plinths and rooftop units for every building.
  * Returns { mesh, pick(faceIndex) -> building } so clicks on a roof still select the building.
  */
+const outEdge = (pts, i) => {
+  const a = pts[i], c = pts[(i + 1) % pts.length];
+  const L = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1;
+  const ux = (c[0] - a[0]) / L, uz = (c[1] - a[1]) / L;
+  const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
+  let nx = uz, nz = -ux;
+  if (insideP(pts, mx + nx * 0.6, mz + nz * 0.6)) { nx = -nx; nz = -nz; }
+  return { a, c, L, ux, uz, mx, mz, nx, nz, ang: Math.atan2(uz, ux), rot: Math.atan2(nx, nz) };
+};
+/** Wall sign with the school name: dark-blue letters on the white band; the letters glow at night. */
+function nameSign(w, h) {
+  const W = 1024, H = Math.max(96, Math.round((W * h) / w));
+  const day = canvasTex(W, H, (g) => {
+    g.fillStyle = '#f4f6f8'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#18358a'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    fitText(g, 'TRƯỜNG ĐẠI HỌC BÁCH KHOA', W / 2, H / 2 + 2, W - 40, 900, Math.round(H * 0.7));
+  });
+  const glow = canvasTex(W, H, (g) => {
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#3d6cff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    fitText(g, 'TRƯỜNG ĐẠI HỌC BÁCH KHOA', W / 2, H / 2 + 2, W - 40, 900, Math.round(H * 0.7));
+  });
+  return new THREE.MeshLambertMaterial({ map: day, emissive: 0xffffff, emissiveMap: glow, emissiveIntensity: 0 });
+}
+function logoMaterial() {
+  const t = emblemTex();
+  return new THREE.MeshLambertMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0 });
+}
+
+/**
+ * Nhà S (smart building) after photos: white frame, cyan glass ribbons, wide white roof slabs,
+ * a taller central core with vertical louvres over the main door, the emblem on top of the core
+ * and "TRƯỜNG ĐẠI HỌC BÁCH KHOA" in dark blue along the top floor. Emblem and letters light up at night.
+ */
+function towerS(b, B, group, glowMats) {
+  const h = b.height, pts = b.pts;
+  const E = outEdge(pts, b.entrance_edge ?? 0);
+  // white corner piers
+  B.color(0xf3f5f7);
+  pts.forEach((p, i) => { const e = outEdge(pts, i); B.box(p[0], p[1], 1.2, 1.2, 0, h, e.ang); });
+  // wide white roof slab (cantilever) + a thinner second slab
+  const slab = offsetPoly(pts, 1.6) || pts;
+  B.color(0xf5f7f9); B.band(slab, h - 0.1, h + 0.6); B.cap(slab, h + 0.6); B.cap(slab, h - 0.1);
+  const slab2 = offsetPoly(pts, 0.9) || pts;
+  B.color(0xe9edf1); B.band(slab2, h - 3.6, h - 3.3); B.cap(slab2, h - 3.3); B.cap(slab2, h - 3.6);
+  // central core over the main door, rising above the roof
+  const depth = 9, top = h + 4.2;
+  const core = [[E.a[0], E.a[1]], [E.c[0], E.c[1]], [E.c[0] - E.nx * depth, E.c[1] - E.nz * depth], [E.a[0] - E.nx * depth, E.a[1] - E.nz * depth]];
+  B.color(0xeef0f3); B.band(core, 0, top); B.cap(core, top);
+  B.color(0xf8f9fa); B.band(offsetPoly(core, 0.5) || core, top, top + 0.5); B.cap(offsetPoly(core, 0.5) || core, top + 0.5);
+  // vertical louvres down the middle of the core front
+  B.color(0xb7bec7); B.box(E.mx + E.nx * 0.08, E.mz + E.nz * 0.08, 3.2, 0.25, 4.2, h - 4.2, E.ang);
+  B.color(0xdfe3e8);
+  for (let k = -5; k <= 5; k++) B.box(E.mx + E.ux * k * 0.3 + E.nx * 0.3, E.mz + E.uz * k * 0.3 + E.nz * 0.3, 0.08, 0.45, 4.2, h - 4.2, E.ang);
+  // glass lobby + entrance canopy at the main door
+  B.color(0x7fb9de); B.box(E.mx + E.nx * 0.12, E.mz + E.nz * 0.12, E.L - 1.4, 0.2, 0.2, 3.6, E.ang);
+  B.color(0xf7f7f5); B.box(E.mx + E.nx * 2.2, E.mz + E.nz * 2.2, E.L + 1, 4.4, 3.9, 0.4, E.ang);
+  B.color(0xdedbd3);
+  for (const sx of [-E.L / 2, E.L / 2]) B.box(E.mx + E.ux * sx + E.nx * 4, E.mz + E.uz * sx + E.nz * 4, 0.35, 0.35, 0, 3.9, E.ang);
+  // emblem on top of the core (front face)
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 4.4), logoMaterial());
+  logo.position.set(E.mx + E.nx * 0.06, top - 2.4, E.mz + E.nz * 0.06);
+  logo.rotation.y = E.rot;
+  group.add(logo); glowMats.push(logo.material);
+  // school name along the top floor: right wing of the front, and the left side face (as in the photos)
+  const right = outEdge(pts, ((b.entrance_edge ?? 0) + 2) % pts.length);
+  const left = outEdge(pts, ((b.entrance_edge ?? 0) + pts.length - 3) % pts.length);
+  for (const e of [right, left]) {
+    const w = Math.min(e.L - 1.2, 16), hh = 2.1;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), nameSign(w, hh));
+    m.position.set(e.mx + e.nx * 0.1, h - 1.75, e.mz + e.nz * 0.1);
+    m.rotation.y = e.rot;
+    group.add(m); glowMats.push(m.material);
+  }
+  // two red flags on the core front
+  const flagMat = new THREE.MeshLambertMaterial({ map: flagTex(), side: THREE.DoubleSide });
+  for (const sx of [-1.2, 1.2]) {
+    const px = E.mx + E.ux * sx + E.nx * 0.4, pz = E.mz + E.uz * sx + E.nz * 0.4;
+    B.color(0xc9ced4); B.box(px + E.nx * 0.6, pz + E.nz * 0.6, 0.06, 1.4, 12.6, 0.06, E.ang);
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6), flagMat);
+    f.position.set(px + E.nx * 1.1, 12.25, pz + E.nz * 1.1);
+    f.rotation.y = E.rot + Math.PI / 2;
+    group.add(f);
+  }
+}
+
 export function buildBuildingDetails(buildings) {
+  const extras = new THREE.Group();
+  const glowMats = [];
   const B = new Builder();
   const ranges = [];
   const rand = rng(77);
@@ -225,6 +316,7 @@ export function buildBuildingDetails(buildings) {
     // plinth: darker band at the foot of the walls
     const plinth = offsetPoly(b.pts, 0.12);
     if (plinth) { B.color(shade(wallHex, 0.72)); B.band(plinth, 0, 0.9); B.ringCap(plinth, b.pts, 0.9); }
+    if (b.zone === 'S') { towerS(b, B, extras, glowMats); ranges.push([start, B.tris, b]); continue; }
 
     const thickness = (2 * Math.abs(signedArea(b.pts))) / (perimeter(b.pts) || 1);
     let roofDone = false;
@@ -272,7 +364,8 @@ export function buildBuildingDetails(buildings) {
     // entrance canopy on the "front" (bottom of the map) of large zone buildings
     if (b.zone && Math.abs(signedArea(b.pts)) > 700) {
       let best = null;
-      for (let i = 0; i < b.pts.length; i++) {
+      if (b.entrance_edge != null) { const e = outEdge(b.pts, b.entrance_edge); best = { a: e.a, c: e.c, L: e.L, mz: e.mz }; }
+      for (let i = 0; i < b.pts.length && b.entrance_edge == null; i++) {
         const a = b.pts[i], c = b.pts[(i + 1) % b.pts.length];
         const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
         if (L < 8) continue;
@@ -295,6 +388,8 @@ export function buildBuildingDetails(buildings) {
   const mesh = B.mesh();
   return {
     mesh,
+    extras,
+    setNight(on) { for (const m of glowMats) m.emissiveIntensity = on ? 1 : 0; },
     pick(face) { for (const [a, z, b] of ranges) if (face >= a && face < z) return b; return null; },
   };
 }
@@ -334,13 +429,16 @@ function fitText(g, text, x, y, maxW, weight, size) {
   do { g.font = `${weight} ${px}px ${FONT}`; px -= 2; } while (g.measureText(text).width > maxW && px > 10);
   g.fillText(text, x, y);
 }
-/** Simple "BK" emblem (stand-in for the school logo). */
+/** School emblem as seen on campus: white frame, blue square, a bold yellow "D" (simplified drawing). */
 function drawEmblem(g, x, y, s) {
   g.fillStyle = '#ffffff'; g.fillRect(x, y, s, s);
-  g.fillStyle = '#1d4fb8'; g.fillRect(x + s * 0.08, y + s * 0.08, s * 0.84, s * 0.84);
-  g.fillStyle = '#f5c518'; g.beginPath(); g.moveTo(x + s * 0.08, y + s * 0.92); g.lineTo(x + s * 0.92, y + s * 0.5); g.lineTo(x + s * 0.92, y + s * 0.92); g.closePath(); g.fill();
-  g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = `900 ${Math.round(s * 0.42)}px ${FONT}`; g.fillText('BK', x + s * 0.47, y + s * 0.44);
+  g.fillStyle = '#1f4fb5'; g.fillRect(x + s * 0.07, y + s * 0.07, s * 0.86, s * 0.86);
+  const cx = x + s * 0.44, cy = y + s * 0.5, R = s * 0.33, r = s * 0.15;
+  g.fillStyle = '#f7c21b';
+  g.beginPath(); g.moveTo(x + s * 0.22, cy - R); g.lineTo(cx, cy - R); g.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2); g.lineTo(x + s * 0.22, cy + R); g.closePath(); g.fill();
+  g.fillStyle = '#1f4fb5';
+  g.beginPath(); g.moveTo(x + s * 0.36, cy - r); g.lineTo(cx, cy - r); g.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2); g.lineTo(x + s * 0.36, cy + r); g.closePath(); g.fill();
+  g.fillStyle = '#ffffff'; g.fillRect(x + s * 0.22, y + s * 0.1, s * 0.05, s * 0.8); // white stem
 }
 /** Terracotta stone sign with the school name (right of the main gate). */
 const stoneSignTex = () => canvasTex(1024, 400, (g, w, h) => {

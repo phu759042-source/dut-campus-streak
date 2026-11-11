@@ -35,7 +35,7 @@ ZONES = {
 
 # Real data from students (overrides OSM / estimates).
 OVERRIDES = {
-    1551964032: {'levels': 10, 'height': 42, 'floor_area': 7330, 'estimated': False},  # Nhà S
+    1551964032: {'levels': 10, 'height': 42, 'floor_area': 7330, 'estimated': False, 'entrance_edge': 5},  # Nhà S: main door under the core
 }
 # Khu A: OSM draws the two back blocks far too deep and swallows the courtyards (fish ponds, trees).
 # Keep only a ~12 m strip at the back of each block; the rest becomes a courtyard with a pond.
