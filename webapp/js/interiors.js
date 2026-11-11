@@ -44,7 +44,10 @@ function canvasTex(w, h, draw) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return t;
 }
-const fadeable = (geo, mat) => { const m = new THREE.Mesh(geo, [mat]); m.castShadow = m.receiveShadow = true; return m; };
+const fadeable = (geo, mat) => {
+  geo.clearGroups(); geo.addGroup(0, geo.getAttribute('position').count, 0); // material array needs a group
+  const m = new THREE.Mesh(geo, [mat]); m.castShadow = m.receiveShadow = true; return m;
+};
 
 /** Wall run from u0 to u1 along a frame line v, with gaps [[g0, g1], ...]. Adds boxes + collision segments. */
 function wallRun(B, walls, F, u0, u1, v, gaps, y0, h, t = 0.2) {
@@ -55,6 +58,24 @@ function wallRun(B, walls, F, u0, u1, v, gaps, y0, h, t = 0.2) {
     const [cx, cz] = F.at((s + e) / 2, v);
     B.box(cx, cz, e - s, t, y0, h, F.ang);
     walls.push({ a: F.at(s, v), b: F.at(e, v), y0, y1: y0 + h });
+  }
+}
+
+/** Glazed wall run: low wall, glass panes between mullions, transom and lintel. Collision is full height. */
+function glazedRun(BW, GB, walls, F, u0, u1, v, gaps, H) {
+  const cuts = [u0, ...gaps.flat(), u1].sort((p, q) => p - q);
+  for (let k = 0; k < cuts.length; k += 2) {
+    const s = cuts[k], e = cuts[k + 1];
+    if (e - s < 0.05) continue;
+    const len = e - s, [cx, cz] = F.at((s + e) / 2, v);
+    BW.color(0xf2e6cf); BW.box(cx, cz, len, 0.22, 0, 0.9, F.ang);          // low wall
+    BW.color(0xf2e6cf); BW.box(cx, cz, len, 0.22, 2.95, H - 2.95, F.ang);   // lintel band
+    BW.color(0x5e5146); BW.box(cx, cz, len, 0.16, 0.9, 0.07, F.ang);        // sill
+    BW.color(0x5e5146); BW.box(cx, cz, len, 0.16, 2.88, 0.07, F.ang);       // head
+    const n = Math.max(1, Math.round(len / 1.6));
+    for (let i = 0; i <= n; i++) { const [mx, mz] = F.at(s + (len * i) / n, v); BW.color(0x5e5146); BW.box(mx, mz, 0.08, 0.16, 0.9, 2.05, F.ang); } // mullions
+    GB.color(0xbfe0f2); GB.box(cx, cz, len, 0.03, 0.97, 1.91, F.ang);      // glass
+    walls.push({ a: F.at(s, v), b: F.at(e, v), y0: 0, y1: H });
   }
 }
 
@@ -74,18 +95,19 @@ function buildCanteen(b, out, B, BW) {
     new THREE.MeshLambertMaterial({ map: floorT, side: THREE.DoubleSide }));
   fl.receiveShadow = true; out.group.add(fl);
 
-  // outer walls (front door in the middle of the entrance edge, side door on the end facing Khu E1)
-  BW.color(0xf2e6cf);
+  // outer walls: framed glass all round so the room can be seen from outside (front door + side door)
+  const GB = out.glassB;
   const door = [[L / 2 - 1.1, L / 2 + 1.1]];
-  wallRun(BW, out.walls, F, -0.1, L + 0.1, 0.1, door, 0, H);
-  wallRun(BW, out.walls, F, -0.1, L + 0.1, D - 0.1, [], 0, H);
+  glazedRun(BW, GB, out.walls, F, -0.1, L + 0.1, 0.1, door, H);
+  BW.color(0xf2e6cf); wallRun(BW, out.walls, F, -0.1, L + 0.1, D - 0.1, [], 0, H); // kitchen back wall stays solid
+  BW.color(0xf2e6cf); { const [x, z] = F.at(L / 2, 0.1); BW.box(x, z, 2.2, 0.22, 2.55, H - 2.55, F.ang); } // over the door
   // end walls run along v: build them with a frame on the side edges
   const endWall = (u, gaps) => {
     const s = F.at(u, 0), e = F.at(u, D);
     const len = Math.hypot(e[0] - s[0], e[1] - s[1]);
     const sg = u === 0 ? 1 : -1; // inward from this end
     const G = { at: (uu, vv) => [s[0] + F.wx * uu + F.ux * vv * sg, s[1] + F.wz * uu + F.uz * vv * sg], ang: Math.atan2(F.wz, F.wx) };
-    wallRun(BW, out.walls, G, 0, len, 0.1, gaps, 0, H);
+    glazedRun(BW, GB, out.walls, G, 0, len, 0.1, gaps, H);
   };
   endWall(0, [[D - 5.5, D - 3.9]]); // side door on the end facing Khu E1 (between the coffee bar and the fridges)
   endWall(L, []);
@@ -93,11 +115,6 @@ function buildCanteen(b, out, B, BW) {
   B.color(0x8a5a3c);
   for (const u of [L / 2 - 1.15, L / 2 + 1.15]) { const [x, z] = F.at(u, 0.1); B.box(x, z, 0.12, 0.3, 0, 2.4, F.ang); }
   { const [x, z] = F.at(L / 2, 0.1); B.box(x, z, 2.4, 0.3, 2.4, 0.15, F.ang); }
-  B.color(0x6f9cc4);
-  for (let u = 2; u < L - 1.5; u += 3) {
-    if (Math.abs(u - L / 2) < 2.2) continue;
-    const [x, z] = F.at(u, -0.02); B.box(x, z, 1.8, 0.06, 1.1, 1.4, F.ang);
-  }
   // sign over the door
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.8), new THREE.MeshBasicMaterial({ map: canvasTex(512, 102, (g, w, h) => {
     g.fillStyle = '#c0392b'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -108,7 +125,7 @@ function buildCanteen(b, out, B, BW) {
   // kitchen at the back behind a partition with a serving counter and two doorways
   const kv = D - 3.6;
   BW.color(0xf5efe3);
-  wallRun(BW, out.walls, F, 0.1, L - 0.1, kv, [[2.6, 3.8], [L - 3.8, L - 2.6], [7, L - 7]], 0, H);
+  wallRun(BW, out.walls, F, 0.3, L - 0.3, kv, [[2.6, 3.8], [L - 3.8, L - 2.6], [7, L - 7]], 0, H);
   B.color(0xb98b5e); { const [x, z] = F.at(L / 2, kv); B.box(x, z, L - 14, 0.6, 0, 1.0, F.ang); }        // serving counter
   B.color(0xe8e2d6); { const [x, z] = F.at(L / 2, kv); B.box(x, z, L - 13.8, 0.75, 1.0, 0.06, F.ang); }   // counter top
   solid(7, L - 7, kv - 0.35, kv + 0.35);
@@ -232,19 +249,27 @@ function buildCorridor(b, out, B, slabB) {
     const u = sU0 + (k + 0.5) * (run / steps), top = ((k + 1) / steps) * FLOOR2;
     const [x, z] = out_(u, w / 2 + 0.05); B.box(x, z, run / steps + 0.01, w, top - 0.18, 0.18, F.ang);
   }
-  // stair stringer (side wall under the steps), landing slab, railings
+  // sloped stringers along both sides of the flight (open underneath), a mid support, the landing slab
+  const tread = run / steps;
   B.color(0xc9c2b5);
-  for (let k = 0; k < steps; k += 1) {
-    const u = sU0 + (k + 0.5) * (run / steps), top = ((k + 1) / steps) * FLOOR2;
-    const [x, z] = out_(u, w + 0.1); B.box(x, z, run / steps + 0.01, 0.12, 0, top, F.ang);
+  for (let k = 0; k < steps; k++) {
+    const u = sU0 + (k + 0.5) * tread, top = ((k + 1) / steps) * FLOOR2;
+    for (const n of [0.08, w + 0.08]) { const [x, z] = out_(u, n); B.box(x, z, tread + 0.01, 0.14, Math.max(0, top - 0.5), Math.min(0.5, top) + 0.02, F.ang); }
   }
-  B.color(0xe2ddd3); { const [x, z] = out_((stairU0 + L - 0.3) / 2, w / 2); B.box(x, z, L - 0.3 - stairU0, w + 0.2, FLOOR2 - 0.25, 0.25, F.ang); }
-  { const [x, z] = out_((stairU0 + L - 0.3) / 2, w / 2); B.color(0xc9c2b5); B.box(x, z, 0.3, 0.3, 0, FLOOR2 - 0.25, F.ang); }
-  B.color(0xffffff);
-  // outer railing (stairs + landing) and end of the landing
-  wallRun(B, out.walls, { at: (u, n) => out_(u, n), ang: F.ang }, sU0, L - 0.3, w + 0.1, [], 0, FLOOR2 + 1.0, 0.1);
-  const endS = out_(L - 0.3, 0), endE = out_(L - 0.3, w + 0.1);
-  out.walls.push({ a: endS, b: endE, y0: FLOOR2, y1: FLOOR2 + 1.0 });
+  B.color(0xbdb6a9);
+  for (const k of [9]) { const u = sU0 + (k + 0.5) * tread, top = ((k + 1) / steps) * FLOOR2; for (const n of [0.08, w + 0.08]) { const [x, z] = out_(u, n); B.box(x, z, 0.22, 0.22, 0, top - 0.5, F.ang); } }
+  B.color(0xe2ddd3); { const [x, z] = out_((stairU0 + L - 0.3) / 2, w / 2 + 0.05); B.box(x, z, L - 0.3 - stairU0, w + 0.2, FLOOR2 - 0.25, 0.25, F.ang); }
+  B.color(0xbdb6a9); for (const uu of [stairU0 + 0.2, L - 0.5]) { const [x, z] = out_(uu, w); B.box(x, z, 0.25, 0.25, 0, FLOOR2 - 0.25, F.ang); }
+  // handrail on the open side: posts on every other step + a rail following the slope, then along the landing
+  B.color(0x9aa3ad);
+  for (let k = 1; k < steps; k += 2) { const u = sU0 + (k + 0.5) * tread, top = ((k + 1) / steps) * FLOOR2; const [x, z] = out_(u, w + 0.1); B.box(x, z, 0.05, 0.05, top, 0.95, F.ang); }
+  B.color(0xf2f2f2);
+  for (let k = 0; k < steps; k++) { const u = sU0 + (k + 0.5) * tread, top = ((k + 1) / steps) * FLOOR2; const [x, z] = out_(u, w + 0.1); B.box(x, z, tread + 0.02, 0.07, top + 0.92, 0.07, F.ang); }
+  { const [x, z] = out_((stairU0 + L - 0.3) / 2, w + 0.1); B.box(x, z, L - 0.3 - stairU0, 0.07, FLOOR2 + 0.92, 0.07, F.ang); B.color(0x9aa3ad); B.box(x, z, L - 0.3 - stairU0, 0.04, FLOOR2 + 0.45, 0.04, F.ang); }
+  { const [x, z] = out_(L - 0.3, w / 2 + 0.05); B.color(0xf2f2f2); B.box(x, z, 0.07, w + 0.1, FLOOR2 + 0.92, 0.07, F.ang); }
+  // collision: open side of the flight + landing, end of the landing
+  out.walls.push({ a: out_(sU0, w + 0.1), b: out_(L - 0.3, w + 0.1), y0: 0, y1: FLOOR2 + 1.0 });
+  out.walls.push({ a: out_(L - 0.3, 0), b: out_(L - 0.3, w + 0.1), y0: FLOOR2, y1: FLOOR2 + 1.0 });
   // walkable surfaces: the ramp and the landing
   const foot = out_(sU0, 0), dirU = [F.ux, F.uz];
   out.surfaces.push({ pts: [out_(sU0, -0.05), out_(stairU0, -0.05), out_(stairU0, w + 0.05), out_(sU0, w + 0.05)], ramp: { o: foot, u: dirU, len: run, y0: 0, y1: FLOOR2 } });
@@ -253,7 +278,7 @@ function buildCorridor(b, out, B, slabB) {
 
 /** Build all interiors. `buildings` are the scene building infos (with height). */
 export function buildInteriors(buildings) {
-  const out = { group: new THREE.Group(), solids: [], walls: [], surfaces: [], hideWhenInside: [], glow: [], occluders: [], meshFor: new Map() };
+  const out = { group: new THREE.Group(), solids: [], walls: [], surfaces: [], hideWhenInside: [], glow: [], occluders: [], meshFor: new Map(), glassB: new Builder() };
   for (const b of buildings) {
     if (b.interior === 'canteen') {
       const B = new Builder(), BW = new Builder();
@@ -274,6 +299,11 @@ export function buildInteriors(buildings) {
       out.group.add(slab);
       out.occluders.push(slab);
     }
+  }
+  if (out.glassB.tris) {
+    const glass = out.glassB.mesh({ transparent: true, opacity: 0.32, depthWrite: false });
+    glass.castShadow = false; glass.renderOrder = 3;
+    out.group.add(glass);
   }
   return {
     ...out,
