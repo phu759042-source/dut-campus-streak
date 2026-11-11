@@ -225,20 +225,26 @@ const outEdge = (pts, i) => {
   if (insideP(pts, mx + nx * 0.6, mz + nz * 0.6)) { nx = -nx; nz = -nz; }
   return { a, c, L, ux, uz, mx, mz, nx, nz, ang: Math.atan2(uz, ux), rot: Math.atan2(nx, nz) };
 };
-/** Wall sign with the school name: dark-blue letters on the white band; the letters glow at night. */
-function nameSign(w, h) {
-  const W = 1024, H = Math.max(96, Math.round((W * h) / w));
-  const day = canvasTex(W, H, (g) => {
-    g.fillStyle = '#f4f6f8'; g.fillRect(0, 0, W, H);
-    g.fillStyle = '#18358a'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    fitText(g, 'TRƯỜNG ĐẠI HỌC BÁCH KHOA', W / 2, H / 2 + 2, W - 40, 900, Math.round(H * 0.7));
-  });
-  const glow = canvasTex(W, H, (g) => {
-    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-    g.fillStyle = '#3d6cff'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    fitText(g, 'TRƯỜNG ĐẠI HỌC BÁCH KHOA', W / 2, H / 2 + 2, W - 40, 900, Math.round(H * 0.7));
-  });
-  return new THREE.MeshLambertMaterial({ map: day, emissive: 0xffffff, emissiveMap: glow, emissiveIntensity: 0 });
+const SERIF = '"Times New Roman", "Noto Serif", Georgia, serif';
+/**
+ * School name as raised blue serif letters (as on the Nhà S facade): transparent background so it sits
+ * on whatever is behind it; `band` adds the white band. The letters glow blue at night.
+ */
+function nameSign(w, h, band = false) {
+  const W = 2048, H = Math.max(96, Math.round((W * h) / w));
+  const draw = (g, color, glow) => {
+    g.clearRect(0, 0, W, H);
+    if (glow) { g.fillStyle = '#000'; g.fillRect(0, 0, W, H); }
+    else if (band) { g.fillStyle = '#f4f6f8'; g.fillRect(0, 0, W, H); }
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    let px = Math.round(H * 0.82);
+    do { g.font = `bold ${px}px ${SERIF}`; px -= 2; } while (g.measureText('TRƯỜNG ĐẠI HỌC BÁCH KHOA').width > W - 30 && px > 10);
+    if (!glow) { g.fillStyle = 'rgba(10,20,60,0.35)'; g.fillText('TRƯỜNG ĐẠI HỌC BÁCH KHOA', W / 2 + 3, H / 2 + 5); } // raised-letter shadow
+    g.fillStyle = color; g.fillText('TRƯỜNG ĐẠI HỌC BÁCH KHOA', W / 2, H / 2 + 2);
+  };
+  const day = canvasTex(W, H, (g) => draw(g, '#2340b0', false));
+  const glow = canvasTex(W, H, (g) => draw(g, '#3f6bff', true));
+  return new THREE.MeshLambertMaterial({ map: day, transparent: !band, alphaTest: band ? 0 : 0.35, emissive: 0xffffff, emissiveMap: glow, emissiveIntensity: 0, depthWrite: band });
 }
 function logoMaterial() {
   const t = emblemTex();
@@ -247,57 +253,84 @@ function logoMaterial() {
 
 /**
  * Nhà S (smart building) after photos: white frame, cyan glass ribbons, wide white roof slabs,
- * a taller central core with vertical louvres over the main door, the emblem on top of the core
- * and "TRƯỜNG ĐẠI HỌC BÁCH KHOA" in dark blue along the top floor. Emblem and letters light up at night.
+ * a central core with grey vertical louvres over the main door rising above the roof, the emblem on top
+ * of the core, "TRƯỜNG ĐẠI HỌC BÁCH KHOA" in blue serif letters on a white band across the top floor,
+ * and two Vietnamese flags on vertical poles below the lettering. Emblem and letters light up at night.
  */
 function towerS(b, B, group, glowMats) {
   const h = b.height, pts = b.pts;
   const E = outEdge(pts, b.entrance_edge ?? 0);
-  // white corner piers
+  const at = (u, n) => [E.mx + E.ux * u + E.nx * n, E.mz + E.uz * u + E.nz * n]; // u along the front, n outwards
+  // white corner piers (not at the core: the lettering band runs across it)
   B.color(0xf3f5f7);
-  pts.forEach((p, i) => { const e = outEdge(pts, i); B.box(p[0], p[1], 1.2, 1.2, 0, h, e.ang); });
+  pts.forEach((p, i) => {
+    const du = (p[0] - E.mx) * E.ux + (p[1] - E.mz) * E.uz;
+    if (Math.abs(du) < E.L / 2 + 2) return;
+    const e = outEdge(pts, i); B.box(p[0], p[1], 1.2, 1.2, 0, h, e.ang);
+  });
   // wide white roof slab (cantilever) + a thinner second slab
   const slab = offsetPoly(pts, 1.6) || pts;
   B.color(0xf5f7f9); B.band(slab, h - 0.1, h + 0.6); B.cap(slab, h + 0.6); B.cap(slab, h - 0.1);
   const slab2 = offsetPoly(pts, 0.9) || pts;
-  B.color(0xe9edf1); B.band(slab2, h - 3.6, h - 3.3); B.cap(slab2, h - 3.3); B.cap(slab2, h - 3.6);
-  // central core over the main door, rising above the roof
-  const depth = 9, top = h + 4.2;
-  const core = [[E.a[0], E.a[1]], [E.c[0], E.c[1]], [E.c[0] - E.nx * depth, E.c[1] - E.nz * depth], [E.a[0] - E.nx * depth, E.a[1] - E.nz * depth]];
+  B.color(0xe9edf1); B.band(slab2, h - 3.85, h - 3.55); B.cap(slab2, h - 3.55); B.cap(slab2, h - 3.85);
+
+  // central core: built slightly proud of the walls (no shared planes -> no flicker)
+  const depth = 9, top = h + 4.2, half = E.L / 2 + 0.2;
+  const core = [at(-half, 0.3), at(half, 0.3), at(half, -depth), at(-half, -depth)];
   B.color(0xeef0f3); B.band(core, 0, top); B.cap(core, top);
-  B.color(0xf8f9fa); B.band(offsetPoly(core, 0.5) || core, top, top + 0.5); B.cap(offsetPoly(core, 0.5) || core, top + 0.5);
-  // vertical louvres down the middle of the core front
-  B.color(0xb7bec7); B.box(E.mx + E.nx * 0.08, E.mz + E.nz * 0.08, 3.2, 0.25, 4.2, h - 4.2, E.ang);
-  B.color(0xdfe3e8);
-  for (let k = -5; k <= 5; k++) B.box(E.mx + E.ux * k * 0.3 + E.nx * 0.3, E.mz + E.uz * k * 0.3 + E.nz * 0.3, 0.08, 0.45, 4.2, h - 4.2, E.ang);
+  const coreTop = offsetPoly(core, 0.5) || core;
+  B.color(0xf8f9fa); B.band(coreTop, top, top + 0.5); B.cap(coreTop, top + 0.5); B.cap(coreTop, top);
+  // grey louvre strip down the middle of the core, from the canopy up to the lettering band
+  const [lx, lz] = at(0, 0.5);
+  B.color(0x9aa3ad); B.box(lx, lz, 3.4, 0.4, 4.4, h - 3.6 - 4.4, E.ang);
+  B.color(0xd4d9df);
+  for (let k = -6; k <= 6; k++) { const [fx, fz] = at(k * 0.27, 0.78); B.box(fx, fz, 0.07, 0.18, 4.4, h - 3.6 - 4.4, E.ang); }
   // glass lobby + entrance canopy at the main door
-  B.color(0x7fb9de); B.box(E.mx + E.nx * 0.12, E.mz + E.nz * 0.12, E.L - 1.4, 0.2, 0.2, 3.6, E.ang);
-  B.color(0xf7f7f5); B.box(E.mx + E.nx * 2.2, E.mz + E.nz * 2.2, E.L + 1, 4.4, 3.9, 0.4, E.ang);
+  const [gx, gz] = at(0, 0.45);
+  B.color(0x7fb9de); B.box(gx, gz, E.L - 1.2, 0.2, 0.2, 3.6, E.ang);
+  const [cx, cz] = at(0, 2.4);
+  B.color(0xf7f7f5); B.box(cx, cz, E.L + 1, 4.4, 3.9, 0.4, E.ang);
   B.color(0xdedbd3);
-  for (const sx of [-E.L / 2, E.L / 2]) B.box(E.mx + E.ux * sx + E.nx * 4, E.mz + E.uz * sx + E.nz * 4, 0.35, 0.35, 0, 3.9, E.ang);
-  // emblem on top of the core (front face)
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 4.4), logoMaterial());
-  logo.position.set(E.mx + E.nx * 0.06, top - 2.4, E.mz + E.nz * 0.06);
+  for (const sx of [-E.L / 2, E.L / 2]) { const [px, pz] = at(sx, 4.2); B.box(px, pz, 0.35, 0.35, 0, 3.9, E.ang); }
+
+  // emblem on the top of the core
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 4.6), logoMaterial());
+  const [ex, ez] = at(0, 0.36);
+  logo.position.set(ex, top - 2.6, ez);
   logo.rotation.y = E.rot;
   group.add(logo); glowMats.push(logo.material);
-  // school name along the top floor: right wing of the front, and the left side face (as in the photos)
-  const right = outEdge(pts, ((b.entrance_edge ?? 0) + 2) % pts.length);
+
+  // white band across the top floor (from the wings out to the core plane) carrying the school name
+  const bandW = Math.min(30, E.L + 22), bandY0 = h - 3.4, bandH = 2.3;
+  const [bx, bz] = at(0, 0.45 - 2.375);
+  B.color(0xf4f6f8); B.box(bx, bz, bandW, 4.75, bandY0, bandH, E.ang); // front 0.15 m proud of the core
+  const text = new THREE.Mesh(new THREE.PlaneGeometry(bandW - 2, 1.85), nameSign(bandW - 2, 1.85));
+  const [tx, tz] = at(0, 0.45 + 0.06);
+  text.position.set(tx, bandY0 + bandH / 2, tz);
+  text.rotation.y = E.rot;
+  text.renderOrder = 2;
+  group.add(text); glowMats.push(text.material);
+
+  // the name again on the left side face, on a white band (seen in the side photos)
   const left = outEdge(pts, ((b.entrance_edge ?? 0) + pts.length - 3) % pts.length);
-  for (const e of [right, left]) {
-    const w = Math.min(e.L - 1.2, 16), hh = 2.1;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), nameSign(w, hh));
-    m.position.set(e.mx + e.nx * 0.1, h - 1.75, e.mz + e.nz * 0.1);
-    m.rotation.y = e.rot;
+  {
+    const w = Math.min(left.L - 2, 18), hh = 1.7;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), nameSign(w, hh, true));
+    m.position.set(left.mx + left.nx * 0.12, h - 2.2, left.mz + left.nz * 0.12);
+    m.rotation.y = left.rot;
     group.add(m); glowMats.push(m.material);
   }
-  // two red flags on the core front
+
+  // two Vietnamese flags on vertical poles fixed to the core, below the lettering
   const flagMat = new THREE.MeshLambertMaterial({ map: flagTex(), side: THREE.DoubleSide });
-  for (const sx of [-1.2, 1.2]) {
-    const px = E.mx + E.ux * sx + E.nx * 0.4, pz = E.mz + E.uz * sx + E.nz * 0.4;
-    B.color(0xc9ced4); B.box(px + E.nx * 0.6, pz + E.nz * 0.6, 0.06, 1.4, 12.6, 0.06, E.ang);
-    const f = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6), flagMat);
-    f.position.set(px + E.nx * 1.1, 12.25, pz + E.nz * 1.1);
-    f.rotation.y = E.rot + Math.PI / 2;
+  for (const u of [-2.4, -3.6]) {
+    const [px, pz] = at(u, 0.9);
+    B.color(0xc9ced4); B.box(px, pz, 0.08, 0.08, 15, 4.2, E.ang);              // vertical pole
+    for (const y of [15.6, 18.6]) { const [qx, qz] = at(u, 0.6); B.box(qx, qz, 0.06, 0.6, y, 0.06, E.ang); } // wall brackets
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.0), flagMat);
+    const [fx, fz] = at(u - 0.78, 0.9);
+    f.position.set(fx, 18.55, fz);
+    f.rotation.y = E.rot; // hangs flat beside the pole, parallel to the facade
     group.add(f);
   }
 }
@@ -429,16 +462,29 @@ function fitText(g, text, x, y, maxW, weight, size) {
   do { g.font = `${weight} ${px}px ${FONT}`; px -= 2; } while (g.measureText(text).width > maxW && px > 10);
   g.fillText(text, x, y);
 }
-/** School emblem as seen on campus: white frame, blue square, a bold yellow "D" (simplified drawing). */
+/**
+ * School emblem as on the Nhà S core (drawn from the photo): white panel, "BÁCH KHOA" along the top,
+ * "ĐÀ NẴNG" running down the left edge, and a blue square holding a yellow crescent "D".
+ */
 function drawEmblem(g, x, y, s) {
   g.fillStyle = '#ffffff'; g.fillRect(x, y, s, s);
-  g.fillStyle = '#1f4fb5'; g.fillRect(x + s * 0.07, y + s * 0.07, s * 0.86, s * 0.86);
-  const cx = x + s * 0.44, cy = y + s * 0.5, R = s * 0.33, r = s * 0.15;
-  g.fillStyle = '#f7c21b';
-  g.beginPath(); g.moveTo(x + s * 0.22, cy - R); g.lineTo(cx, cy - R); g.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2); g.lineTo(x + s * 0.22, cy + R); g.closePath(); g.fill();
-  g.fillStyle = '#1f4fb5';
-  g.beginPath(); g.moveTo(x + s * 0.36, cy - r); g.lineTo(cx, cy - r); g.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2); g.lineTo(x + s * 0.36, cy + r); g.closePath(); g.fill();
-  g.fillStyle = '#ffffff'; g.fillRect(x + s * 0.22, y + s * 0.1, s * 0.05, s * 0.8); // white stem
+  g.strokeStyle = '#1b2f7a'; g.lineWidth = Math.max(2, s * 0.012); g.strokeRect(x + 1, y + 1, s - 2, s - 2);
+  const bx = x + s * 0.2, by = y + s * 0.2, bs = s * 0.74; // blue square (lower right)
+  g.fillStyle = '#1f3fae'; g.fillRect(bx, by, bs, bs);
+  // yellow crescent "D": outer half-disc minus an offset inner half-disc
+  const cy = by + bs / 2, cx = bx + bs * 0.34, R = bs * 0.45;
+  g.fillStyle = '#f6c21a';
+  g.beginPath(); g.moveTo(cx, cy - R); g.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2); g.closePath(); g.fill();
+  g.fillRect(cx - bs * 0.07, cy - R, bs * 0.07, R * 2);
+  g.fillStyle = '#1f3fae';
+  g.beginPath(); g.moveTo(cx - bs * 0.07, cy - R * 0.74); g.arc(cx - bs * 0.07, cy, R * 0.74, -Math.PI / 2, Math.PI / 2); g.closePath(); g.fill();
+  // lettering
+  g.fillStyle = '#1b2f7a'; g.textBaseline = 'middle'; g.textAlign = 'center';
+  g.font = `600 ${Math.round(s * 0.1)}px ${FONT}`;
+  g.fillText('BÁCH KHOA', bx + bs / 2, y + s * 0.105);
+  g.save(); g.translate(x + s * 0.1, by + bs / 2); g.rotate(Math.PI / 2);
+  g.fillText('ĐÀ NẴNG', 0, 0);
+  g.restore();
 }
 /** Terracotta stone sign with the school name (right of the main gate). */
 const stoneSignTex = () => canvasTex(1024, 400, (g, w, h) => {
