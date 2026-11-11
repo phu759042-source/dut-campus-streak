@@ -1,0 +1,10 @@
+# DUT Campus Streak — https://www.campusstreak.com
+User-agent: *
+Allow: /
+# private share links and internal endpoints are not for search results
+Disallow: /s/
+Disallow: /api/
+Disallow: /files/
+Disallow: /media/
+
+Sitemap: https://www.campusstreak.com/sitemap.xml

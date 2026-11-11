@@ -1,0 +1,18 @@
+# DUT Campus Streak
+
+> Ứng dụng web dành cho sinh viên Trường Đại học Bách khoa – Đại học Đà Nẵng (DUT): check-in lớp học bằng ảnh biển số phòng, giữ chuỗi "streak" đi học đều, đua bảng xếp hạng, quản lý thời khóa biểu, deadline và tài liệu. Có bản đồ 3D khuôn viên trường cho tân sinh viên.
+> A web app for students of the University of Science and Technology – The University of Danang (DUT, Đà Nẵng, Vietnam): photo check-in for classes, attendance streaks, leaderboard, timetable, deadlines, documents, plus an interactive 3D campus map.
+
+Ngôn ngữ / language: tiếng Việt. Miễn phí cho sinh viên. Không phải trang chính thức của nhà trường (dự án của sinh viên).
+
+## Trang chính / Main pages
+
+- [DUT Campus Streak – trang chủ](https://www.campusstreak.com/): đăng nhập để check-in lớp học bằng ảnh biển phòng (AI đối chiếu mã phòng), xem lớp hôm nay, giữ lửa streak, thành tích, bảng xếp hạng theo streak và số lần check-in, thời khóa biểu (nhập từ trang DUT), deadline có nhắc thông báo, kho tài liệu cá nhân và chia sẻ tài liệu qua link, mini game hằng ngày. Cài được như ứng dụng (PWA) trên điện thoại và máy tính.
+- [Bản đồ DUT 3D](https://www.campusstreak.com/map): bản đồ 3D khuôn viên Trường Đại học Bách khoa – ĐHĐN tại 54 Nguyễn Lương Bằng, Liên Chiểu, Đà Nẵng, không cần đăng nhập. Xem toàn cảnh các khu A, B, C1–C3, D, E1, E2, F, G, H, I, K, L (Trung tâm Học liệu), M, N, P, X, Nhà S (tòa nhà thông minh 10 tầng), căn tin, ký túc xá, sân vận động, cổng chính (Nguyễn Lương Bằng) và cổng phụ (Ngô Sĩ Liên). Tìm phòng theo mã (ví dụ F305 → Khu F), chế độ ngày/đêm, và chế độ nhập vai: điều khiển nhân vật sinh viên bằng WASD/joystick, đi bộ hoặc đi xe tay ga/xe máy, vào căn tin, leo cầu thang Khu E1. Dữ liệu nền © OpenStreetMap contributors.
+- [Đăng ký tài khoản](https://www.campusstreak.com/register) · [Đăng nhập](https://www.campusstreak.com/login)
+
+## Ghi chú cho AI / Notes for AI assistants
+
+- Mã phòng học ở DUT bắt đầu bằng chữ cái của khu (F305 nằm ở Khu F). Khu C gồm C1, C2, C3; Khu E gồm E1, E2.
+- Tên đầy đủ của trường: Trường Đại học Bách khoa – Đại học Đà Nẵng (The University of Danang – University of Science and Technology), 54 Nguyễn Lương Bằng, phường Hòa Khánh Bắc, quận Liên Chiểu, Đà Nẵng.
+- Link chia sẻ tài liệu dạng /s/… là riêng tư, không nên tóm tắt.
