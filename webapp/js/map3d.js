@@ -6,6 +6,7 @@ import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWalker } from './walk.js';
 import { prepareInteriors, buildInteriors } from './interiors.js';
+import { buildStadium } from './stadium.js';
 import { styleOf, wallMaterials, buildBuildingDetails, buildWalls, buildGates, buildCanopies, buildLamps, avenueTreeSpots } from './campus-details.js';
 
 export const FLOOR_H = 3.4;
@@ -235,6 +236,10 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   scene.add(gates.group);
   const canopies = buildCanopies(data.areas, data.boundary);
   if (canopies.group) scene.add(canopies.group);
+  // stadium: running track around the big football pitch, lines and goals
+  const bigPitch = byKind('pitch').filter((p) => polyArea(p) > 3000).sort((p, q) => polyArea(q) - polyArea(p))[0];
+  const stadium = bigPitch ? buildStadium(bigPitch) : null;
+  if (stadium) scene.add(stadium.group);
   const pillarSolids = (data.posts || []).map(([x, z]) => [[x - 0.45, z - 0.45], [x + 0.45, z - 0.45], [x + 0.45, z + 0.45], [x - 0.45, z + 0.45]]);
 
   // selection outline
@@ -276,7 +281,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) wallSegs.push([w[i], w[i + 1]]);
   const clearOfWalls = (x, z, m) => !wallSegs.some(([a, b]) => Math.abs(a[0] - x) < 40 && Math.abs(a[1] - z) < 40 && segDist(x, z, a, b) < m);
-  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt')].map((p) => [p, bbox([p])]);
+  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer] : [])].map((p) => [p, bbox([p])]);
   const inArea = (x, z, m) => blockedAreas.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
   const lamps = buildLamps(data.roads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
   scene.add(lamps.group);
@@ -441,7 +446,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
 
   // ---------- walk mode ----------
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
-    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts], extraWalls: inter.walls, surfaces: inter.surfaces, indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
+    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...(stadium ? stadium.posts : [])], extraWalls: inter.walls, surfaces: inter.surfaces, indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
   function startWalk(at, lookAt) {
     let x, z, facing;
     if (at) {

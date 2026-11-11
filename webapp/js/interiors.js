@@ -201,7 +201,7 @@ function buildCanteen(b, out, B, BW) {
     RB.quad([eave[i][0], H + 0.05, eave[i][1]], [eave[j][0], H + 0.05, eave[j][1]], [inset[j][0], H + rise, inset[j][1]], [inset[i][0], H + rise, inset[i][1]]);
   }
   RB.cap(inset, H + Math.min(L, D) * 0.25);
-  RB.cap(pts, H - 0.02); // ceiling
+  RB.color(0xf1ede4); RB.cap(pts, H - 0.02); // white ceiling
   const roof = RB.mesh();
   out.group.add(roof);
   out.hideWhenInside.push({ pts, mesh: roof });
@@ -309,7 +309,7 @@ export function buildInteriors(buildings) {
     ...out,
     /** Hide the canteen roof while the student is inside it. */
     update(st) {
-      for (const r of out.hideWhenInside) r.mesh.visible = !(st && st.on && insideP(r.pts, st.x, st.z));
+      for (const r of out.hideWhenInside) r.mesh.visible = !(st && st.on && !st.fp && insideP(r.pts, st.x, st.z)); // first person keeps the roof + ceiling
     },
     setNight(on) { for (const m of out.glow) m.emissiveIntensity = on ? 0.9 : (m.userData.dayGlow || 0); },
   };
