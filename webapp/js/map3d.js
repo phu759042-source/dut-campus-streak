@@ -19,7 +19,7 @@ const PALETTE = {
   },
   dark: {
     sky: 0x0b1428, ground: 0x1a2232, campus: 0x1f2a3b, road: 0x3a4558, foot: 0x4a4740, grass: 0x2f5a3a,
-    park: 0x2b5535, water: 0x1f4f7a, parking: 0x343c4c, pitch: 0x2e5b33, track: 0x6e4136, wall: 0xb9bfcc, dirt: 0x4f4434,
+    park: 0x2b5535, water: 0x1f4f7a, parking: 0x343c4c, pitch: 0x2e5b33, track: 0x6e4136, wall: 0xb9bfcc, dirt: 0x6e5c40,
     hemiSky: 0x8fa6d8, hemiGround: 0x1b2333, hemi: 0.75, sun: 0.55, fogNear: 600, fogFar: 1700, glow: 1,
   },
 };
@@ -305,7 +305,20 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   {
     const rand = rng(20261110);
     const spots = [];
-    for (const g of byKind('grass')) {
+    // lawns that come with a planting line get an evenly spaced row of trees instead of random ones
+    for (const a of data.areas.filter((x) => x.kind === 'grass' && x.row)) {
+      const line = a.row;
+      for (let i = 0; i < line.length - 1; i++) {
+        const [ax, az] = line[i], [bx, bz] = line[i + 1];
+        const L = Math.hypot(bx - ax, bz - az);
+        for (let d = 2; d < L; d += 8.5) {
+          const t = d / L, sc = 0.95 + rand() * 0.3;
+          const x = ax + (bx - ax) * t + (rand() - 0.5) * 0.8, z = az + (bz - az) * t + (rand() - 0.5) * 0.8;
+          if (treeOk(x, z, sc) && !nearDoor(x, z) && !spots.some((s) => Math.abs(s[0] - x) + Math.abs(s[1] - z) < 5)) spots.push([x, z, sc, rand()]);
+        }
+      }
+    }
+    for (const g of data.areas.filter((x) => x.kind === 'grass' && !x.row).map((x) => x.pts)) {
       const bb = bbox([g]);
       const n = Math.min(60, Math.floor(polyArea(g) / 110));
       for (let k = 0, tries = 0; k < n && tries < n * 6; tries++) {

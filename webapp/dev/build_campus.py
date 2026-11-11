@@ -392,6 +392,25 @@ for rd in street:
         if len(run) > 1:
             walls.append(run); fence_posts += [run[0], run[-1]]
 
+# ---- lawn strip with a tree row along the west boundary (Khu X down to Khu M), as on the campus map ----
+def offset_polyline(pts, d):
+    out = []
+    for i, p in enumerate(pts):
+        a_ = pts[max(0, i - 1)]; b_ = pts[min(len(pts) - 1, i + 1)]
+        dx, dz = b_[0] - a_[0], b_[1] - a_[1]
+        L = math.hypot(dx, dz) or 1
+        nx, nz = -dz / L, dx / L
+        if not inside_poly(ring, p[0] + nx, p[1] + nz): nx, nz = -nx, -nz
+        out.append([round(p[0] + nx * d, 2), round(p[1] + nz * d, 2)])
+    return out
+
+
+WEST_CHAIN = [44, 45, 46, 47, 48, 0, 1, 2, 3, 4, 5, 6, 7]
+west = [ring[i] for i in WEST_CHAIN]
+areas.append({'kind': 'grass', 'name': 'Dải cỏ ven tường', 'id': 2,
+              'pts': [[round(x, 2), round(z, 2)] for x, z in west] + offset_polyline(west, 11)[::-1],
+              'row': offset_polyline(west, 5.5)})
+
 missing = [i for ids in ZONES.values() for i in ids if i not in ways]
 assert not missing, missing
 

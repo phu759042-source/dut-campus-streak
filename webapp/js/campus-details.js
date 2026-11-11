@@ -517,18 +517,26 @@ function drawEmblem(g, x, y, s) {
   g.fillText('ĐÀ NẴNG', 0, 0);
   g.restore();
 }
-/** Terracotta stone sign with the school name (right of the main gate). */
-const stoneSignTex = () => canvasTex(1024, 400, (g, w, h) => {
-  const grd = g.createLinearGradient(0, 0, w, h); grd.addColorStop(0, '#b8634b'); grd.addColorStop(1, '#9c4d39');
+/** Granite name sign (right of the main gate): pink-brown granite, bevelled frame, engraved white lettering. */
+const stoneSignTex = () => canvasTex(1024, 412, (g, w, h) => {
+  const grd = g.createLinearGradient(0, 0, w, h); grd.addColorStop(0, '#b56a55'); grd.addColorStop(1, '#a05442');
   g.fillStyle = grd; g.fillRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 10; g.strokeRect(14, 14, w - 28, h - 28);
-  g.fillStyle = '#fff6ee'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  const mw = w - 110;
-  fitText(g, 'ĐẠI HỌC ĐÀ NẴNG', w / 2, 62, mw, 800, 34);
-  fitText(g, 'TRƯỜNG ĐẠI HỌC BÁCH KHOA', w / 2, 150, mw, 900, 78);
-  fitText(g, 'UNIVERSITY OF SCIENCE AND TECHNOLOGY', w / 2, 226, mw, 800, 36);
-  fitText(g, 'INSTITUT POLYTECHNIQUE DE DANANG', w / 2, 272, mw, 700, 30);
-  g.textAlign = 'left'; g.font = `700 28px ${FONT}`; g.fillText('54 Nguyễn Lương Bằng', 70, 340);
+  const rnd = rng(99);
+  for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(${rnd() > 0.5 ? '255,235,225' : '60,25,20'},${0.05 + rnd() * 0.08})`; g.fillRect(rnd() * w, rnd() * h, 2, 2); } // granite speckle
+  g.strokeStyle = 'rgba(255,240,230,0.35)'; g.lineWidth = 6; g.strokeRect(16, 16, w - 32, h - 32);
+  const engraved = (text, x, y, maxW, weight, size, align = 'center') => {
+    g.textAlign = align; g.textBaseline = 'middle';
+    let px = size;
+    do { g.font = `${weight} ${px}px ${FONT}`; px -= 2; } while (g.measureText(text).width > maxW && px > 10);
+    g.fillStyle = 'rgba(70,30,20,0.55)'; g.fillText(text, x + 2, y + 3);
+    g.fillStyle = '#fbf6f0'; g.fillText(text, x, y);
+  };
+  engraved('ĐẠI HỌC ĐÀ NẴNG', w / 2, 58, 500, 800, 30);
+  engraved('TRƯỜNG ĐẠI HỌC BÁCH KHOA', w / 2, 140, w - 90, 900, 82);
+  engraved('UNIVERSITY OF SCIENCE AND TECHNOLOGY', w / 2, 222, w - 120, 800, 40);
+  engraved('INSTITUT POLYTECHNIQUE DE DANANG', w / 2, 270, w - 200, 800, 36);
+  engraved('54 Nguyễn Lương Bằng', 70, 352, 420, 700, 28, 'left');
+  engraved('ĐT: 0236.3842308', w - 70, 352, 360, 700, 28, 'right');
 });
 /** Blue billboard over the guard house (left of the main gate). */
 const billboardTex = () => canvasTex(512, 640, (g, w, h) => {
@@ -644,36 +652,86 @@ export function buildGates(pois) {
       group.add(flag);
     }
 
-    // RIGHT, at the corner inside the opening: tall white ribbed column with the emblem cube on top
+    // RIGHT (after the photos): slim white column at the corner of the driveway, a louvred neck and a white
+    // cube with the emblem on every face; next to it a small white pillar, then the granite name sign on a
+    // curved planter in front of a white rail fence — all in one line along the street.
     {
-      const [cx, cz] = P(half - 0.9, 0.9);
-      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 10.5, 20), new THREE.MeshLambertMaterial({ color: 0xf3f4f6 }));
-      col.position.set(cx, 5.25, cz); col.castShadow = true; group.add(col);
-      const ringMat = new THREE.MeshLambertMaterial({ color: 0xd5d9df });
-      for (let k = 1; k < 10; k++) {
-        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 0.12, 20), ringMat);
-        ring.position.set(cx, k * 1.05, cz); group.add(ring);
+      const [cx, cz] = P(half - 0.8, 0.6);
+      const white = new THREE.MeshLambertMaterial({ color: 0xf4f5f6 });
+      const groove = new THREE.MeshLambertMaterial({ color: 0xc9ced4 });
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.44, 7.3, 24), white);
+      shaft.position.set(cx, 3.65, cz); shaft.castShadow = true; group.add(shaft);
+      for (const y of [1.45, 2.9, 4.35, 5.8]) {                          // joints between the precast segments
+        const j = new THREE.Mesh(new THREE.CylinderGeometry(0.445, 0.445, 0.05, 24), groove); j.position.set(cx, y, cz); group.add(j);
       }
-      const cube = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), new THREE.MeshLambertMaterial({ map: emblemTex() }));
-      cube.position.set(cx, 11.4, cz); cube.rotation.y = faceOut; cube.castShadow = true; group.add(cube);
-      B.color(0xe7e9ec); B.box(cx, cz, 1.6, 1.6, 0, 0.5, across);
-      solids.push(rect(cx, cz, 1.4, 1.4, across));
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 1.25, 16), groove);
+      core.position.set(cx, 7.9, cz); group.add(core);
+      for (let k = 0; k < 10; k++) {                                     // louvred neck under the cube
+        const d = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.055, 24), white); d.position.set(cx, 7.32 + k * 0.125, cz); group.add(d);
+      }
+      const C = 1.45, cy = 8.6 + C / 2;
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(C, C, C), white);
+      cube.position.set(cx, cy, cz); cube.rotation.y = faceOut; cube.castShadow = true; group.add(cube);
+      const logoMat = new THREE.MeshLambertMaterial({ map: emblemTex() });
+      for (let k = 0; k < 4; k++) {                                      // emblem inset on each face, white frame around
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(C * 0.84, C * 0.84), logoMat);
+        const a2 = faceOut + (k * Math.PI) / 2;
+        m.position.set(cx + Math.sin(a2) * (C / 2 + 0.005), cy, cz + Math.cos(a2) * (C / 2 + 0.005));
+        m.rotation.y = a2;
+        group.add(m);
+      }
+      B.color(0xe7e9ec); B.box(cx, cz, 1.05, 1.05, 0, 0.25, across);
+      solids.push(rect(cx, cz, 1.0, 1.0, across));
+      // small white box with the emblem at the foot of the column (street side)
+      const [kx, kz] = P(half - 1.75, -0.2);
+      B.color(0xf2f2f0); B.box(kx, kz, 0.5, 0.32, 0, 1.0, across);
+      const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), logoMat);
+      tag.position.set(kx - fx * 0.17, 0.72, kz - fz * 0.17); tag.rotation.y = faceOut; group.add(tag);
     }
-
-    // RIGHT, outside on the pavement: terracotta stone sign on a planter, straight along the street,
-    // lettering on the street side only
     {
-      const [sx, sz] = P(half + 5.6, -2.4);
-      const ang = across;
-      B.color(0xb0563f); B.box(sx, sz, 9.2, 3.2, 0, 0.55, ang);         // planter curb
-      B.color(0x6fbf5a); B.box(sx, sz, 8.8, 2.8, 0.55, 0.06, ang);       // grass
-      const sign = texturedPanel(7.4, 2.9, 0.55, stoneSignTex(), 0x9c4d39, false);
-      sign.position.set(sx, 0.6 + 1.45, sz);
-      sign.rotation.y = Math.atan2(-Math.sin(ang), Math.cos(ang));
-      const n = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), sign.rotation.y);
-      if (n.x * -fx + n.z * -fz < 0) sign.rotation.y += Math.PI;   // textured +z face toward the street
-      group.add(sign);
-      solids.push(rect(sx, sz, 9.2, 3.2, ang));
+      const s0 = half + 0.15;                                            // the line continues to the right of the driveway
+      // small square white pillar between the column and the sign
+      const [qx, qz] = P(s0 + 0.35, 0.1);
+      B.color(0xf3f3f1); B.box(qx, qz, 0.45, 0.45, 0, 2.5, across); B.color(0xdedcd6); B.box(qx, qz, 0.55, 0.55, 2.5, 0.08, across);
+      solids.push(rect(qx, qz, 0.5, 0.5, across));
+      // white rail fence behind the sign
+      const fenceL = 9.5;
+      B.color(0xf1f1ef);
+      for (let u = 0.9; u <= fenceL; u += 1.6) { const [px, pz] = P(s0 + u, 0.1); B.box(px, pz, 0.12, 0.12, 0, 1.55, across); }
+      B.color(0xd9dde2);
+      for (const y of [0.45, 0.85, 1.25]) { const [px, pz] = P(s0 + 0.6 + fenceL / 2, 0.1); B.box(px, pz, fenceL, 0.05, y, 0.05, across); }
+      solids.push(rect(...P(s0 + 0.6 + fenceL / 2, 0.1), fenceL, 0.25, across));
+      // curved planter (round end toward the driveway) with grass
+      const shape = (inset) => {
+        const sh = new THREE.Shape();
+        const u0 = s0 + 0.6 + inset, u1 = s0 + 0.6 + fenceL - inset, v0 = -0.25 - inset, v1 = -2.7 + inset, rr = 1.5 - inset * 0.6;
+        // local (u = across, v = forward) -> shape coordinates in metres
+        sh.moveTo(u0 + rr, v1); sh.lineTo(u1, v1); sh.lineTo(u1, v0); sh.lineTo(u0, v0); sh.lineTo(u0, v1 + rr);
+        sh.quadraticCurveTo(u0, v1, u0 + rr, v1);
+        return sh;
+      };
+      const toWorld = (geo, y) => {
+        const pos = geo.getAttribute('position');
+        for (let i = 0; i < pos.count; i++) {
+          const u = pos.getX(i), v = pos.getY(i), h = pos.getZ(i);
+          const [wx, wz] = P(u, v);
+          pos.setXYZ(i, wx, y + h, wz);
+        }
+        geo.computeVertexNormals();
+        return geo;
+      };
+      const curb = new THREE.Mesh(toWorld(new THREE.ExtrudeGeometry(shape(0), { depth: 0.32, bevelEnabled: false }), 0), new THREE.MeshLambertMaterial({ color: 0xb4553f, side: THREE.DoubleSide }));
+      curb.castShadow = curb.receiveShadow = true; group.add(curb);
+      const grass = new THREE.Mesh(toWorld(new THREE.ShapeGeometry(shape(0.18)), 0.33), new THREE.MeshLambertMaterial({ color: 0x5fae4c, side: THREE.DoubleSide }));
+      group.add(grass);
+      solids.push(rect(...P(s0 + 0.6 + fenceL / 2, -1.45), fenceL, 2.5, across));
+      // the granite sign: darker frame + engraved face, lettering only on the street side
+      const SW = 6.2, SH = 2.5, [sx, sz] = P(s0 + 0.6 + fenceL * 0.55, -1.0);
+      B.color(0x8b4535); B.box(sx, sz, SW + 0.3, 0.42, 0.32, SH + 0.3, across);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), new THREE.MeshLambertMaterial({ map: stoneSignTex() }));
+      face.position.set(sx - fx * 0.215, 0.32 + 0.15 + SH / 2, sz - fz * 0.215);
+      face.rotation.y = faceOut;
+      group.add(face);
     }
   }
   group.add(B.mesh());
