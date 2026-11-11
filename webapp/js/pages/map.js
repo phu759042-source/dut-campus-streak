@@ -149,7 +149,7 @@ function minimapImage(data, A, dark) {
   const poly = (pts, fill) => { g.beginPath(); trace(pts); g.closePath(); g.fillStyle = fill; g.fill(); };
   g.fillStyle = dark ? '#1a2232' : '#e4e9e1'; g.fillRect(0, 0, c.width, c.height);
   poly(data.boundary, dark ? '#223047' : '#eef2e6');
-  const AREA = { grass: dark ? '#2f5a3a' : '#a8d896', water: '#6fb7e8', parking: dark ? '#343c4c' : '#cfd4dc', pitch: dark ? '#2e5b33' : '#86c873', track: '#d2876a' };
+  const AREA = { grass: dark ? '#2f5a3a' : '#a8d896', water: '#6fb7e8', parking: dark ? '#343c4c' : '#cfd4dc', pitch: dark ? '#2e5b33' : '#86c873', track: '#d2876a', dirt: dark ? '#4f4434' : '#d8c39a' };
   for (const a of data.areas) poly(a.pts, AREA[a.kind] || '#ccc');
   g.lineCap = g.lineJoin = 'round';
   for (const rd of data.roads) {

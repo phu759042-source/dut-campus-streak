@@ -14,12 +14,12 @@ const NORTH = new THREE.Vector3(-1, 0, 0); // +x points south in this map
 const PALETTE = {
   light: {
     sky: 0xcfe2ff, ground: 0xe4e9e1, campus: 0xeef2e6, road: 0xb7bfcc, foot: 0xe3d6c3, grass: 0x9fd08a,
-    park: 0x8cc77a, water: 0x6fb7e8, parking: 0xc9ced8, pitch: 0x7cc46b, track: 0xd2876a, wall: 0xffffff,
+    park: 0x8cc77a, water: 0x6fb7e8, parking: 0xc9ced8, pitch: 0x7cc46b, track: 0xd2876a, wall: 0xffffff, dirt: 0xd8c39a,
     hemiSky: 0xffffff, hemiGround: 0xb7c4a8, hemi: 1.15, sun: 2.1, fogNear: 700, fogFar: 1900, glow: 0,
   },
   dark: {
     sky: 0x0b1428, ground: 0x1a2232, campus: 0x1f2a3b, road: 0x3a4558, foot: 0x4a4740, grass: 0x2f5a3a,
-    park: 0x2b5535, water: 0x1f4f7a, parking: 0x343c4c, pitch: 0x2e5b33, track: 0x6e4136, wall: 0xb9bfcc,
+    park: 0x2b5535, water: 0x1f4f7a, parking: 0x343c4c, pitch: 0x2e5b33, track: 0x6e4136, wall: 0xb9bfcc, dirt: 0x4f4434,
     hemiSky: 0x8fa6d8, hemiGround: 0x1b2333, hemi: 0.75, sun: 0.55, fogNear: 600, fogFar: 1700, glow: 1,
   },
 };
@@ -175,7 +175,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
 
   // areas
   const byKind = (k) => data.areas.filter((a) => a.kind === k).map((a) => a.pts);
-  const layers = [['parking', 0.08], ['grass', 0.12], ['track', 0.16], ['pitch', 0.2], ['water', 0.24]];
+  const layers = [['parking', 0.08], ['grass', 0.12], ['dirt', 0.14], ['track', 0.16], ['pitch', 0.2], ['water', 0.24]];
   for (const [k, y] of layers) {
     const g = flatShapes(byKind(k), y);
     if (!g) continue;
@@ -230,11 +230,12 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   pickables.push(...inter.occluders);
   const clickables = [...pickables, details.mesh];
   // perimeter wall, gates, parking canopies
-  if (data.walls?.length) scene.add(buildWalls(data.walls));
-  const gates = buildGates(data.pois, [-30, -10]);
+  if (data.walls?.length) scene.add(buildWalls(data.walls, data.posts || []));
+  const gates = buildGates(data.pois);
   scene.add(gates.group);
   const canopies = buildCanopies(data.areas, data.boundary);
-  if (canopies) scene.add(canopies);
+  if (canopies.group) scene.add(canopies.group);
+  const pillarSolids = (data.posts || []).map(([x, z]) => [[x - 0.45, z - 0.45], [x + 0.45, z - 0.45], [x + 0.45, z + 0.45], [x - 0.45, z + 0.45]]);
 
   // selection outline
   const outline = new THREE.Group();
@@ -250,10 +251,34 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     requestRender();
   }
 
-  // trees (instanced, seeded so they never move) + street lamps
-  const blockedBoxes = [...data.buildings.map((b) => b.pts), ...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking')].map((p) => [p, bbox([p])]);
-  const isBlocked = (x, z, m = 3) => blockedBoxes.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && inside(p, x, z));
-  const lamps = buildLamps(data.roads, data.boundary, (x, z) => isBlocked(x, z, 1.5));
+  // ---------- placement rules for trees and lamps ----------
+  // Nothing grows on a path, inside or right against a building, on the stairs, in water / pitches / parking / the dirt field.
+  const segDist = (x, z, a, b) => {
+    const dx = b[0] - a[0], dz = b[1] - a[1], L = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L));
+    return Math.hypot(a[0] + dx * t - x, a[1] + dz * t - z);
+  };
+  const CELL = 20, roadGrid = new Map();
+  for (const r of data.roads) for (let i = 0; i < r.pts.length - 1; i++) {
+    const a = r.pts[i], b = r.pts[i + 1], seg = { a, b, hw: r.w / 2 };
+    const pad = r.w / 2 + 4;
+    for (let gx = Math.floor((Math.min(a[0], b[0]) - pad) / CELL); gx <= Math.floor((Math.max(a[0], b[0]) + pad) / CELL); gx++)
+      for (let gz = Math.floor((Math.min(a[1], b[1]) - pad) / CELL); gz <= Math.floor((Math.max(a[1], b[1]) + pad) / CELL); gz++) {
+        const k = gx + ',' + gz; if (!roadGrid.has(k)) roadGrid.set(k, []); roadGrid.get(k).push(seg);
+      }
+  }
+  const clearOfRoads = (x, z, margin) => !(roadGrid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL)) || []).some((s) => segDist(x, z, s.a, s.b) < s.hw + margin);
+  const solidPolys = [
+    ...data.buildings.map((b) => b.roofPts || b.pts), ...inter.surfaces.map((s) => s.pts), ...inter.solids, ...gates.solids,
+  ].map((p) => [p, bbox([p])]);
+  const edgeDist = (pts, x, z) => { let d = Infinity; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) d = Math.min(d, segDist(x, z, pts[j], pts[i])); return d; };
+  const clearOfSolids = (x, z, m) => !solidPolys.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
+  const wallSegs = [];
+  for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) wallSegs.push([w[i], w[i + 1]]);
+  const clearOfWalls = (x, z, m) => !wallSegs.some(([a, b]) => Math.abs(a[0] - x) < 40 && Math.abs(a[1] - z) < 40 && segDist(x, z, a, b) < m);
+  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt')].map((p) => [p, bbox([p])]);
+  const inArea = (x, z, m) => blockedAreas.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
+  const lamps = buildLamps(data.roads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
   scene.add(lamps.group);
   // keep the area in front of main doors clear of trees
   const doors = [];
@@ -265,9 +290,18 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     if (inside(b.pts, mx + nx, mz + nz)) { nx = -nx; nz = -nz; }
     doors.push([mx + nx * 6, mz + nz * 6]);
   }
+  // and the mouths of the gates
+  for (const g of data.pois.filter((p) => p.kind === 'gate')) {
+    const [cx, cz] = g.center || g.at, [fx, fz] = g.dir || [0, 0];
+    doors.push([cx, cz], [cx + fx * 8, cz + fz * 8]);
+  }
   const nearDoor = (x, z) => doors.some(([dx, dz]) => (x - dx) ** 2 + (z - dz) ** 2 < 11 * 11);
   let treeSpots = [], trunksMesh = null, crownsMesh = null;
   const treeHidden = new Set();
+  const lampSpots = lamps.spots || [];
+  // a tree needs its trunk off the paths, its crown clear of walls and buildings, and room from lamps
+  const treeOk = (x, z, sc) => clearOfRoads(x, z, 1.1) && clearOfSolids(x, z, 2.4 * sc) && clearOfWalls(x, z, 1.2)
+    && !inArea(x, z, 1.0) && !lampSpots.some(([lx, lz]) => (lx - x) ** 2 + (lz - z) ** 2 < 2.2 * 2.2);
   {
     const rand = rng(20261110);
     const spots = [];
@@ -277,18 +311,20 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       for (let k = 0, tries = 0; k < n && tries < n * 6; tries++) {
         const x = bb.minX + rand() * (bb.maxX - bb.minX), z = bb.minZ + rand() * (bb.maxZ - bb.minZ);
         if (!inside(g, x, z)) continue;
-        if (isBlocked(x, z) || nearDoor(x, z)) continue;
+        const sc = 0.75 + rand() * 0.6;
+        if (!treeOk(x, z, sc) || nearDoor(x, z)) continue;
         if (!inside(data.boundary, x, z)) continue;
-        spots.push([x, z, 0.75 + rand() * 0.6, rand()]);
+        spots.push([x, z, sc, rand()]);
         k++;
       }
     }
     // avenue trees along the campus roads (like the boulevard from the main gate)
-    for (const t of avenueTreeSpots(data.roads, data.boundary, (x, z) => isBlocked(x, z, 2.5), rand)) {
+    for (const t of avenueTreeSpots(data.roads, data.boundary, (x, z) => !treeOk(x, z, 1.05), rand)) {
       if (!nearDoor(t[0], t[1]) && !spots.some((s) => Math.abs(s[0] - t[0]) + Math.abs(s[1] - t[1]) < 4)) spots.push(t);
     }
-    const trunkG = new THREE.CylinderGeometry(0.25, 0.35, 3, 5); trunkG.translate(0, 1.5, 0);
-    const crownG = new THREE.IcosahedronGeometry(2.6, 0); crownG.translate(0, 4.6, 0);
+    // trunk 3.4 m, crown 5.2 m wide: the lowest leaves stay ~2 m up, above a 1.65 m student's head
+    const trunkG = new THREE.CylinderGeometry(0.22, 0.32, 3.4, 6); trunkG.translate(0, 1.7, 0);
+    const crownG = new THREE.IcosahedronGeometry(2.6, 0); crownG.translate(0, 5.3, 0);
     const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({ color: 0x8a6a4a }), spots.length);
     const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshLambertMaterial({ color: 0xffffff }), spots.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
@@ -335,7 +371,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     const P = PALETTE[isDark ? 'dark' : 'light'];
     scene.background = new THREE.Color(P.sky);
     scene.fog.color.set(P.sky); scene.fog.near = P.fogNear; scene.fog.far = P.fogFar;
-    for (const k of ['ground', 'campus', 'road', 'foot', 'grass', 'water', 'parking', 'pitch', 'track']) matOf(k).color.set(P[k]);
+    for (const k of ['ground', 'campus', 'road', 'foot', 'grass', 'water', 'parking', 'pitch', 'track', 'dirt']) matOf(k).color.set(P[k]);
     walls.setNight(isDark, P.wall);
     lamps.setNight(isDark);
     details.setNight(isDark);
@@ -391,7 +427,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   });
 
   // ---------- walk mode ----------
-  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids], extraWalls: inter.walls, surfaces: inter.surfaces, indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
+  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
+    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts], extraWalls: inter.walls, surfaces: inter.surfaces, indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
   function startWalk(at, lookAt) {
     let x, z, facing;
     if (at) {
@@ -402,7 +439,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       if (!Number.isFinite(facing) || (x === t[0] && z === t[1])) facing = Math.PI; // default: walk "up" the map
     } else {
       const gate = data.pois.find((p) => p.id === 'gate-main');
-      const [gx, gz] = gate ? gate.at : [0, 0];
+      const [gx, gz] = gate ? (gate.center || gate.at) : [0, 0];
       const cx = -60, cz = -40; // towards the middle of the campus
       const L = Math.hypot(cx - gx, cz - gz) || 1;
       x = gx + ((cx - gx) / L) * 14; z = gz + ((cz - gz) / L) * 14;

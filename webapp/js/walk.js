@@ -136,7 +136,7 @@ function horn() {
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
-export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], extraWalls = [], surfaces = [], indoor = [], limits, onNear, onInteract, onExit, onView }) {
+export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], extraWalls = [], surfaces = [], indoor = [], posts = [], limits, onNear, onInteract, onExit, onView }) {
   const s = makeStudent();
   s.group.scale.setScalar(SCALE);
   const rig = new THREE.Group(); // position + heading; holds the student and the vehicles
@@ -156,6 +156,18 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   }
   // interior walls / railings only block at their own height (railings upstairs don't stop you downstairs)
   for (const w of extraWalls) wallSegs.push({ a: w.a, b: w.b, y0: w.y0, y1: w.y1, minX: Math.min(w.a[0], w.b[0]) - 1, maxX: Math.max(w.a[0], w.b[0]) + 1, minZ: Math.min(w.a[1], w.b[1]) - 1, maxZ: Math.max(w.a[1], w.b[1]) + 1 });
+  // round obstacles: tree trunks, lamp posts, parked motorbikes, roof posts (grid for speed)
+  const PCELL = 6, postGrid = new Map();
+  for (const p of posts) {
+    const k = Math.floor(p[0] / PCELL) + ',' + Math.floor(p[1] / PCELL);
+    if (!postGrid.has(k)) postGrid.set(k, []);
+    postGrid.get(k).push(p);
+  }
+  function postsNear(x, z) {
+    const out = [], gx = Math.floor(x / PCELL), gz = Math.floor(z / PCELL);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const l = postGrid.get((gx + i) + ',' + (gz + j)); if (l) out.push(...l); }
+    return out;
+  }
   // walkable surfaces above the ground: 2nd-floor slabs and stairs (ramps)
   const surf = surfaces.map((s) => ({ ...s, box: bbox([s.pts]) }));
   const STEP = 0.6, HEAD = 1.75;
@@ -217,13 +229,17 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
         const r = R + 0.18;
         if (d < r) { const nx = (x - bx) / (d || 1), nz = (z - bz) / (d || 1); x = bx + nx * r; z = bz + nz * r; moved = true; }
       }
+      if (st.y < 2.5) for (const [px, pz, pr] of postsNear(x, z)) {
+        const dx = x - px, dz = z - pz, d = Math.hypot(dx, dz), rr = R + pr;
+        if (d < rr) { const k = rr / (d || 1); x = px + (dx || 0.01) * k; z = pz + dz * k; moved = true; }
+      }
       if (!moved) break;
     }
     x = THREE.MathUtils.clamp(x, limits.minX, limits.maxX);
     z = THREE.MathUtils.clamp(z, limits.minZ, limits.maxZ);
     return [x, z];
   }
-  const blocked = (x, z) => solids.some((b) => !b.hollow && x > b.box.minX - R && x < b.box.maxX + R && z > b.box.minZ - R && z < b.box.maxZ + R
+  const blocked = (x, z) => postsNear(x, z).some(([px, pz, pr]) => Math.hypot(x - px, z - pz) < R + pr + 0.2) || solids.some((b) => !b.hollow && x > b.box.minX - R && x < b.box.maxX + R && z > b.box.minZ - R && z < b.box.maxZ + R
     && (inside(b.pts, x, z) || nearestEdge(b.pts, x, z).d < R + 0.3));
   /** Closest free spot to (x, z), searching outwards in rings. */
   function freeSpot(x, z) {

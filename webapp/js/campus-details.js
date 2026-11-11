@@ -11,6 +11,10 @@ const TILE_W = 12, TILE_FLOORS = 2; // one facade texture tile = 12 m wide x 2 f
 // ---------------- styles ----------------
 // wall: facade texture style; roof: 'hip' (pitched) or 'flat'; roofColor for the roof surface
 export function styleOf(b) {
+  const base = baseStyle(b);
+  return b.style ? { ...base, ...b.style } : base;
+}
+function baseStyle(b) {
   const z = b.zone;
   if (z === 'S') return { wall: 'glass', roof: 'flat', roofColor: 0xd5dbe2, parapet: 0xf2f4f6 };
   if (z === 'L') return { wall: 'glassLight', roof: 'hip', roofColor: 0x8cc3de };
@@ -20,7 +24,7 @@ export function styleOf(b) {
   if (z) return { wall: 'corridor', roof: 'flat', roofColor: 0xc3c9d1, parapet: 0xf5f3ee };
   if (b.kind === 'dormitory') return { wall: 'dorm', roof: 'flat', roofColor: 0xd7a46d, parapet: 0xefdcc0 };
   if (b.kind === 'sports_hall') return { wall: 'hall', roof: 'flat', roofColor: 0x6f93c8, parapet: 0xdfe6ee };
-  return { wall: 'plain', roof: b.levels <= 3 ? 'hip' : 'flat', roofColor: b.levels <= 3 ? 0xa65a46 : 0xc9c3b6, parapet: 0xe7dcc5 };
+  return { wall: 'plain', roof: 'flat', roofColor: 0xc5ccd4, parapet: 0xece6da };
 }
 
 const WALLS = {
@@ -449,8 +453,8 @@ export function buildBuildingDetails(buildings) {
   };
 }
 
-/** Perimeter wall (white wall with a darker coping) along data.walls polylines. */
-export function buildWalls(walls) {
+/** Perimeter wall (white wall with a darker coping) along data.walls polylines, with pillars at openings. */
+export function buildWalls(walls, posts = []) {
   const B = new Builder();
   const T = 0.28, H = 2.1;
   for (const w of walls) {
@@ -464,6 +468,11 @@ export function buildWalls(walls) {
       B.color(0x9aa0a8); B.box(cx, cz, L + T, T + 0.12, H, 0.16, ang);
       if (i % 2 === 0) { B.color(0xe3e0d8); B.box(ax, az, 0.5, 0.5, 0, H + 0.3, ang); }
     }
+  }
+  // gate pillars where a road passes through the fence
+  for (const [x, z] of posts) {
+    B.color(0xe7e2d8); B.box(x, z, 0.8, 0.8, 0, 2.7, 0);
+    B.color(0xb9b3a7); B.box(x, z, 1.0, 1.0, 2.7, 0.2, 0);
   }
   return B.mesh();
 }
@@ -567,7 +576,7 @@ function texturedPanel(w, h, d, tex, color = 0xffffff, both = true) {
  * The side gate keeps a simple two-pillar frame with a sign.
  * Returns { group, solids } – solids are footprints the walking student collides with.
  */
-export function buildGates(pois, center = [0, 0]) {
+export function buildGates(pois) {
   const group = new THREE.Group();
   const B = new Builder();
   const solids = [];
@@ -576,70 +585,73 @@ export function buildGates(pois, center = [0, 0]) {
     return [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([x, z]) => [cx + x * c - z * s, cz + x * s + z * c]);
   };
   for (const p of pois.filter((x) => x.kind === 'gate' && x.dir)) {
-    const [x, z] = p.at;
-    // f = into the campus, r = right-hand side for someone standing outside looking in
-    let [fx, fz] = p.dir;
-    if ((center[0] - x) * fx + (center[1] - z) * fz < 0) { fx = -fx; fz = -fz; }
-    const rx = -fz, rz = fx;
-    const across = Math.atan2(rz, rx); // box local x runs across the road
+    // The gate spans the boundary edge(s) crossing the entrance road: centre, inward direction f, width.
+    const [x, z] = p.center || p.at;
+    const [fx, fz] = p.dir;                 // into the campus
+    const rx = -fz, rz = fx;                // right-hand side for someone outside looking in
+    const across = Math.atan2(rz, rx);      // box local x runs across the entrance
+    const half = (p.width || 13) / 2;
     const P = (side, fwd) => [x + rx * side + fx * fwd, z + rz * side + fz * fwd];
+    const faceOut = Math.atan2(-fx, -fz);   // rotation.y so a mesh's +z faces the street
 
     if (p.id !== 'gate-main') {
-      const half = 6.5, H = 5;
+      // side gate: two pillars at the ends of the opening, a beam and a sign facing the street only
+      const H = 5;
       B.color(0xe9e4da);
-      for (const sd of [-1, 1]) { const [px, pz] = P(half * sd, 0); B.box(px, pz, 1.4, 1.4, 0, H, across); solids.push(rect(px, pz, 1.4, 1.4, across)); }
-      B.color(0x1d47ad); B.box(x, z, half * 2 + 1.4, 0.7, H - 1.9, 1.6, across);
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(half * 2 - 1.2, 1.35), new THREE.MeshBasicMaterial({ map: sideSignTex() }));
-      for (const sd of [-1, 1]) {
-        const m = sign.clone();
-        m.position.set(x - fx * 0.37 * sd, H - 1.1, z - fz * 0.37 * sd);
-        m.rotation.y = Math.atan2(-fx * sd, -fz * sd);
-        group.add(m);
-      }
+      for (const sd of [-1, 1]) { const [px, pz] = P(half * sd, 0); B.box(px, pz, 1.2, 1.2, 0, H, across); solids.push(rect(px, pz, 1.2, 1.2, across)); }
+      B.color(0xc2bcb0);
+      for (const sd of [-1, 1]) { const [px, pz] = P(half * sd, 0); B.box(px, pz, 1.45, 1.45, H, 0.3, across); }
+      B.color(0x1d47ad); B.box(x, z, half * 2 + 1.2, 0.6, H - 1.8, 1.5, across);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(half * 2 - 1, 1.25), new THREE.MeshBasicMaterial({ map: sideSignTex() }));
+      sign.position.set(x - fx * 0.32, H - 1.05, z - fz * 0.32);
+      sign.rotation.y = faceOut;
+      group.add(sign);
       continue;
     }
 
-    // ---- main gate ----
-    const faceOut = Math.atan2(-fx, -fz); // rotation.y so a mesh's +z faces the street
-
-    // LEFT: guard house (pale blue) with a white portico frame toward the road
+    // ---- main gate (after photos): no arch. Opening = the whole mouth of the entrance strip. ----
+    // LEFT, just outside the strip wall: pale-blue guard house with a white portico reaching over the kerb,
+    // a tall blue billboard facing the driveway, a flag pole.
     {
-      const [gx, gz] = P(-8.5, 3);
-      B.color(0xa9d6ea); B.box(gx, gz, 6, 6.5, 0, 3.4, across);                       // house
-      B.color(0x8fc3dc); B.box(gx, gz, 6.3, 6.8, 3.4, 0.35, across);                  // roof slab
-      const [wx, wz] = P(-8.5 + 3.02, 3); B.color(0x6e8ea8); B.box(wx, wz, 0.05, 3.4, 1, 1.4, across); // window
-      // white portico: thick frame + two square columns, sticking out toward the gate road
-      const [px, pz] = P(-5.2, 1.2);
-      B.color(0xf7f7f5); B.box(px, pz, 3.6, 4.2, 3.2, 0.7, across);
-      for (const fw of [-1.6, 1.6]) { const [cx, cz] = P(-3.7, 1.2 + fw); B.box(cx, cz, 0.6, 0.6, 0, 3.2, across); solids.push(rect(cx, cz, 0.6, 0.6, across)); }
-      B.color(0xb85c46); B.box(gx, gz, 6.6, 7, 0, 0.25, across);                      // red tiled step
-      solids.push(rect(gx, gz, 6, 6.5, across));
-      // tall blue billboard beside the guard house, turned to face the driveway (as in the photo)
+      const gw = 6, gd = 6.5, gs = -(half + 0.15 + gw / 2), gf = 2.6;
+      const [gx, gz] = P(gs, gf);
+      B.color(0xa9d6ea); B.box(gx, gz, gw, gd, 0, 3.4, across);                       // house
+      B.color(0x8fc3dc); B.box(gx, gz, gw + 0.3, gd + 0.3, 3.4, 0.35, across);        // roof slab
+      { const [wx, wz] = P(gs + gw / 2 + 0.02, gf); B.color(0x6e8ea8); B.box(wx, wz, 0.05, 3.2, 1.0, 1.4, across); } // window to the road
+      { const [dx, dz] = P(gs + 1.2, gf - gd / 2 - 0.02); B.color(0x7a6a58); B.box(dx, dz, 1.0, 0.05, 0.25, 2.1, across); } // door
+      B.color(0xb85c46); B.box(gx, gz, gw + 0.6, gd + 0.6, 0, 0.25, across);          // red tiled step
+      solids.push(rect(gx, gz, gw, gd, across));
+      // white portico: thick slab + two square columns standing on the kerb inside the gate
+      const pw = 2.6, ps = -(half - pw / 2 + 0.6);
+      { const [px, pz] = P(ps, gf); B.color(0xf7f7f5); B.box(px, pz, pw + 1.2, 4.4, 3.25, 0.7, across); }
+      for (const fw of [-1.7, 1.7]) { const [cx, cz] = P(-(half - 0.55), gf + fw); B.color(0xf7f7f5); B.box(cx, cz, 0.55, 0.55, 0, 3.25, across); solids.push(rect(cx, cz, 0.55, 0.55, across)); }
+      // tall blue billboard beside the guard house, panel running along the driveway, face toward the road
       const alongF = Math.atan2(fz, fx);
-      const [bx, bz] = P(-12.2, 1.5);
+      const bs = gs - gw / 2 - 0.5;
+      const [bx, bz] = P(bs, 2.2);
       const board = texturedPanel(5.2, 6.6, 0.5, billboardTex(), 0x1d4fb8, false);
       board.position.set(bx, 3.3 + 2.4, bz);
-      board.rotation.y = Math.atan2(-fz, fx); // panel runs along the driveway, textured face toward the road
+      board.rotation.y = Math.atan2(-fz, fx);
       group.add(board);
       B.color(0x1d4fb8); B.box(bx, bz, 5.2, 0.5, 0, 2.4, alongF);
       solids.push(rect(bx, bz, 5.2, 0.6, alongF));
-      // flag pole at the inner end of the billboard
-      const [fpx, fpz] = P(-12.2, 1.5 + 2.45);
+      const [fpx, fpz] = P(bs, 2.2 + 2.45);
       B.color(0xd9dde3); B.box(fpx, fpz, 0.12, 0.12, 9, 4.2, alongF);
       const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.2), new THREE.MeshLambertMaterial({ map: flagTex(), side: THREE.DoubleSide }));
-      const [flx, flz] = P(-12.2, 1.5 + 2.45 - 0.95);
+      const [flx, flz] = P(bs, 2.2 + 2.45 - 0.95);
       flag.position.set(flx, 12.5, flz);
       flag.rotation.y = Math.atan2(-fz, fx);
       group.add(flag);
     }
 
-    // RIGHT: tall white ribbed column with an emblem cube on top
+    // RIGHT, at the corner inside the opening: tall white ribbed column with the emblem cube on top
     {
-      const [cx, cz] = P(6.2, 0.5);
+      const [cx, cz] = P(half - 0.9, 0.9);
       const col = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 10.5, 20), new THREE.MeshLambertMaterial({ color: 0xf3f4f6 }));
       col.position.set(cx, 5.25, cz); col.castShadow = true; group.add(col);
+      const ringMat = new THREE.MeshLambertMaterial({ color: 0xd5d9df });
       for (let k = 1; k < 10; k++) {
-        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 0.12, 20), new THREE.MeshLambertMaterial({ color: 0xd5d9df }));
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 0.12, 20), ringMat);
         ring.position.set(cx, k * 1.05, cz); group.add(ring);
       }
       const cube = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), new THREE.MeshLambertMaterial({ map: emblemTex() }));
@@ -648,25 +660,21 @@ export function buildGates(pois, center = [0, 0]) {
       solids.push(rect(cx, cz, 1.4, 1.4, across));
     }
 
-    // RIGHT: terracotta stone sign on a grass planter, set straight along the street
+    // RIGHT, outside on the pavement: terracotta stone sign on a planter, straight along the street,
+    // lettering on the street side only
     {
-      const [sx, sz] = P(11.6, -1.2);
+      const [sx, sz] = P(half + 5.6, -2.4);
       const ang = across;
       B.color(0xb0563f); B.box(sx, sz, 9.2, 3.2, 0, 0.55, ang);         // planter curb
       B.color(0x6fbf5a); B.box(sx, sz, 8.8, 2.8, 0.55, 0.06, ang);       // grass
-      const sign = texturedPanel(7.4, 2.9, 0.55, stoneSignTex(), 0x9c4d39, true);
+      const sign = texturedPanel(7.4, 2.9, 0.55, stoneSignTex(), 0x9c4d39, false);
       sign.position.set(sx, 0.6 + 1.45, sz);
-      // orient: panel width along `ang`, text facing the street side
       sign.rotation.y = Math.atan2(-Math.sin(ang), Math.cos(ang));
       const n = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), sign.rotation.y);
-      if (n.x * -fx + n.z * -fz < 0) sign.rotation.y += Math.PI;
+      if (n.x * -fx + n.z * -fz < 0) sign.rotation.y += Math.PI;   // textured +z face toward the street
       group.add(sign);
       solids.push(rect(sx, sz, 9.2, 3.2, ang));
     }
-
-    // white fence posts continuing from the column to the sign
-    B.color(0xf4f4f2);
-    for (let k = 0; k < 4; k++) { const [qx, qz] = P(7.4 + k * 0.9, 1.6); B.box(qx, qz, 0.25, 0.25, 0, 1.6, across); }
   }
   group.add(B.mesh());
   return { group, solids };
@@ -688,7 +696,7 @@ function tinTexture() {
 }
 
 /** Parked motorbikes in rows, filling a parking polygon (keeps the lots from looking empty). */
-function parkBikes(B, pts, rand, fill) {
+function parkBikes(B, pts, rand, fill, posts) {
   let best = 0, ang = 0;
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i], q = pts[(i + 1) % pts.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]);
@@ -708,6 +716,7 @@ function parkBikes(B, pts, rand, fill) {
       const x = u * ux + v * vx, z = u * uz + v * vz;
       if (!insideP(inner, x, z)) continue;
       const jitter = (rand() - 0.5) * 0.25;
+      posts.push([x, z, 0.38]);
       B.color(0x1b1b1b); B.box(x, z, 0.12, 1.75, 0, 0.55, ang + jitter);                     // wheels
       B.color(COLORS[Math.floor(rand() * COLORS.length)]); B.box(x, z, 0.42, 1.25, 0.32, 0.45, ang + jitter); // body
       B.color(0x2b2b2b); B.box(x - vx * 0.15, z - vz * 0.15, 0.32, 0.6, 0.77, 0.1, ang + jitter);        // seat
@@ -725,10 +734,11 @@ export function buildCanopies(areas, boundary) {
   const group = new THREE.Group();
   const tin = new THREE.MeshLambertMaterial({ color: 0xffffff, map: tinTexture(), side: THREE.DoubleSide });
   const rand = rng(4242);
+  const posts = []; // [x, z, radius] for the walker: parked bikes and roof posts
   for (const a of areas.filter((x) => x.kind === 'parking')) {
     if (!a.pts.some(([x, z]) => insideP(boundary, x, z))) continue; // (centroid of an L-shaped lot can fall outside)
     const covered = a.cover !== 'open';
-    parkBikes(B, a.pts, rand, covered ? 0.72 : 0.6);
+    parkBikes(B, a.pts, rand, covered ? 0.72 : 0.6, posts);
     if (!covered) continue;
     const roof = offsetPoly(a.pts, -0.6) || a.pts; // irregular lots: roof follows the lot outline
     const H = 3.3;
@@ -747,11 +757,11 @@ export function buildCanopies(areas, boundary) {
       const p = roof[i], q = roof[(i + 1) % roof.length];
       const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
       const n = Math.max(1, Math.floor(L / 6));
-      for (let k = 0; k < n; k++) { const t = k / n; B.box(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, 0.2, 0.2, 0, H - 0.2); }
+      for (let k = 0; k < n; k++) { const t = k / n; const px = p[0] + (q[0] - p[0]) * t, pz = p[1] + (q[1] - p[1]) * t; B.box(px, pz, 0.2, 0.2, 0, H - 0.2); posts.push([px, pz, 0.15]); }
     }
   }
   if (B.tris) group.add(B.mesh());
-  return group.children.length ? group : null;
+  return { group: group.children.length ? group : null, posts };
 }
 
 /** Street lamps along paths and service roads inside the campus. Returns an object with setNight(). */
@@ -784,7 +794,7 @@ export function buildLamps(roads, boundary, blocked) {
   pole.castShadow = true;
   const group = new THREE.Group();
   group.add(pole, head);
-  return { group, count: spots.length, setNight(on) { headMat.emissiveIntensity = on ? 1.6 : 0; } };
+  return { group, spots, count: spots.length, setNight(on) { headMat.emissiveIntensity = on ? 1.6 : 0; } };
 }
 
 /** Extra tree spots along vehicle roads inside the campus (avenue look). */
