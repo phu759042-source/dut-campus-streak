@@ -39,6 +39,13 @@ OVERRIDES = {
 }
 # Khu A: OSM draws the two back blocks far too deep and swallows the courtyards (fish ponds, trees).
 # Keep only a ~12 m strip at the back of each block; the rest becomes a courtyard with a pond.
+# Real floor counts per zone (from students, 2026-11-11)
+ZONE_LEVELS = {'E1': 2, 'E2': 4, 'A': 3, 'C1': 2, 'C2': 2, 'C3': 2, 'B': 3, 'F': 4}
+# Khu B: one OSM outline = a 3-floor main bar + three 2-floor wings at the back (vertex index ranges)
+SPLIT = {968341211: [
+    (list(range(0, 4)) + [8, 9, 14, 15] + list(range(20, 30)), 3),
+    (list(range(3, 9)), 2), (list(range(9, 15)), 2), (list(range(15, 21)), 2),
+]}
 # Parking: 'roof' = covered by a tin roof (nhà xe), 'open' = open-air motorbike lot (from students)
 PARKING = {1038801125: 'roof', 1038801147: 'open'}
 A_BACK = [1043659297, 1043659298]
@@ -142,8 +149,15 @@ for e in ways.values():
             'id': e['id'], 'zone': zone, 'name': t.get('name'), 'kind': t.get('amenity') or t.get('building'),
             'levels': min(levels, 8), 'estimated': not lv, 'pts': pts,
         }
+        if zone in ZONE_LEVELS:
+            b['levels'], b['estimated'] = ZONE_LEVELS[zone], False
         b.update(OVERRIDES.get(e['id'], {}))
-        buildings.append(b)
+        if e['id'] in SPLIT:
+            for k, (idx, lv) in enumerate(SPLIT[e['id']]):
+                part = dict(b, id=e['id'] * 10 + k, levels=lv, estimated=False, pts=[pts[i] for i in idx])
+                buildings.append(part)
+        else:
+            buildings.append(b)
     elif 'highway' in t and t['highway'] in ROAD_W:
         roads.append({'w': ROAD_W[t['highway']], 'foot': t['highway'] in ('footway', 'path', 'cycleway'), 'name': t.get('name'), 'pts': pts})
     else:
