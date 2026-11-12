@@ -1184,3 +1184,7 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
   .soc-ticker, .soc-notice { top: calc(122px + var(--safe-t)); }
   .soc-near, .map-seat { bottom: calc(176px + var(--safe-b)); }
 }
+
+/* ---------- 3D map: donate sheet (billboard at the main gate) ---------- */
+.donate-sheet { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.donate-qr { width: min(320px, 100%); border-radius: 16px; box-shadow: var(--shadow); }

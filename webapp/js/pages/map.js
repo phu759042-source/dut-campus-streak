@@ -2,7 +2,7 @@
 // Three.js is loaded only when this page opens.
 import { html, useState, useEffect, useRef } from 'preact';
 import { appStore, loadTodayClasses, fmtTime, readLocal, writeLocal, supabase } from '../lib.js';
-import { Icon, Spinner, toast } from '../ui.js';
+import { Icon, Spinner, toast, openSheet } from '../ui.js';
 import { back, navigate } from '../router.js';
 import { WorldLayer, editLook, savedLook } from './map-world.js';
 import { devName } from '../world.js';
@@ -225,6 +225,17 @@ function useMapStats() {
 }
 const fmtCount = (n) => Number(n || 0).toLocaleString('vi-VN');
 
+/** The billboards at the main gate: the game ad opens its site, the donate one shows the QR big enough to scan. */
+function showAd(id) {
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (id === 'miquang') { window.open('https://miquangbk.com/', '_blank', 'noopener'); return; }
+  openSheet(() => html`<div class="donate-sheet">
+    <p class="muted">Nếu thấy DUT Campus Streak có ích, bạn có thể ủng hộ nhóm làm web bằng cách quét mã bên dưới (MB Bank, VietQR). Cảm ơn bạn rất nhiều!</p>
+    <img class="donate-qr" src="/ads/donate-qr.png" alt="Mã QR chuyển khoản MB Bank, chủ tài khoản Nguyen Tan Phu" />
+    <a class="btn btn-ghost btn-sm" href="/ads/donate-qr.png" download="ung-ho-campus-streak.png">Tải ảnh mã QR</a>
+  </div>`, { title: 'Ủng hộ DUT Campus Streak' });
+}
+
 export function MapPage() {
   const host = useRef();
   const labelsRef = useRef();
@@ -310,6 +321,7 @@ export function MapPage() {
           },
           onExitWalk: () => exitWalk(),
           onPickPlayer: (id) => worldPick.current?.(id),
+          onBillboard: showAd,
           onFrame: ({ project, compass: c, distance, walk }) => {
             if (walk) drawMinimap(miniRef.current, mmRef.current, walk);
             worldFrame.current?.(project);

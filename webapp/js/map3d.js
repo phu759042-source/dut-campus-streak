@@ -8,6 +8,7 @@ import { createWalker } from './walk.js';
 import { createPlayers } from './players.js';
 import { prepareInteriors, buildInteriors } from './interiors.js';
 import { buildStadium } from './stadium.js';
+import { buildBillboards } from './billboards.js';
 import { styleOf, wallMaterials, buildBuildingDetails, buildWalls, buildGates, buildCanopies, buildLamps, avenueTreeSpots } from './campus-details.js';
 
 export const FLOOR_H = 3.4;
@@ -132,7 +133,7 @@ function rng(seed) {
 }
 
 // ---------- the scene ----------
-export function createCampus(container, data, { dark = false, mobile = false, onPick, onPickPlayer, onFrame, onNear, onInteract, onExitWalk, onView } = {}) {
+export function createCampus(container, data, { dark = false, mobile = false, onPick, onPickPlayer, onBillboard, onFrame, onNear, onInteract, onExitWalk, onView } = {}) {
   let needs = true, raf = 0, disposed = false;
   function requestRender() { needs = true; }
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -234,6 +235,9 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   // perimeter wall, gates, parking canopies
   if (data.walls?.length) scene.add(buildWalls(data.walls, data.posts || []));
   const gates = buildGates(data.pois);
+  // donate + Mì Quảng Bách Khoa billboards just inside the main gate
+  const billboards = buildBillboards(data.pois);
+  scene.add(billboards.group);
   scene.add(gates.group);
   const canopies = buildCanopies(data.areas, data.boundary);
   if (canopies.group) scene.add(canopies.group);
@@ -282,7 +286,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) wallSegs.push([w[i], w[i + 1]]);
   const clearOfWalls = (x, z, m) => !wallSegs.some(([a, b]) => Math.abs(a[0] - x) < 40 && Math.abs(a[1] - z) < 40 && segDist(x, z, a, b) < m);
-  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : [])].map((p) => [p, bbox([p])]);
+  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear].map((p) => [p, bbox([p])]);
   const inArea = (x, z, m) => blockedAreas.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
   const lamps = buildLamps(data.roads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
   scene.add(lamps.group);
@@ -447,7 +451,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
 
   // ---------- walk mode ----------
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
-    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...(stadium ? stadium.posts : [])], extraWalls: [...inter.walls, ...(stadium ? stadium.walls : [])],
+    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...billboards.posts, ...(stadium ? stadium.posts : [])], extraWalls: [...inter.walls, ...(stadium ? stadium.walls : [])],
     surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : [])], indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear,
     onInteract: (b) => { if (!toggleSit()) onInteract?.(b); }, onExit: onExitWalk, onView });
   // stands: E (or the seat button) sits down on the seat you are standing at, again to stand up
@@ -512,6 +516,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       if (ph) { onPickPlayer?.(ph.object.userData.playerId); return; }
     }
     const hit = ray.intersectObjects(clickables, false)[0];
+    const ad = ray.intersectObjects(billboards.meshes, false)[0];
+    if (ad && (!hit || ad.distance < hit.distance)) { onBillboard?.(ad.object.userData.ad); return; }
     onPick?.(hit ? (hit.object === details.mesh ? details.pick(hit.faceIndex) : hit.object.userData.building) : null);
   });
 
