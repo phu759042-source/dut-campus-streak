@@ -281,6 +281,15 @@ export function MapPage() {
     return () => clearInterval(id);
   }, [walking]);
   // server mode (multiplayer): other students, chat, meetings with voice chat
+  // The app installed on a phone home screen may still carry the old portrait-only setting (Android refreshes it
+  // only now and then): on the map, ask for any orientation so the phone can be held sideways to play.
+  useEffect(() => {
+    const o = screen.orientation;
+    const installed = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches;
+    if (!o?.lock || !installed) return undefined;
+    o.lock('any').catch(() => { /* not allowed here (desktop, iOS) */ });
+    return () => { try { o.unlock(); } catch { /* ignore */ } };
+  }, []);
   const [server, setServer] = useState(false);
   const serverRef = useRef(false);
   serverRef.current = server;
