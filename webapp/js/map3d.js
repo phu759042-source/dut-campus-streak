@@ -453,9 +453,10 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
     posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...billboards.posts, ...(stadium ? stadium.posts : [])], extraWalls: [...inter.walls, ...(stadium ? stadium.walls : [])],
     surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : [])], indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear,
-    onInteract: (b) => { if (!toggleSit()) onInteract?.(b); }, onExit: onExitWalk, onView });
+    onInteract: (b) => { if (interact?.()) return; if (!toggleSit()) onInteract?.(b); }, onExit: onExitWalk, onView });
+  let interact = null; // server mode: E gets on / off someone's bike first (setInteract)
   // stands: E (or the seat button) sits down on the seat you are standing at, again to stand up
-  const seatHere = () => { const w = walker.state; const s = stadium && w.on && w.mode === 'walk' ? stadium.seatAt(w.x, w.z) : null; return s && Math.abs(s.y - w.y) < 0.3 ? s : null; };
+  const seatHere = () => { const w = walker.state; const s = stadium && w.on && w.mode === 'walk' && !w.carry ? stadium.seatAt(w.x, w.z) : null; return s && Math.abs(s.y - w.y) < 0.3 ? s : null; };
   function toggleSit() {
     if (walker.state.sit) { walker.standUp(); return true; }
     const s = seatHere();
@@ -536,17 +537,35 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     const right = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az));
     return Math.atan2(NORTH.dot(right), NORTH.dot(fwd));
   }
+  /** Whoever rides on the back of your bike sits where your bike is now. */
+  function seatPassengers() {
+    const w = walker.state;
+    if (w.mode !== 'scooter' && w.mode !== 'moto') return;
+    players.seatOnMe(w.x, w.y, w.z, w.heading, w.steer * 0.2 * Math.min(1, w.speed / 6), w.mode === 'scooter' ? 1 : 2);
+  }
+  /** Ride pillion on player `id`'s bike (null: get off beside it). */
+  function ride(id) {
+    if (!id) { walker.carry(null); requestRender(); return; }
+    walker.carry(() => {
+      const d = players.get(id);
+      return d && (d.mode === 1 || d.mode === 2) ? { x: d.x, z: d.z, y: d.y, h: d.h, speed: d.speed, mode: d.mode } : null;
+    });
+    requestRender();
+  }
   let last = performance.now();
   function tick() {
     if (disposed) return;
     raf = requestAnimationFrame(tick);
     const now = performance.now(), dt = (now - last) / 1000;
     last = now;
+    // other students first: riding pillion, you sit on where their bike is drawn this frame
+    if (players.update(Math.min(dt, 0.1))) needs = true;
     if (walker.state.on) {
       const look = walker.update(dt);
       treeOcclusion(camera.position, look);
       inter.update(walker.state);
       controls.target.copy(look); // used for label distance
+      seatPassengers();
       needs = true;
     } else if (anim) {
       const t = Math.min(1, (performance.now() - anim.t0) / anim.ms), k = ease(t);
@@ -555,7 +574,6 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       if (t >= 1) anim = null;
       needs = true;
     }
-    if (players.update(Math.min(dt, 0.1))) needs = true;
     for (const f of frameHooks) if (f(Math.min(dt, 0.1))) needs = true;
     if (!walker.state.on && controls.update()) needs = true;
     if (!needs) return;
@@ -591,7 +609,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     },
     /** debug: advance walk mode by `sec` seconds at 60 fps synchronously, then draw */
     _step(sec) {
-      for (let i = 0; i < Math.round(sec * 60); i++) if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); treeOcclusion(camera.position, l); inter.update(walker.state); }
+      for (let i = 0; i < Math.round(sec * 60); i++) { players.update(1 / 60); if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); treeOcclusion(camera.position, l); inter.update(walker.state); seatPassengers(); } }
       needs = true;
       last = performance.now();
       const w = walker.state;
@@ -605,7 +623,9 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     startWalk, stopWalk, walking: () => walker.state.on,
     players,
     /** your own student: [x, z, y, heading, mode index, speed] for the world server */
-    self() { const w = walker.state; return w.on ? [w.x, w.z, w.y, w.heading, w.sit ? 3 : ['walk', 'scooter', 'moto'].indexOf(w.mode), w.speed] : null; },
+    self() { const w = walker.state; return w.on ? [w.x, w.z, w.y, w.heading, w.carry ? 4 : w.sit ? 3 : ['walk', 'scooter', 'moto'].indexOf(w.mode), w.speed] : null; },
+    /** server mode: ride pillion on someone's bike (null: get off); E handler that runs before sitting / building info */
+    ride, riding: () => !!walker.state.carry, setInteract(f) { interact = f; },
     setLook: (look) => { walker.setLook(look); requestRender(); },
     setKit: (kit) => { walker.setKit(kit); requestRender(); },
     scene, walker,

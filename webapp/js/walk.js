@@ -4,6 +4,7 @@
 // Zooming all the way in switches to a first-person view.
 // Phones: on-screen joystick (push far to run), jump button, drag anywhere else to turn the camera.
 // 1 / 2 / 3: walk, scooter, motorbike. On a bike: W/S throttle and brake, A/D steer, Space = horn.
+// Server mode: you can also ride pillion on someone else's bike (carry): you just sit there and look around.
 // Collisions: the student is a 0.45 m circle pushed out of building footprints (2D, cheap and stable).
 import * as THREE from 'three';
 import { inside, bbox } from './map3d.js';
@@ -156,6 +157,11 @@ export function vehicleKit() {
   return { scooter: scooter(), moto: moto() };
 }
 
+/** Riding pillion on a scooter (mode 1) / motorbike (2): body offset and limb angles, hands on the driver's waist. */
+export function pillionPose(mode) {
+  return { y: (mode === 2 ? 0.28 : 0.2) + 0.04, z: -0.76, legs: mode === 2 ? -1.25 : -1.05, arms: -0.85, lean: 0.06 };
+}
+
 // Riding: top speed (m/s, ~32 and ~45 km/h), acceleration, Shift = a bit faster.
 const RIDE = { scooter: { max: 9, accel: 5 }, moto: { max: 12.5, accel: 7 } };
 let audio = null;
@@ -274,7 +280,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   const st = {
     on: false, x: 0, z: 0, y: 0, vy: 0, heading: 0, yaw: 0, pitch: 0.3, dist: 8, phase: 0, speed: 0,
     keys: new Set(), joy: { x: 0, y: 0 }, jumpReq: false, t: 0, nearIdx: -1, nearTimer: 0, fp: false,
-    mode: 'walk', v: 0, steer: 0, lastTurn: -9,
+    mode: 'walk', v: 0, steer: 0, lastTurn: -9, carry: null, // carry: () => the bike you sit on ({ x, z, y, h, speed, mode }) or null
     sit: false, kick: 0, volley: 0, slide: 0, slideX: 0, slideZ: 0, bike: 0, head: 0, dash: 0, dashX: 0, dashZ: 0, sprinting: false,
   };
   const FP_DIST = 2.2; // zooming closer than this switches to first person
@@ -394,7 +400,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
 
   /** Walk / ride a scooter / ride a motorbike. */
   function setMode(m) {
-    if (!st.on || m === st.mode || !(m === 'walk' || RIDE[m]) || (m !== 'walk' && play.walkOnly)) return;
+    if (!st.on || st.carry || m === st.mode || !(m === 'walk' || RIDE[m]) || (m !== 'walk' && play.walkOnly)) return;
     st.sit = false;
     st.mode = m;
     st.v = 0; st.speed = 0; st.steer = 0; st.y = 0; st.vy = 0; st.air = false;
@@ -497,7 +503,13 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     st.kick = Math.max(0, st.kick - dt); st.volley = Math.max(0, st.volley - dt);
     st.head = Math.max(0, st.head - dt); st.bike = Math.max(0, st.bike - dt);
     st.sprinting = false;
-    if (st.bike > 0) {
+    const ride = st.carry ? st.carry() : null;
+    if (ride) {
+      // on someone's back seat: the driver steers, you only turn the camera
+      st.x = ride.x; st.z = ride.z; st.y = ride.y; st.vy = 0; st.air = false; st.jumpReq = false;
+      if (st.t - st.lastTurn > 1.2 && ride.speed > 0.6) st.yaw += wrap(ride.h + Math.PI - st.yaw) * Math.min(1, dt * 2.2);
+      st.heading = ride.h; st.speed = ride.speed;
+    } else if (st.bike > 0) {
       st.speed = 0; // bicycle kick: up in the air on the spot (gravity below brings you down)
     } else if (st.dash > 0) {
       // dribble burst: a quick dash with the ball that fades out
@@ -559,7 +571,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       if (st.jumpReq) horn();
     }
     // floors / stairs under the feet, jump + gravity
-    const { g } = groundAt(st.x, st.z, st.y);
+    const { g } = ride ? { g: ride.y } : groundAt(st.x, st.z, st.y);
     st.ground = g;
     if (st.y < g) { st.y = g; st.vy = 0; st.air = false; } // stepped up (stairs)
     if (st.jumpReq && !st.air && st.y <= g + 0.001 && !riding && !play.frozen) { st.vy = JUMP_V; st.air = true; }
@@ -582,7 +594,14 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     const swing = Math.sin(st.phase) * Math.min(0.95, 0.25 + moving * 1.1) * (st.speed > 0.2 ? 1 : 0);
     const air = st.y > (st.ground || 0) + 0.05 ? 0.6 : 0;
     const ease = Math.min(1, dt * 14);
-    if (riding) {
+    if (ride) {
+      const P = pillionPose(ride.mode);
+      for (const [limb, a] of [[s.legL, P.legs], [s.legR, P.legs], [s.armL, P.arms], [s.armR, P.arms]]) limb.rotation.x += (a - limb.rotation.x) * ease;
+      s.group.position.set(0, P.y, P.z);
+      s.group.rotation.set(P.lean, 0, 0);
+      rig.position.set(st.x, st.y, st.z);
+      rig.rotation.set(0, st.heading, 0);
+    } else if (riding) {
       const V = kit[st.mode];
       for (const [limb, target] of [[s.legL, V.legs], [s.legR, V.legs], [s.armL, V.arms], [s.armR, V.arms]]) limb.rotation.x += (target - limb.rotation.x) * ease;
       s.group.position.set(0, V.seatY, -0.3);
@@ -614,13 +633,14 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     const near = st.fp ? 0.12 : 1;
     if (camera.near !== near) { camera.near = near; camera.updateProjectionMatrix(); }
     rig.visible = s.blob.visible = !st.fp;
+    if (ride) s.blob.visible = false; // the bike's shadow is the driver's
     if (st.fp) {
       // first person: camera sits in the head and looks where the mouse points
       setOccluders([]);
       camPitch += (st.pitch - camPitch) * Math.min(1, dt * 25);
       const cp = Math.cos(camPitch);
       dir.set(Math.sin(st.yaw) * cp, Math.sin(camPitch), Math.cos(st.yaw) * cp).normalize();
-      const head = riding ? kit[st.mode].seatY + 1.25 : 1.5;
+      const head = ride ? pillionPose(ride.mode).y + 1.25 : riding ? kit[st.mode].seatY + 1.25 : 1.5;
       look.set(st.x, st.y + head + (!riding && st.speed > 0.2 && st.y === 0 ? Math.sin(st.phase * 2) * 0.03 : 0), st.z);
       camera.position.copy(look);
       want.copy(look).sub(dir);
@@ -650,7 +670,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   }
 
   function enter({ x, z, facing }) {
-    st.sit = false; st.kick = 0; st.slide = 0; st.bike = 0; st.head = 0; st.dash = 0; st.volley = 0;
+    st.carry = null; st.sit = false; st.kick = 0; st.slide = 0; st.bike = 0; st.head = 0; st.dash = 0; st.volley = 0;
     [st.x, st.z] = freeSpot(x, z);
     st.y = 0; st.vy = 0; st.air = false; st.speed = 0; st.t = 0; st.nearIdx = -1; st.nearTimer = 0;
     st.heading = facing ?? 0;
@@ -666,6 +686,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   function exit() {
     if (locked()) document.exitPointerLock();
     st.on = false;
+    st.carry = null;
     st.fp = false;
     if (camera.near !== 1) { camera.near = 1; camera.updateProjectionMatrix(); }
     st.keys.clear(); st.joy.x = st.joy.y = 0;
@@ -732,6 +753,22 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     airborne: () => st.air && st.y > (st.ground || 0) + 0.02,
     face(h) { st.heading = h; },
     sitAt, standUp() { st.sit = false; },
+    /** Ride pillion: get = () => the bike to sit on ({ x, z, y, h, speed, mode }) or null; carry(null) gets off beside it. */
+    carry(get) {
+      if (get) {
+        if (st.mode !== 'walk') setMode('walk');
+        st.sit = false; st.slide = 0; st.dash = 0; st.bike = 0; st.v = 0;
+        st.carry = get;
+        if (!st.fp) st.dist = 7.5;
+        return;
+      }
+      if (!st.carry) return;
+      st.carry = null;
+      s.group.position.set(0, 0, 0); s.group.rotation.set(0, 0, 0);
+      [st.x, st.z] = freeSpot(st.x + Math.cos(st.heading) * 0.95, st.z - Math.sin(st.heading) * 0.95); // step off to the side
+      st.y = Math.max(0, st.y - 0.2); st.vy = 0; st.speed = 0;
+      if (!st.fp) st.dist = 6.5;
+    },
     /** camera distance / pitch (e.g. a wider view of the pitch in a match) */
     setView({ dist, pitch }) { if (st.fp) return; if (dist) st.dist = dist; if (pitch) st.pitch = pitch; },
     setJoy(x, y) { st.joy.x = x; st.joy.y = y; },

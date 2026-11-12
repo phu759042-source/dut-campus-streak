@@ -126,7 +126,7 @@ function LookEditor({ initial, first, close }) {
 export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClosed, onEditLook }) {
   const [status, setStatus] = useState('connecting');
   const [me, setMe] = useState(null);
-  const [players, setPlayers] = useState({}); // id -> { id, name, look, m }
+  const [players, setPlayers] = useState({}); // id -> { id, name, look, m, away, r (whose bike they sit on) }
   const [meetings, setMeetings] = useState([]);
   const [chat, setChat] = useState([]);
   const [mchat, setMchat] = useState([]);
@@ -139,6 +139,11 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const [text, setText] = useState('');
   const [unread, setUnread] = useState(0);
   const [socView, setSocView] = useState(null); // football: what to show (soccer.view())
+  // riding pillion: whose bike you sit on, and the nearest bike you could hop on (E)
+  const [myRide, setMyRide] = useState(null);
+  const [rideNear, setRideNear] = useState(null);
+  const rideRef = useRef({});
+  rideRef.current = { mine: myRide, near: rideNear };
   const world = useRef(null);
   const soccer = useRef(null);
   const tags = useRef(new Map()); // id -> { el, name, bubble, until }
@@ -168,14 +173,16 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
           case 'fs': case 'fb': case 'fe': case 'fpos': toSoccer(m); break;
           case 'status':
             setStatus(m.status);
-            if (m.status === 'offline') { scene.players.clear(); setPlayers({}); }
+            if (m.status === 'offline') { scene.players.clear(); setPlayers({}); scene.ride(null); setMyRide(null); }
             if (m.status === 'closed') { toast(m.msg || 'Đã rời server.', 'error', 4200); onClosed?.(); }
             break;
           case 'welcome': {
             setMe(m.me);
             scene.players.clear();
+            scene.players.setMe(m.me.id);
+            scene.ride(null); setMyRide(null);
             const all = {};
-            for (const p of m.players) { all[p.id] = p; scene.players.add(p.id, p.look, p.p); }
+            for (const p of m.players) { all[p.id] = p; scene.players.add(p.id, p.look, p.p); if (p.r) scene.players.setRide(p.id, p.r); }
             setPlayers(all); setMeetings(m.meetings || []); setChat(m.chat || []);
             setMyMeeting(null); setMchat([]);
             st.current.me = m.me;
@@ -186,12 +193,28 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
           case 'join':
             setPlayers((o) => ({ ...o, [m.p.id]: m.p }));
             scene.players.add(m.p.id, m.p.look, m.p.p);
+            if (m.p.r) scene.players.setRide(m.p.id, m.p.r);
             soccer.current?.syncKits();
             break;
+          case 'ride': { // someone got on / off a bike's back seat (maybe you, maybe yours)
+            const myId = st.current.me?.id, name = (id) => st.current.players[id]?.name || 'bạn ấy';
+            if (m.id === myId) {
+              scene.ride(m.on || null); setMyRide(m.on || null);
+              if (m.on) toast(`Đã ngồi sau xe ${name(m.on)} 🛵 ${mobile ? 'Bấm "Xuống xe" để xuống.' : 'Nhấn E để xuống.'}`, 'success', 3200);
+              break;
+            }
+            const prev = st.current.players[m.id]?.r;
+            scene.players.setRide(m.id, m.on || null);
+            setPlayers((o) => (o[m.id] ? { ...o, [m.id]: { ...o[m.id], r: m.on || null } } : o));
+            if (m.on && m.on === myId) toast(`${name(m.id)} vừa ngồi lên sau xe bạn 🛵`, 'info', 3000);
+            else if (!m.on && prev && prev === myId) toast(`${name(m.id)} đã xuống xe`, 'info', 2200);
+            break;
+          }
           case 'leave':
             setPlayers((o) => { const n = { ...o }; delete n[m.id]; return n; });
             scene.players.remove(m.id);
             setSelPlayer((s) => (s === m.id ? null : s));
+            if (rideRef.current.mine === m.id) { scene.ride(null); setMyRide(null); }
             break;
           case 'p': scene.players.setPos(m.id, m.p); break;
           case 'away': setPlayers((o) => (o[m.id] ? { ...o, [m.id]: { ...o[m.id], away: !!m.v } } : o)); break;
@@ -274,6 +297,32 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // bikes nearby you could hop on the back of (free back seat, within 3 m, you on foot)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const self = scene.self();
+      let best = null, bd = 3;
+      if (self && self[4] === 0 && !rideRef.current.mine) {
+        const taken = new Set(Object.values(st.current.players).map((p) => p.r).filter(Boolean));
+        for (const pid of scene.players.ids()) {
+          const d = scene.players.get(pid);
+          if (!d || (d.mode !== 1 && d.mode !== 2) || taken.has(pid)) continue;
+          const dist = Math.hypot(d.x - self[0], d.z - self[1]);
+          if (dist < bd) { bd = dist; best = pid; }
+        }
+      }
+      if (best !== rideRef.current.near) setRideNear(best);
+    }, 250);
+    // E: get off, or hop on the bike next to you (before sitting on the stands / building info)
+    scene.setInteract(() => {
+      const r = rideRef.current;
+      if (r.mine) { hopOff(); return true; }
+      if (r.near) { hopOn(r.near); return true; }
+      return false;
+    });
+    return () => { clearInterval(id); scene.setInteract(null); scene.ride(null); };
+  }, []);
+
   // while in a team: the football buttons replace jump / bikes on the map page
   const inTeam = socView ? socView.myTeam >= 0 : false, board = showBoard(socView);
   useEffect(() => { document.querySelector('.map-page')?.classList.toggle('in-soccer', inTeam); }, [inTeam]);
@@ -352,8 +401,12 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const sel = selPlayer && players[selPlayer];
   const messages = chatTab === 'meeting' && myMeeting ? mchat : chat;
 
+  function hopOn(id) { world.current?.send({ t: 'ride', on: id }); }
+  function hopOff() { world.current?.send({ t: 'ride', on: null }); scene.ride(null); setMyRide(null); }
+  const passenger = me && Object.values(players).find((p) => p.r === me.id);
   function goTo(id) {
     const p = scene.players.get(id); if (!p) return;
+    if (myRide) hopOff();
     scene.teleport(p.x + 1.6 * Math.sin(p.h), p.z + 1.6 * Math.cos(p.h), [p.x, p.z]);
     setSelPlayer(null);
   }
@@ -416,6 +469,13 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       <button class="btn btn-primary btn-sm" onClick=${() => { world.current?.joinMeeting(iv.id); setInvites((l) => l.filter((x) => x.id !== iv.id)); }}>Vào</button>
       <button class="btn btn-ghost btn-sm" onClick=${() => setInvites((l) => l.filter((x) => x.id !== iv.id))}>Bỏ qua</button>
     </div>`)}
+
+    ${myRide ? html`<div class="world-ride pop-in"><span>🛵 Đang ngồi sau xe <b>${nameOf(myRide)}</b></span>
+        <button class="btn btn-primary btn-sm" onClick=${(e) => { e.currentTarget.blur(); hopOff(); }}>Xuống xe${mobile ? '' : ' (E)'}</button></div>`
+      : passenger ? html`<div class="world-ride pop-in"><span>🛵 <b>${passenger.name}</b> đang ngồi sau xe bạn</span>
+        <button class="btn btn-ghost btn-sm" onClick=${(e) => { e.currentTarget.blur(); world.current?.send({ t: 'unride' }); }}>Cho xuống</button></div>`
+      : rideNear ? html`<button class="world-ride pop-in" onClick=${(e) => { e.currentTarget.blur(); hopOn(rideNear); }}>
+        <span>🛵 Ngồi sau xe <b>${nameOf(rideNear)}</b></span>${!mobile && html`<span class="map-near-key">E</span>`}</button>` : null}
 
     ${(!mobile || panel === 'chat') && html`<div class=${'world-chat' + (mobile ? ' sheet-like' : '')}>
       ${myMeeting && html`<div class="world-tabs">

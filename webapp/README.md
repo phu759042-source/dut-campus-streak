@@ -133,6 +133,10 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   lựa chọn lưu trong `user_metadata.campus_look` của tài khoản Supabase. Tên trên đầu là `profiles.display_name`.
 - Thấy các bạn khác đi bộ / đi xe theo thời gian thực, chat chung (phím / để gõ, Enter để gửi, bong bóng chữ trên đầu), biểu cảm,
   danh sách người online (bấm vào tên/nhân vật để Đi tới, Vẫy tay, Mời họp).
+- **Đèo nhau**: đứng gần một bạn đang đi xe tay ga / xe máy, nhấn **E** (hoặc nút "Ngồi sau xe…") để ngồi lên yên sau;
+  nhấn E lần nữa để xuống. Mỗi xe chở thêm một người; người lái có nút "Cho xuống", và khi người lái xuống xe
+  thì người ngồi sau cũng xuống. Server chỉ ghi ai ngồi sau xe ai (`ride` / `unride`, trường `r`); mỗi máy tự vẽ
+  người ngồi sau ngay trên xe của người lái nên không bị trễ.
 - Phòng họp: công khai hoặc riêng tư (chỉ người được mời), tối đa 8 người, có chat riêng và **voice chat** bằng micro.
   Giọng nói đi thẳng giữa các trình duyệt (WebRTC, mesh); server chỉ chuyển tin nhắn thiết lập.
   Khi hai máy không nối thẳng được (4G, mạng công ty…), giọng nói đi vòng qua TURN của Cloudflare: key tạo trong

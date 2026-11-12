@@ -1,7 +1,8 @@
 // DUT Campus World: the realtime server behind "Server" mode on the 3D campus map (campusstreak.com/map).
 // One Durable Object ("dut") holds every connected student. Clients connect over WebSocket, log in with their
 // Supabase session token (checked with Supabase Auth, name read from their profile), then exchange:
-//   positions, chat (everyone or inside a meeting), emotes, character looks, meetings, and WebRTC signaling
+//   positions, chat (everyone or inside a meeting), emotes, character looks, meetings, rides (sitting on the back
+//   of someone's scooter / motorbike), and WebRTC signaling
 //   for voice chat. Voice itself goes browser-to-browser; this server only passes the setup messages along.
 // Football on the stadium pitch (teams, ball, goalkeepers, score) lives in soccer.js.
 // Uses the WebSocket Hibernation API so an idle world costs nothing.
@@ -90,7 +91,7 @@ export class World {
     return out;
   }
   players() { return this.sockets().map(([, a]) => a); }
-  pub(a) { return { id: a.id, name: a.name, look: a.look, p: a.p || null, m: a.m || null, away: !!a.away }; }
+  pub(a) { return { id: a.id, name: a.name, look: a.look, p: a.p || null, m: a.m || null, away: !!a.away, r: a.r || null }; }
   send(ws, o) { try { ws.send(typeof o === 'string' ? o : json(o)); } catch { /* closed */ } }
   broadcast(o, except) {
     const s = json(o);
@@ -131,7 +132,7 @@ export class World {
       await this.dropPlayer(old, a);
       try { old.close(4409, 'opened elsewhere'); } catch { /* closed */ }
     }
-    const a = { auth: true, id: user.id, name, look: cleanLook(look || savedLook), p: null, m: null, lastChat: 0, at: Date.now(), seen: Date.now(), away: false };
+    const a = { auth: true, id: user.id, name, look: cleanLook(look || savedLook), p: null, m: null, r: null, lastChat: 0, at: Date.now(), seen: Date.now(), away: false };
     ws.serializeAttachment(a);
     await this.load();
     this.send(ws, {
@@ -188,14 +189,34 @@ export class World {
     const now = Date.now();
     if (now - (a.seen || 0) > 5000) { a.seen = now; ws.serializeAttachment(a); } // still here
     switch (msg.t) {
-      case 'p': { // position: [x, z, y, heading, mode (0 walk, 1 scooter, 2 motorbike, 3 sitting), speed]
+      case 'p': { // position: [x, z, y, heading, mode (0 walk, 1 scooter, 2 motorbike, 3 sitting, 4 on someone's back seat), speed]
         if (!Array.isArray(msg.p) || msg.p.length !== 6) return;
         const p = msg.p.map((v) => (Number.isFinite(+v) ? Math.round(+v * 100) / 100 : 0));
-        p[4] = clampInt(p[4], 4);
+        p[4] = clampInt(p[4], 5);
+        const wasRiding = a.p && (a.p[4] === 1 || a.p[4] === 2);
         a.p = p; a.seen = now; ws.serializeAttachment(a);
         this.broadcast({ t: 'p', id: a.id, p }, ws);
+        if (wasRiding && p[4] !== 1 && p[4] !== 2) this.dropPassengers(a.id); // got off the bike: the passenger too
         return;
       }
+      case 'ride': { // hop on the back seat of a player's scooter / motorbike (msg.on = their id), or off (null)
+        if (!msg.on) {
+          if (a.r) { a.r = null; ws.serializeAttachment(a); this.broadcast({ t: 'ride', id: a.id, on: null }); }
+          return;
+        }
+        const fail = (text) => this.send(ws, { t: 'error', code: 'ride', msg: text });
+        const all = this.players();
+        const drv = all.find((b) => b.id === msg.on);
+        if (!drv || drv.id === a.id) { fail('Bạn đó không còn ở đây nữa.'); return; }
+        if (!drv.p || (drv.p[4] !== 1 && drv.p[4] !== 2)) { fail('Bạn đó đang không đi xe.'); return; }
+        if (all.some((b) => b.r === drv.id && b.id !== a.id)) { fail('Xe này đã có người ngồi sau rồi.'); return; }
+        if (all.some((b) => b.r === a.id)) { fail('Bạn đang chở người khác mà.'); return; }
+        if (!a.p || Math.hypot(a.p[0] - drv.p[0], a.p[1] - drv.p[1]) > 5) { fail('Lại gần xe hơn chút nữa nhé.'); return; }
+        a.r = drv.id; ws.serializeAttachment(a);
+        this.broadcast({ t: 'ride', id: a.id, on: drv.id });
+        return;
+      }
+      case 'unride': this.dropPassengers(a.id); return; // the driver lets their passenger off
       case 'look': {
         a.look = cleanLook(msg.look); ws.serializeAttachment(a);
         this.broadcast({ t: 'look', id: a.id, look: a.look }, ws);
@@ -294,8 +315,17 @@ export class World {
     this.pushMeetings();
   }
 
+  /** Whoever sits on the back of this player's bike gets off. */
+  dropPassengers(id) {
+    for (const [ws, b] of this.sockets()) if (b.r === id) {
+      b.r = null; ws.serializeAttachment(b);
+      this.broadcast({ t: 'ride', id: b.id, on: null });
+    }
+  }
+
   async dropPlayer(ws, a) {
     await this.load();
+    this.dropPassengers(a.id);
     if (a.m) await this.leaveMeeting(ws, a);
     this.soccer.leave(a.id);
     a.auth = false;
