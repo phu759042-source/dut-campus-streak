@@ -282,6 +282,23 @@ export function MapPage() {
   }, [walking]);
   // server mode (multiplayer): other students, chat, meetings with voice chat
   const [server, setServer] = useState(false);
+  const serverRef = useRef(false);
+  serverRef.current = server;
+  // F1 (like Minecraft): hide every button and panel to watch the scene (a match, the campus) full screen
+  const [hudOff, setHudOff] = useState(false);
+  useEffect(() => {
+    if (!walking) { setHudOff(false); return undefined; }
+    const onKey = (e) => {
+      if (e.code !== 'F1') return;
+      e.preventDefault(); // not the browser's help page
+      setHudOff((v) => {
+        if (!v) toast('Đã ẩn giao diện. Nhấn F1 để hiện lại.', 'info', 1800);
+        return !v;
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [walking]);
   const [look, setLook] = useState(null);
   const worldFrame = useRef(null);
   const worldPick = useRef(null);
@@ -319,7 +336,11 @@ export function MapPage() {
             if (v.lockError) toast('Trình duyệt chưa cho khóa chuột. Bấm vào bản đồ một lần rồi nhấn O lại nhé.', 'info', 4000);
             setView({ fp: v.fp, locked: v.locked, mode: v.mode || 'walk' });
           },
-          onExitWalk: () => exitWalk(),
+          onExitWalk: () => {
+            // in the server, Esc does not leave (too easy to hit by mistake): use the ✕ button
+            if (serverRef.current) { toast('Muốn rời server thì bấm nút ✕ ở góc trên bên trái nhé.', 'info', 2200); return; }
+            exitWalk();
+          },
           onPickPlayer: (id) => worldPick.current?.(id),
           onBillboard: showAd,
           onFrame: ({ project, compass: c, distance, walk }) => {
@@ -479,12 +500,12 @@ export function MapPage() {
 
   const here = sel && classes && sel.letter ? classes.filter((c) => roomLetter(c.room) === sel.letter[0]) : [];
 
-  return html`<div class=${'map-page' + (walking ? ' walking' : '') + (walking && server ? ' server' : '')}>
+  return html`<div class=${'map-page' + (walking ? ' walking' : '') + (walking && server ? ' server' : '') + (hudOff ? ' hud-off' : '')}>
     <div class="map-canvas" ref=${host}></div>
     <div class=${'map-labels' + (showPins ? '' : ' off')} ref=${labelsRef}></div>
 
     <div class="map-top">
-      <button class="map-btn" aria-label=${walking ? 'Thoát đi bộ' : 'Quay lại'} title=${walking ? 'Thoát đi bộ (Esc)' : 'Quay lại'} onClick=${goBack}><${Icon} name=${walking ? 'x' : 'back'} size=${20} /></button>
+      <button class="map-btn" aria-label=${walking ? (server ? 'Rời server' : 'Thoát đi bộ') : 'Quay lại'} title=${walking ? (server ? 'Rời server' : 'Thoát đi bộ (Esc)') : 'Quay lại'} onClick=${goBack}><${Icon} name=${walking ? 'x' : 'back'} size=${20} /></button>
       <div class=${'map-search' + (focusSearch ? ' open' : '')}>
         <span class="map-search-icon"><${Icon} name="zoom" size=${18} /></span>
         <input value=${q} placeholder="Tìm khu, phòng (vd F305), thư viện…" aria-label="Tìm trên bản đồ"
@@ -520,7 +541,7 @@ export function MapPage() {
       <${Icon} name="pin" size=${16} /><span>Gần <b>${near.title}</b></span><span class="map-near-key">${mobile ? 'Chạm để xem' : 'Nhấn E'}</span></button>`}
     ${state === 'ready' && walking && seat && html`<button class="map-seat pop-in" onClick=${(e) => { e.currentTarget.blur(); sceneRef.current?.toggleSit(); setSeat(sceneRef.current?.sitting() ? 'on' : 'can'); }}>
       🪑 <span>${seat === 'on' ? 'Đứng dậy' : 'Ngồi xuống ghế'}</span>${!mobile && html`<span class="map-near-key">E</span>`}</button>`}
-    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà${server ? html` · <b>/</b> chat` : ''} · <b>Esc</b> thoát</div>`}
+    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà${server ? html` · <b>/</b> chat` : ''} · <b>F1</b> ẩn giao diện · ${server ? html`nút <b>✕</b> rời server` : html`<b>Esc</b> thoát`}</div>`}
     ${state === 'ready' && walking && (view.fp || view.locked) && html`<div class="map-crosshair" aria-hidden="true"></div>`}
     ${state === 'ready' && walking && !mobile && html`<div class=${'map-lock-chip' + (view.locked ? ' on' : '')}>${view.locked
       ? html`<b>Đang khóa chuột</b> · di chuột để nhìn · nhấn <b>O</b> hoặc <b>Esc</b> để mở`

@@ -1194,6 +1194,14 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
   .map-page.server .world-panel, .map-page.server .world-card, .map-page.server .world-chat.sheet-like { top: calc(64px + var(--safe-t)); }
   .map-page.server .soc-board { left: 70px; right: auto; margin: 0; max-width: var(--sw); }
 }
+/* PC in the server: the key hints sit right of the chat box instead of on top of it */
+@media (pointer: fine) and (min-width: 700px) {
+  .map-page.server .map-hint, .map-page.server .soc-keys { left: 372px; right: 16px; max-width: none; }
+}
+/* F1: nothing over the 3D view but the name tags */
+.map-page.hud-off > :not(.map-canvas):not(.world), .map-page.hud-off .world > :not(.world-tags) { display: none !important; }
+.map-page.hud-off .world-bubble { display: none !important; }
+
 /* phones held sideways: little height, so the right-hand buttons go in a row next to a smaller minimap */
 @media (orientation: landscape) and (max-height: 520px) {
   .map-mini { width: 96px; height: 96px; top: calc(66px + var(--safe-t)); }
