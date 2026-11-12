@@ -2,6 +2,7 @@ import { html, render, useState, useEffect } from 'preact';
 import { supabase, appStore, applyTheme, loadThemeFromServer, ensureCurrentUserData, loadMyProfile, readLocal } from './lib.js';
 import { Icon, Spinner, mountHosts } from './ui.js';
 import { usePath, match, navigate } from './router.js';
+import { watchForUpdates } from './update.js';
 import { LoginPage, RegisterPage, ForgotPage, ResetPasswordPage } from './pages/auth.js';
 import { HomePage, useStore } from './pages/home.js';
 import { MissionPage, CheckInPage, TodayCheckInsPage } from './pages/checkin.js';
@@ -143,6 +144,7 @@ supabase.auth.onAuthStateChange((event, session) => {
 supabase.auth.getSession().then(({ data }) => onSession(data.session));
 
 render(html`<${App} />`, document.getElementById('app'));
+watchForUpdates();
 
 if ('serviceWorker' in navigator && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
