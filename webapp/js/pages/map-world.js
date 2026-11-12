@@ -1,7 +1,7 @@
 // Server mode UI for the 3D campus map: name tags and chat bubbles over everyone, the shared chat,
 // player list, meetings with voice chat, emotes, the character customizer, and football at the stadium
 // (game in ../soccer.js, its UI in map-soccer.js).
-import { html, useState, useEffect, useRef } from 'preact';
+import { html, useState, useEffect, useLayoutEffect, useRef } from 'preact';
 import { supabase } from '../lib.js';
 import { Icon, toast, openSheet } from '../ui.js';
 import { connectWorld, EMOTES, devName } from '../world.js';
@@ -144,6 +144,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const tags = useRef(new Map()); // id -> { el, name, bubble, until }
   const layer = useRef();
   const input = useRef();
+  const msgsBox = useRef();
+  const stick = useRef(true); // chat follows new messages unless you scrolled up to read
   const st = useRef({});
   st.current = { me, players, fp, panel, myMeeting };
 
@@ -258,10 +260,10 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     };
   }, []);
 
-  // Enter opens the chat (desktop), Esc in the chat box closes it without leaving walk mode
+  // "/" opens the chat, Enter sends, Esc in the chat box closes it without leaving walk mode
   useEffect(() => {
     const onKey = (e) => {
-      if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
+      if (e.key !== '/' || e.ctrlKey || e.altKey || e.metaKey) return;
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') || document.body.classList.contains('no-scroll')) return;
       if (document.pointerLockElement) document.exitPointerLock();
       e.preventDefault();
@@ -334,7 +336,15 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     if (!v || !world.current) return;
     world.current.chat(v, chatTab === 'meeting' && myMeeting ? myMeeting : null);
     setText('');
+    stick.current = true;
+    if (!mobile) input.current?.blur(); // back to walking right away
   }
+  // keep the newest message in view, unless you scrolled up to read older ones
+  useLayoutEffect(() => { stick.current = true; }, [panel, chatTab]);
+  useLayoutEffect(() => {
+    const el = msgsBox.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  });
   const online = Object.keys(players).length + (me ? 1 : 0);
   const list = Object.values(players).sort((a, b) => a.name.localeCompare(b.name, 'vi'));
   const meeting = meetings.find((x) => x.id === myMeeting);
@@ -412,12 +422,12 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
         <button class=${chatTab === 'all' ? 'on' : ''} onClick=${() => setChatTab('all')}>Chung</button>
         <button class=${chatTab === 'meeting' ? 'on' : ''} onClick=${() => setChatTab('meeting')}>🎙 Phòng họp</button>
       </div>`}
-      <div class="world-msgs">${messages.slice(-30).map((c) => html`<div class="world-msg" key=${c.at + c.id}>
+      <div class="world-msgs" ref=${msgsBox} onScroll=${(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30; }}>${messages.slice(-30).map((c) => html`<div class="world-msg" key=${c.at + c.id}>
         <b class=${c.id === me?.id ? 'me' : ''}>${c.name}</b> <span>${c.text}</span> <i>${fmtTime(c.at)}</i></div>`)}</div>
       <form class="world-input" onSubmit=${send}>
-        <input ref=${input} value=${text} maxLength="300" placeholder=${mobile ? 'Nhắn gì đó…' : 'Nhấn Enter để chat…'} aria-label="Tin nhắn"
+        <input ref=${input} value=${text} maxLength="300" placeholder=${mobile ? 'Nhắn gì đó…' : 'Nhấn / để chat, Enter để gửi…'} aria-label="Tin nhắn"
           onInput=${(e) => setText(e.target.value)} onFocus=${() => setUnread(0)}
-          onKeyDown=${(e) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); e.currentTarget.blur(); } }} />
+          onKeyDown=${(e) => { if (e.key === 'Enter' && !text.trim() && !mobile) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); e.currentTarget.blur(); } }} />
         <button class="map-btn sm" type="submit" aria-label="Gửi" disabled=${!text.trim()}><${Icon} name="chevron" size=${18} /></button>
       </form>
     </div>`}

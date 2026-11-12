@@ -131,7 +131,7 @@ Camera trên web cần HTTPS (hoặc `localhost`).
 
 - Nút **Vào server** trên `/map` (cần đăng nhập). Lần đầu chọn nhân vật (màu da, kiểu tóc, màu tóc, áo, quần, balo, kính);
   lựa chọn lưu trong `user_metadata.campus_look` của tài khoản Supabase. Tên trên đầu là `profiles.display_name`.
-- Thấy các bạn khác đi bộ / đi xe theo thời gian thực, chat chung (Enter để gõ, bong bóng chữ trên đầu), biểu cảm,
+- Thấy các bạn khác đi bộ / đi xe theo thời gian thực, chat chung (phím / để gõ, Enter để gửi, bong bóng chữ trên đầu), biểu cảm,
   danh sách người online (bấm vào tên/nhân vật để Đi tới, Vẫy tay, Mời họp).
 - Phòng họp: công khai hoặc riêng tư (chỉ người được mời), tối đa 8 người, có chat riêng và **voice chat** bằng micro.
   Giọng nói đi thẳng giữa các trình duyệt (WebRTC, mesh); server chỉ chuyển tin nhắn thiết lập.

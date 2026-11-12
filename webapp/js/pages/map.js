@@ -479,7 +479,7 @@ export function MapPage() {
 
   const here = sel && classes && sel.letter ? classes.filter((c) => roomLetter(c.room) === sel.letter[0]) : [];
 
-  return html`<div class=${'map-page' + (walking ? ' walking' : '')}>
+  return html`<div class=${'map-page' + (walking ? ' walking' : '') + (walking && server ? ' server' : '')}>
     <div class="map-canvas" ref=${host}></div>
     <div class=${'map-labels' + (showPins ? '' : ' off')} ref=${labelsRef}></div>
 
@@ -490,7 +490,7 @@ export function MapPage() {
         <input value=${q} placeholder="Tìm khu, phòng (vd F305), thư viện…" aria-label="Tìm trên bản đồ"
           onInput=${(e) => setQ(e.target.value)} onFocus=${() => setFocusSearch(true)}
           onBlur=${() => setTimeout(() => setFocusSearch(false), 150)}
-          onKeyDown=${(e) => { if (e.key === 'Enter' && results[0]) pick(results[0]); if (e.key === 'Escape') e.target.blur(); }} />
+          onKeyDown=${(e) => { if (e.key === 'Enter' && results[0]) pick(results[0]); if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); e.target.blur(); } }} />
         ${q && html`<button class="map-search-clear" aria-label="Xoá" onMouseDown=${(e) => { e.preventDefault(); setQ(''); }}><${Icon} name="x" size=${16} /></button>`}
         ${focusSearch && q && html`<div class="map-results pop-in">
           ${results.length ? results.map((t) => html`<button class="map-result" onMouseDown=${(e) => { e.preventDefault(); pick(t); }}>
@@ -520,7 +520,7 @@ export function MapPage() {
       <${Icon} name="pin" size=${16} /><span>Gần <b>${near.title}</b></span><span class="map-near-key">${mobile ? 'Chạm để xem' : 'Nhấn E'}</span></button>`}
     ${state === 'ready' && walking && seat && html`<button class="map-seat pop-in" onClick=${(e) => { e.currentTarget.blur(); sceneRef.current?.toggleSit(); setSeat(sceneRef.current?.sitting() ? 'on' : 'can'); }}>
       🪑 <span>${seat === 'on' ? 'Đứng dậy' : 'Ngồi xuống ghế'}</span>${!mobile && html`<span class="map-near-key">E</span>`}</button>`}
-    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà${server ? html` · <b>Enter</b> chat` : ''} · <b>Esc</b> thoát</div>`}
+    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà${server ? html` · <b>/</b> chat` : ''} · <b>Esc</b> thoát</div>`}
     ${state === 'ready' && walking && (view.fp || view.locked) && html`<div class="map-crosshair" aria-hidden="true"></div>`}
     ${state === 'ready' && walking && !mobile && html`<div class=${'map-lock-chip' + (view.locked ? ' on' : '')}>${view.locked
       ? html`<b>Đang khóa chuột</b> · di chuột để nhìn · nhấn <b>O</b> hoặc <b>Esc</b> để mở`

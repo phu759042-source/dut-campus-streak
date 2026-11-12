@@ -1185,6 +1185,38 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
   .soc-near, .map-seat { bottom: calc(176px + var(--safe-b)); }
 }
 
+/* server mode on wide screens (desktop, phones held sideways): online / mic / emotes / ball / shirt sit right of the search box,
+   so the search results drop down without anything on top of them; the scoreboard takes the search box's slot */
+@media (min-width: 700px) {
+  .map-page.server { --sw: clamp(300px, calc(100vw - 560px), 460px); }
+  .map-page.server .map-search { flex: 0 1 var(--sw); }
+  .map-page.server .world-bar { top: calc(14px + var(--safe-t)); left: calc(80px + var(--sw)); max-width: calc(100% - 96px - var(--sw)); }
+  .map-page.server .world-panel, .map-page.server .world-card, .map-page.server .world-chat.sheet-like { top: calc(64px + var(--safe-t)); }
+  .map-page.server .soc-board { left: 70px; right: auto; margin: 0; max-width: var(--sw); }
+}
+/* phones held sideways: little height, so the right-hand buttons go in a row next to a smaller minimap */
+@media (orientation: landscape) and (max-height: 520px) {
+  .map-mini { width: 96px; height: 96px; top: calc(66px + var(--safe-t)); }
+  .map-btn.walk-time { top: calc(66px + var(--safe-t)); right: 122px; }
+  .map-btn.walk-pins { top: calc(66px + var(--safe-t)); right: 174px; }
+  .map-ride { top: calc(64px + var(--safe-t)); right: 226px; flex-direction: row; }
+  .map-tools { flex-direction: row; }
+  .world-chip .world-chip-long { display: none; }
+  .world-panel { max-height: calc(100% - 80px - var(--safe-t) - var(--safe-b)); }
+  .world-chat.sheet-like .world-msgs { max-height: 30vh; }
+  .joy { width: 112px; height: 112px; bottom: calc(18px + var(--safe-b)); }
+  .joy-jump { bottom: calc(24px + var(--safe-b)); }
+  .joy-eye { bottom: calc(112px + var(--safe-b)); }
+  .walk-hint-m { bottom: calc(16px + var(--safe-b)) !important; max-width: 420px; }
+  .map-near, .soc-near { bottom: calc(74px + var(--safe-b)); }
+  .map-seat { bottom: calc(120px + var(--safe-b)); }
+  .soc-pad { bottom: calc(12px + var(--safe-b)); }
+  .soc-meters.m { right: 232px; bottom: calc(18px + var(--safe-b)); width: 150px; }
+  .soc-banner { top: 18%; padding: 10px 14px; }
+  .soc-banner > b { font-size: 32px; }
+  .world-voice { bottom: calc(10px + var(--safe-b)); }
+}
+
 /* ---------- 3D map: donate sheet (billboard at the main gate) ---------- */
 .donate-sheet { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
 .donate-qr { width: min(320px, 100%); border-radius: 16px; box-shadow: var(--shadow); }
