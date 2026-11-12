@@ -23,6 +23,11 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (url.pathname === '/health') return new Response('ok');
+    if (url.pathname === '/turn-check') { // is the TURN relay (voice across networks) set up? says yes/no only
+      const ice = await World.prototype.iceServers.call({ env });
+      const relays = ice.filter((s) => [].concat(s.urls).some((u) => /^turns?:/.test(u))).length;
+      return new Response(JSON.stringify({ turn: relays > 0 }), { headers: { 'Content-Type': 'application/json' } });
+    }
     if (url.pathname !== '/world') return new Response('DUT Campus World', { status: 404 });
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
     const origin = req.headers.get('Origin') || '';
