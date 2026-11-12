@@ -135,9 +135,9 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   danh sách người online (bấm vào tên/nhân vật để Đi tới, Vẫy tay, Mời họp).
 - Phòng họp: công khai hoặc riêng tư (chỉ người được mời), tối đa 8 người, có chat riêng và **voice chat** bằng micro.
   Giọng nói đi thẳng giữa các trình duyệt (WebRTC, mesh); server chỉ chuyển tin nhắn thiết lập.
-  Không có TURN nên một số mạng 4G/công ty có thể không nối được giọng (vòng tên mờ đi). Có thể bật TURN miễn phí của
-  Cloudflare: tạo TURN key trong dashboard Cloudflare (Realtime → TURN) rồi
-  `npx wrangler secret put TURN_KEY_ID` và `npx wrangler secret put TURN_KEY_API_TOKEN`.
+  Khi hai máy không nối thẳng được (4G, mạng công ty…), giọng nói đi vòng qua TURN của Cloudflare: key tạo trong
+  dashboard Cloudflare (Realtime → TURN), lưu bằng `npx wrangler secret put TURN_KEY_ID` và
+  `npx wrangler secret put TURN_KEY_API_TOKEN`; `/turn-check` trên worker cho biết đã bật chưa.
 - Server: `world-server/` (Cloudflare Worker + Durable Object, WebSocket Hibernation), địa chỉ
   `wss://dut-campus-world.dut-campus-world.workers.dev/world` (khai báo ở `js/world.js`). Server kiểm tra token đăng nhập
   với Supabase Auth, chỉ nhận kết nối từ campusstreak.com (và localhost, preview Vercel), mỗi tài khoản một kết nối.
@@ -146,3 +146,19 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   rồi mở nhiều tab `http://localhost:5173/map?dev=TenBatKy` để vào server như các sinh viên giả (chỉ có ở máy cục bộ).
 - Code: `js/world.js` (kết nối, gửi vị trí ~8 lần/giây khi di chuyển, voice), `js/players.js` (nhân vật của người khác,
   nội suy chuyển động), `js/pages/map-world.js` (giao diện server, chỉnh nhân vật).
+
+### Bóng đá ở sân vận động (trong chế độ server)
+
+- Nút ⚽ trên thanh server mở bảng **Bóng đá**: vào đội **Xanh** hoặc **Cam** (tối đa 5 người mỗi đội) hoặc
+  **Ghép ngẫu nhiên**. Vào đội là mặc áo đội và được đưa xuống sân. Khi cả hai đội đều có người: đếm ngược 10 giây,
+  giao bóng, trận 5 phút; bàn thắng có thông báo lớn, hết giờ có kết quả và danh sách ghi bàn, rồi tự đá trận mới.
+  Thủ môn hai bên do máy điều khiển (bắt bóng, đẩy bóng, phát bóng).
+- Cách chơi: chạy vào bóng để dắt bóng. Máy tính: **Space** giữ để lấy lực rồi thả để sút (sút gần khung thành thì
+  bóng được nắn vào trong cột), **E** chuyền cho đồng đội phía trước, **Q** xoạc để cướp bóng, **Shift** chạy nhanh
+  (tốn thể lực). Khi khóa chuột (O): chuột trái sút, chuột phải chuyền. Điện thoại: nút Sút / Chuyền / Xoạc.
+- Khán đài 7 bậc hai bên sân (đi lên được, nhấn **E** hoặc nút 🪑 để ngồi xuống ghế). Khi một trận bắt đầu, người
+  đang ở chỗ khác trong trường thấy thông báo **Đến xem** (đưa lên ghế khán đài) hoặc **Vào đá**.
+- Server là trọng tài: `world-server/src/soccer.js` giữ đội, tỉ số, đồng hồ, kiểm tra từng lần chạm bóng / sút / xoạc,
+  và chạy bóng + thủ môn bằng `js/soccer-core.js`. Trình duyệt chạy đúng file đó để đoán trước đường bóng giữa các lần
+  server gửi (`js/soccer.js`), nên bóng chạy mượt. Giao diện: `js/pages/map-soccer.js`; khán đài: `js/stadium.js`.
+- Thử ở máy: chạy `world-server` như trên rồi mở 2 tab `/map?dev=A`, `/map?dev=B`, mỗi tab vào một đội.

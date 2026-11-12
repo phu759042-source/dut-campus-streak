@@ -1,9 +1,15 @@
 // Stadium: standard 400 m running track (6 lanes) around the football pitch, pitch lines drawn on a
-// turf texture, full-size goals with nets and corner flags. OSM only has the pitch rectangle, so the track
-// is generated around it (the satellite photo shows a track ring around the pitch).
+// turf texture, full-size goals with nets and corner flags, and stands (khán đài) along both long sides.
+// OSM only has the pitch rectangle, so the track and the stands are generated around it.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-/** Returns { group, outer, posts }: outer = polygon to keep trees/lamps off, posts = goal posts and flags for collisions. */
+/**
+ * Returns { group, outer, posts, surfaces, walls, clear, seatAt, randomSeat }:
+ * outer / clear = areas to keep trees and lamps off, posts = goal posts and flags for collisions,
+ * surfaces / walls = the stand rows you can walk on and the railings around them (for walk mode),
+ * seatAt(x, z) = the seat at a spot on the stands (or null), randomSeat() = a free-ish seat with a good view.
+ */
 export function buildStadium(pitchPts) {
   const group = new THREE.Group();
   // pitch frame from the rectangle: u along the long side, v across
@@ -115,6 +121,84 @@ export function buildStadium(pitchPts) {
       posts.push([wx, wz, 0.05]);
     }
   }
+  // ---- stands: 7 stepped rows of seats along both straights, outside the track ----
+  const SL = 33, ROWS = 7, RD = 0.85, RH = 0.42, V0 = RO + 1.9, VB = V0 + ROWS * RD, RAIL = 0.95;
+  const SEAT = 0.62, perRow = Math.floor((2 * SL - 0.4) / SEAT);
+  const toFrame = (geo) => { // geometry built with x = along the pitch, y = up, z = across -> world
+    const pos = geo.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) { const [wx, wz] = W(pos.getX(i), pos.getZ(i)); pos.setXYZ(i, wx, pos.getY(i), wz); }
+    geo.computeVertexNormals();
+    return geo;
+  };
+  const profile = (pts) => { const sh = new THREE.Shape(); sh.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) sh.lineTo(p[0], p[1]); return sh; };
+  /** Extrudes a (distance from the centre line, height) profile along the pitch from u0 to u1 on side sd. */
+  const extrude = (pts, sd, u0, u1) => {
+    const geo = new THREE.ExtrudeGeometry(profile(pts), { depth: u1 - u0, bevelEnabled: false });
+    const pos = geo.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) pos.setXYZ(i, u0 + pos.getZ(i), pos.getY(i), sd * pos.getX(i));
+    geo.deleteAttribute('uv');
+    return toFrame(geo);
+  };
+  const box = (w, h, d, u, y, v) => { const g = new THREE.BoxGeometry(w, h, d).toNonIndexed(); g.translate(u, y, v); g.deleteAttribute('uv'); return toFrame(g); };
+  const standGeos = [], railGeos = [], surfaces = [], walls = [], clear = [], seats = [];
+  const seatMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.46, 0.13, 0.4), new THREE.MeshLambertMaterial({ color: 0xffffff }), perRow * ROWS * 2);
+  const backMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.46, 0.34, 0.06), new THREE.MeshLambertMaterial({ color: 0xffffff }), perRow * ROWS * 2);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-uz, ux)), one = new THREE.Vector3(1, 1, 1), at = new THREE.Vector3();
+  const col = new THREE.Color();
+  let n = 0;
+  for (const sd of [-1, 1]) {
+    const steps = [[V0, 0]];
+    for (let k = 0; k < ROWS; k++) steps.push([V0 + k * RD, (k + 1) * RH], [V0 + (k + 1) * RD, (k + 1) * RH]);
+    steps.push([VB, 0]);
+    standGeos.push(extrude(steps, sd, -SL, SL));
+    // railings: back wall and both ends (sloped along the rows)
+    const end = [[V0, 0], [V0, RH + RAIL], [VB, ROWS * RH + RAIL], [VB, 0]];
+    railGeos.push(extrude(end, sd, -SL - 0.18, -SL), extrude(end, sd, SL, SL + 0.18));
+    railGeos.push(box(2 * SL + 0.36, ROWS * RH + RAIL, 0.18, 0, (ROWS * RH + RAIL) / 2, sd * (VB + 0.09)));
+    walls.push({ a: W(-SL, sd * VB), b: W(SL, sd * VB), y0: -9, y1: 99 });
+    for (const e of [-SL, SL]) walls.push({ a: W(e, sd * V0), b: W(e, sd * VB), y0: -9, y1: 99 });
+    clear.push([W(-SL - 1, sd * (V0 - 0.5)), W(SL + 1, sd * (V0 - 0.5)), W(SL + 1, sd * (VB + 1)), W(-SL - 1, sd * (VB + 1))]);
+    // facing the pitch
+    const heading = Math.atan2(-sd * vx, -sd * vz);
+    for (let k = 0; k < ROWS; k++) {
+      const v0 = V0 + k * RD, y = (k + 1) * RH;
+      surfaces.push({ pts: [W(-SL, sd * v0), W(SL, sd * v0), W(SL, sd * (v0 + RD)), W(-SL, sd * (v0 + RD))], y });
+      for (let j = 0; j < perRow; j++) {
+        const u = -SL + 0.2 + SEAT / 2 + j * SEAT;
+        const [x, z] = W(u, sd * (v0 + 0.32));
+        seats.push({ x, z, y, heading, row: k, u });
+        at.set(x, y + 0.065, z); m4.compose(at, q, one); seatMesh.setMatrixAt(n, m4);
+        const [bx, bz] = W(u, sd * (v0 + 0.55));
+        at.set(bx, y + 0.26, bz); m4.compose(at, q, one); backMesh.setMatrixAt(n, m4);
+        // blue seats on one side, orange on the other, rows in two shades
+        col.setHex(sd > 0 ? (k % 2 ? 0x2f6bff : 0x2459d6) : (k % 2 ? 0xf97316 : 0xe0620c));
+        seatMesh.setColorAt(n, col); backMesh.setColorAt(n, col);
+        n++;
+      }
+    }
+  }
+  const stand = new THREE.Mesh(mergeGeometries(standGeos), new THREE.MeshLambertMaterial({ color: 0xd6d1c6, side: THREE.DoubleSide }));
+  stand.castShadow = stand.receiveShadow = true;
+  const rails = new THREE.Mesh(mergeGeometries(railGeos), new THREE.MeshLambertMaterial({ color: 0xa7adb7, side: THREE.DoubleSide }));
+  rails.castShadow = true;
+  for (const m of [seatMesh, backMesh]) { m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; m.castShadow = true; m.computeBoundingSphere(); }
+  group.add(stand, rails, seatMesh, backMesh);
+
+  const local = (x, z) => { const dx = x - cx, dz = z - cz; return [dx * ux + dz * uz, dx * vx + dz * vz]; };
+  /** The seat at (x, z) on the stands, or null when not on them. */
+  function seatAt(x, z) {
+    const [u, v] = local(x, z), av = Math.abs(v);
+    const k = Math.floor((av - V0) / RD);
+    if (k < 0 || k >= ROWS || Math.abs(u) > SL) return null;
+    const j = Math.max(0, Math.min(perRow - 1, Math.round((u + SL - 0.2 - SEAT / 2) / SEAT)));
+    return seats[(v > 0 ? perRow * ROWS : 0) + k * perRow + j];
+  }
+  /** A seat with a good view (middle rows, near the halfway line), picked at random. */
+  function randomSeat() {
+    const good = seats.filter((s) => s.row >= 1 && s.row <= 5 && Math.abs(s.u) < 22);
+    return good[Math.floor(Math.random() * good.length)];
+  }
+
   const outer = capsule(RO + 1).getPoints(24).map((p) => W(p.x, p.y));
-  return { group, outer, posts };
+  return { group, outer, posts, surfaces, walls, clear, seatAt, randomSeat };
 }

@@ -282,7 +282,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) wallSegs.push([w[i], w[i + 1]]);
   const clearOfWalls = (x, z, m) => !wallSegs.some(([a, b]) => Math.abs(a[0] - x) < 40 && Math.abs(a[1] - z) < 40 && segDist(x, z, a, b) < m);
-  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer] : [])].map((p) => [p, bbox([p])]);
+  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : [])].map((p) => [p, bbox([p])]);
   const inArea = (x, z, m) => blockedAreas.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
   const lamps = buildLamps(data.roads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
   scene.add(lamps.group);
@@ -447,7 +447,20 @@ export function createCampus(container, data, { dark = false, mobile = false, on
 
   // ---------- walk mode ----------
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
-    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...(stadium ? stadium.posts : [])], extraWalls: inter.walls, surfaces: inter.surfaces, indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
+    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...(stadium ? stadium.posts : [])], extraWalls: [...inter.walls, ...(stadium ? stadium.walls : [])],
+    surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : [])], indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear,
+    onInteract: (b) => { if (!toggleSit()) onInteract?.(b); }, onExit: onExitWalk, onView });
+  // stands: E (or the seat button) sits down on the seat you are standing at, again to stand up
+  const seatHere = () => { const w = walker.state; const s = stadium && w.on && w.mode === 'walk' ? stadium.seatAt(w.x, w.z) : null; return s && Math.abs(s.y - w.y) < 0.3 ? s : null; };
+  function toggleSit() {
+    if (walker.state.sit) { walker.standUp(); return true; }
+    const s = seatHere();
+    if (!s) return false;
+    walker.sitAt(s);
+    return true;
+  }
+  // extra per-frame work (football in server mode); a hook returns true while it needs more frames
+  const frameHooks = new Set();
   // other students (server mode)
   const players = createPlayers(scene);
   function startWalk(at, lookAt) {
@@ -537,6 +550,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       needs = true;
     }
     if (players.update(Math.min(dt, 0.1))) needs = true;
+    for (const f of frameHooks) if (f(Math.min(dt, 0.1))) needs = true;
     if (!walker.state.on && controls.update()) needs = true;
     if (!needs) return;
     needs = false;
@@ -585,8 +599,14 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     startWalk, stopWalk, walking: () => walker.state.on,
     players,
     /** your own student: [x, z, y, heading, mode index, speed] for the world server */
-    self() { const w = walker.state; return w.on ? [w.x, w.z, w.y, w.heading, ['walk', 'scooter', 'moto'].indexOf(w.mode), w.speed] : null; },
+    self() { const w = walker.state; return w.on ? [w.x, w.z, w.y, w.heading, w.sit ? 3 : ['walk', 'scooter', 'moto'].indexOf(w.mode), w.speed] : null; },
     setLook: (look) => { walker.setLook(look); requestRender(); },
+    setKit: (kit) => { walker.setKit(kit); requestRender(); },
+    scene, walker,
+    addFrameHook(f) { frameHooks.add(f); return () => frameHooks.delete(f); },
+    /** stands: can sit here / sit or stand up / go and sit on a seat with a good view */
+    canSit: () => !!seatHere(), toggleSit, sitting: () => !!walker.state.sit,
+    watchMatch() { const s = stadium?.randomSeat(); if (!s || !walker.state.on) return false; walker.sitAt(s); requestRender(); return true; },
     setJoy: (x, y) => walker.setJoy(x, y), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt) => walker.teleport(x, z, lookAt),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {

@@ -3,7 +3,9 @@
 // Supabase session token (checked with Supabase Auth, name read from their profile), then exchange:
 //   positions, chat (everyone or inside a meeting), emotes, character looks, meetings, and WebRTC signaling
 //   for voice chat. Voice itself goes browser-to-browser; this server only passes the setup messages along.
+// Football on the stadium pitch (teams, ball, goalkeepers, score) lives in soccer.js.
 // Uses the WebSocket Hibernation API so an idle world costs nothing.
+import { Soccer } from './soccer.js';
 
 const LOOK_RANGES = { skin: 5, hair: 5, hc: 6, shirt: 8, pants: 6, bag: 6, glasses: 2 };
 const MAX_MEETING = 8;          // voice is a mesh (everyone connects to everyone), so keep meetings small
@@ -50,6 +52,7 @@ export class World {
     this.env = env;
     this.meetings = null; // loaded lazily from storage (survives hibernation)
     this.chat = null;
+    this.soccer = new Soccer(this); // in memory only: a match keeps the object awake
   }
 
   async load() {
@@ -136,6 +139,8 @@ export class World {
       players: this.players().filter((p) => p.id !== a.id).map((p) => this.pub(p)),
       meetings: this.meetingList(), chat: this.chat, ice: await this.iceServers(),
     });
+    this.send(ws, this.soccer.state());
+    this.send(ws, this.soccer.ball());
     this.broadcast({ t: 'join', p: this.pub(a) }, ws);
     if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + SWEEP_MS);
   }
@@ -183,10 +188,10 @@ export class World {
     const now = Date.now();
     if (now - (a.seen || 0) > 5000) { a.seen = now; ws.serializeAttachment(a); } // still here
     switch (msg.t) {
-      case 'p': { // position: [x, z, y, heading, mode, speed]
+      case 'p': { // position: [x, z, y, heading, mode (0 walk, 1 scooter, 2 motorbike, 3 sitting), speed]
         if (!Array.isArray(msg.p) || msg.p.length !== 6) return;
         const p = msg.p.map((v) => (Number.isFinite(+v) ? Math.round(+v * 100) / 100 : 0));
-        p[4] = clampInt(p[4], 3);
+        p[4] = clampInt(p[4], 4);
         a.p = p; a.seen = now; ws.serializeAttachment(a);
         this.broadcast({ t: 'p', id: a.id, p }, ws);
         return;
@@ -263,10 +268,14 @@ export class World {
         this.broadcast({ t: 'away', id: a.id, v: a.away }, ws);
         return;
       }
-      case 'ping': break;
+      case 'fjoin': case 'fleave': case 'ft': case 'fk': case 'fx': // football
+        this.soccer.message(a, msg);
+        return;
+      case 'ping': // also used by the browser to estimate the server clock (football timing)
+        this.send(ws, { t: 'pong', c: Number.isFinite(+msg.c) ? +msg.c : 0, s: Date.now() });
+        return;
       default:
     }
-    if (msg.t === 'ping') this.send(ws, { t: 'pong' });
   }
 
   async leaveMeeting(ws, a) {
@@ -288,6 +297,7 @@ export class World {
   async dropPlayer(ws, a) {
     await this.load();
     if (a.m) await this.leaveMeeting(ws, a);
+    this.soccer.leave(a.id);
     a.auth = false;
     try { ws.serializeAttachment(a); } catch { /* closed */ }
     this.broadcast({ t: 'leave', id: a.id }, ws);

@@ -28,18 +28,23 @@ export const LOOK = {
 export const DEFAULT_LOOK = { skin: 1, hair: 0, hc: 0, shirt: 0, pants: 0, bag: 0, glasses: 0 };
 const pick = (list, i) => list[Math.max(0, Math.min(list.length - 1, i | 0))];
 
-/** Low-poly student made from primitives (original design). */
-export function makeStudent(look = DEFAULT_LOOK) {
+/**
+ * Low-poly student made from primitives (original design). `kit` dresses them for football instead:
+ * { shirt, pants (shorts), socks?, gloves? } colours, and no backpack.
+ */
+export function makeStudent(look = DEFAULT_LOOK, kit = null) {
   const L = { ...DEFAULT_LOOK, ...(look || {}) };
   const M = (c) => new THREE.MeshLambertMaterial({ color: c });
-  const shirt = M(pick(LOOK.shirt, L.shirt)), pants = M(pick(LOOK.pants, L.pants)), skin = M(pick(LOOK.skin, L.skin)), hair = M(pick(LOOK.hc, L.hc));
+  const shirt = M(kit ? kit.shirt : pick(LOOK.shirt, L.shirt)), pants = M(kit ? kit.pants : pick(LOOK.pants, L.pants)), skin = M(pick(LOOK.skin, L.skin)), hair = M(pick(LOOK.hc, L.hc));
   const bagC = pick(LOOK.bag, L.bag), bag = M(bagC), shoe = M(0x1b1f2a), white = M(0xffffff);
   const g = new THREE.Group();
   const add = (geo, mat, x, y, z, parent = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
 
   add(new THREE.CapsuleGeometry(0.3, 0.42, 4, 10), shirt, 0, 1.28, 0);           // torso
-  add(new THREE.BoxGeometry(0.5, 0.56, 0.22), bag, 0, 1.32, -0.3);              // backpack
-  add(new THREE.BoxGeometry(0.36, 0.12, 0.06), M(new THREE.Color(bagC).multiplyScalar(0.8)), 0, 1.12, -0.43); // bag pocket
+  if (!kit) {
+    add(new THREE.BoxGeometry(0.5, 0.56, 0.22), bag, 0, 1.32, -0.3);              // backpack
+    add(new THREE.BoxGeometry(0.36, 0.12, 0.06), M(new THREE.Color(bagC).multiplyScalar(0.8)), 0, 1.12, -0.43); // bag pocket
+  }
   const head = add(new THREE.SphereGeometry(0.27, 14, 10), skin, 0, 1.94, 0);
   const style = L.hair | 0;
   if (style === 4) { // helmet (mũ bảo hiểm)
@@ -69,10 +74,13 @@ export function makeStudent(look = DEFAULT_LOOK) {
     if (footMat) add(new THREE.BoxGeometry(0.2, 0.1, 0.3), footMat, 0, -len - rad * 2 + 0.03, 0.05, pivot);
     return pivot;
   };
-  const legL = limb(-0.15, 0.9, 0.5, 0.11, pants, shoe), legR = limb(0.15, 0.9, 0.5, 0.11, pants, shoe);
+  const legMat = kit ? M(kit.socks ?? kit.shirt) : pants;
+  const legL = limb(-0.15, 0.9, 0.5, 0.11, legMat, shoe), legR = limb(0.15, 0.9, 0.5, 0.11, legMat, shoe);
+  if (kit) for (const leg of [legL, legR]) add(new THREE.CylinderGeometry(0.15, 0.14, 0.3, 10), pants, 0, -0.13, 0, leg); // shorts
   const armL = limb(-0.42, 1.58, 0.42, 0.085, shirt), armR = limb(0.42, 1.58, 0.42, 0.085, shirt);
-  // hands
-  for (const a of [armL, armR]) add(new THREE.SphereGeometry(0.09, 8, 6), skin, 0, -0.62, 0, a);
+  // hands (goalkeeper gloves when the kit has them)
+  const hand = kit?.gloves ? M(kit.gloves) : skin;
+  for (const a of [armL, armR]) add(new THREE.SphereGeometry(kit?.gloves ? 0.11 : 0.09, 8, 6), hand, 0, -0.62, 0, a);
 
   // soft blob shadow so the student stays visible even outside the shadow map
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.5, 18), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false }));
@@ -173,8 +181,30 @@ function horn() {
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
+/** Limb angles of the walking student: walking / running, sitting, kicking or sliding. */
+function pose(st, swing, air) {
+  if (st.slide > 0) return { legL: -1.3, legR: -1.15, armL: -0.7, armR: -0.4, lean: -1.0, y: 0.05 };
+  if (st.sit) return { legL: -1.35, legR: -1.35, armL: -0.35, armR: -0.35, lean: 0, y: -0.5 };
+  const P = { legL: swing + air, legR: -swing - air * 0.3, armL: -swing * 0.85 - air, armR: swing * 0.85 - air, lean: 0, y: null };
+  if (st.kick > 0) {
+    // wind up, then swing the right leg through the ball
+    const k = 1 - st.kick / KICK_T;
+    P.legR = k < 0.3 ? 0.9 * (k / 0.3) : 0.9 - 2.7 * Math.min(1, (k - 0.3) / 0.45);
+    P.armL = -0.9; P.armR = 0.5; P.lean = k < 0.3 ? 0.08 : -0.12;
+  }
+  return P;
+}
+
+const KICK_T = 0.32, SLIDE_T = 0.45;
+// Rules a game mode can put on the walk (football): frozen, its own run / sprint speeds, a speed factor, a
+// bounds function (x, z) -> [x, z], whether sprinting is allowed, walk only (no bikes), and a key handler
+// that can take keys over (it returns true for keys it used).
+const PLAY0 = { frozen: false, run: 0, sprint: 0, factor: 1, bounds: null, canSprint: true, walkOnly: false, onKey: null };
+
 export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], extraWalls = [], surfaces = [], indoor = [], posts = [], limits, onNear, onInteract, onExit, onView }) {
   let s = makeStudent();
+  let curLook = null, curKit = null;
+  let play = { ...PLAY0 };
   s.group.scale.setScalar(SCALE);
   const rig = new THREE.Group(); // position + heading; holds the student and the vehicles
   rig.add(s.group);
@@ -227,6 +257,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     on: false, x: 0, z: 0, y: 0, vy: 0, heading: 0, yaw: 0, pitch: 0.3, dist: 8, phase: 0, speed: 0,
     keys: new Set(), joy: { x: 0, y: 0 }, jumpReq: false, t: 0, nearIdx: -1, nearTimer: 0, fp: false,
     mode: 'walk', v: 0, steer: 0, lastTurn: -9,
+    sit: false, kick: 0, slide: 0, slideX: 0, slideZ: 0, sprinting: false,
   };
   const FP_DIST = 2.2; // zooming closer than this switches to first person
 
@@ -296,6 +327,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
   function keydown(e) {
     if (!st.on || isTyping()) return;
+    if (play.onKey && play.onKey(e.code, true, e)) { e.preventDefault(); return; }
     if (MOVE_KEYS.includes(e.code)) { st.keys.add(e.code); e.preventDefault(); }
     if (e.code === 'Space') { st.jumpReq = true; e.preventDefault(); }
     if (e.code === 'Digit1' || e.code === 'Numpad1') setMode('walk');
@@ -307,7 +339,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     // Esc first releases a locked mouse (the browser does that); only a separate Esc leaves walk mode.
     if (e.code === 'Escape' && !locked() && performance.now() - unlockedAt > 400) onExit?.();
   }
-  function keyup(e) { st.keys.delete(e.code); }
+  function keyup(e) { st.keys.delete(e.code); play.onKey?.(e.code, false, e); }
   const blur = () => st.keys.clear();
   window.addEventListener('keydown', keydown);
   window.addEventListener('keyup', keyup);
@@ -344,7 +376,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
 
   /** Walk / ride a scooter / ride a motorbike. */
   function setMode(m) {
-    if (!st.on || m === st.mode || !(m === 'walk' || RIDE[m])) return;
+    if (!st.on || m === st.mode || !(m === 'walk' || RIDE[m]) || (m !== 'walk' && play.walkOnly)) return;
+    st.sit = false;
     st.mode = m;
     st.v = 0; st.speed = 0; st.steer = 0; st.y = 0; st.vy = 0; st.air = false;
     R = m === 'walk' ? 0.34 : 0.62;
@@ -441,20 +474,38 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     const rx = Math.cos(st.yaw), rz = -Math.sin(st.yaw);    // camera right
     const riding = st.mode !== 'walk';
     const boost = k.has('ShiftLeft') || k.has('ShiftRight');
-    if (!riding) {
+    // sitting on the stands: any move (or jump) stands you up
+    if (st.sit && (Math.abs(f) + Math.abs(r) > 0.15 || st.jumpReq)) { st.sit = false; st.jumpReq = false; }
+    st.kick = Math.max(0, st.kick - dt);
+    st.sprinting = false;
+    if (st.slide > 0) {
+      // slide tackle: a quick burst forward that fades out
+      st.slide = Math.max(0, st.slide - dt);
+      const v = 9 * (st.slide / SLIDE_T);
+      let [qx, qz] = resolve(st.x + st.slideX * v * dt, st.z + st.slideZ * v * dt);
+      if (play.bounds) [qx, qz] = play.bounds(qx, qz);
+      if (!groundAt(qx, qz, st.y).blocked) { st.x = qx; st.z = qz; }
+      st.speed = v;
+    } else if (!riding && !st.sit) {
       let mx = fx * f + rx * r, mz = fz * f + rz * r;
       let mag = Math.hypot(mx, mz);
       if (mag > 1) { mx /= mag; mz /= mag; mag = 1; }
-      const running = boost || Math.hypot(st.joy.x, st.joy.y) > 0.92;
-      const targetSpeed = mag > 0.05 ? (running ? RUN : WALK) * mag : 0;
+      if (play.frozen) mag = 0;
+      const running = (boost || Math.hypot(st.joy.x, st.joy.y) > 0.92) && play.canSprint;
+      st.sprinting = running && mag > 0.05;
+      const pace = play.run ? (running ? play.sprint : play.run) : (running ? RUN : WALK);
+      const targetSpeed = mag > 0.05 ? pace * mag * play.factor : 0;
       st.speed += (targetSpeed - st.speed) * Math.min(1, dt * 10);
       if (mag > 0.05) {
         const h = Math.atan2(mx, mz);
         st.heading += wrap(h - st.heading) * Math.min(1, dt * 12);
         const nx = st.x + (mx / mag) * st.speed * dt, nz = st.z + (mz / mag) * st.speed * dt;
-        const [qx, qz] = resolve(nx, nz);
+        let [qx, qz] = resolve(nx, nz);
+        if (play.bounds) [qx, qz] = play.bounds(qx, qz);
         if (!groundAt(qx, qz, st.y).blocked) { st.x = qx; st.z = qz; }
       }
+    } else if (st.sit) {
+      st.speed = 0;
     } else {
       // bike: throttle / brake on W-S (joystick up-down), steer with A-D (joystick left-right)
       const P = RIDE[st.mode];
@@ -481,7 +532,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     const { g } = groundAt(st.x, st.z, st.y);
     st.ground = g;
     if (st.y < g) { st.y = g; st.vy = 0; st.air = false; } // stepped up (stairs)
-    if (st.jumpReq && !st.air && st.y <= g + 0.001 && !riding) { st.vy = JUMP_V; st.air = true; }
+    if (st.jumpReq && !st.air && st.y <= g + 0.001 && !riding && !play.frozen) { st.vy = JUMP_V; st.air = true; }
     st.jumpReq = false;
     if (st.y > g + 0.001 || st.vy > 0) {
       // walking down stairs: stay on the steps. Only while walking, never in the middle of a jump or a fall,
@@ -512,14 +563,15 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       rig.rotation.set(0, st.heading, st.steer * 0.2 * Math.min(1, st.speed / 6)); // lean into turns
       s.blob.scale.set(1.1, 1.9, 1);
     } else {
-      s.legL.rotation.x += (swing + air - s.legL.rotation.x) * ease;
-      s.legR.rotation.x += (-swing - air * 0.3 - s.legR.rotation.x) * ease;
-      s.armL.rotation.x += (-swing * 0.85 - air - s.armL.rotation.x) * ease;
-      s.armR.rotation.x += (swing * 0.85 - air - s.armR.rotation.x) * ease;
-      const bob = st.speed > 0.2 && st.y === (st.ground || 0) ? Math.abs(Math.sin(st.phase)) * 0.045 : Math.sin(st.t * 2) * 0.01;
+      const P = pose(st, swing, air);
+      s.legL.rotation.x += (P.legL - s.legL.rotation.x) * ease;
+      s.legR.rotation.x = st.kick > 0 ? P.legR : s.legR.rotation.x + (P.legR - s.legR.rotation.x) * ease;
+      s.armL.rotation.x += (P.armL - s.armL.rotation.x) * ease;
+      s.armR.rotation.x += (P.armR - s.armR.rotation.x) * ease;
+      const bob = st.speed > 0.2 && st.y === (st.ground || 0) && !st.slide ? Math.abs(Math.sin(st.phase)) * 0.045 : Math.sin(st.t * 2) * 0.01;
       st.land = Math.max(0, (st.land || 0) - dt * 6);                       // small knee bend on landing
-      s.group.position.set(0, bob - Math.sin(st.land * Math.PI) * 0.07, 0);
-      s.group.rotation.x = 0;
+      s.group.position.set(0, P.y ?? bob - Math.sin(st.land * Math.PI) * 0.07, 0);
+      s.group.rotation.x += (P.lean - s.group.rotation.x) * Math.min(1, dt * 18);
       rig.position.set(st.x, st.y, st.z);
       rig.rotation.set(0, st.heading, 0);
       s.blob.scale.setScalar(0.8 * (1 - Math.min(0.5, st.y * 0.25)));
@@ -566,6 +618,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   }
 
   function enter({ x, z, facing }) {
+    st.sit = false; st.kick = 0; st.slide = 0;
     [st.x, st.z] = freeSpot(x, z);
     st.y = 0; st.vy = 0; st.air = false; st.speed = 0; st.t = 0; st.nearIdx = -1; st.nearTimer = 0;
     st.heading = facing ?? 0;
@@ -590,6 +643,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     st.nearIdx = -1;
   }
   function teleport(x, z, lookAt) {
+    st.sit = false; st.slide = 0;
     [st.x, st.z] = freeSpot(x, z);
     st.y = 0; st.vy = 0; st.air = false; st.v = 0; st.t = 0.6; // short glide
     if (lookAt) {
@@ -599,9 +653,20 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     }
   }
 
-  /** Swap the student's look (server mode character customizer). */
-  function setLook(look) {
-    const next = makeStudent(look);
+  /** Sit on a seat of the stands ({ x, z, y, heading }), facing the pitch. */
+  function sitAt(seat) {
+    if (st.mode !== 'walk') setMode('walk');
+    st.x = seat.x; st.z = seat.z; st.y = seat.y; st.vy = 0; st.air = false; st.speed = 0; st.slide = 0;
+    st.heading = seat.heading;
+    st.yaw = seat.heading + Math.PI;
+    if (!st.fp) { st.pitch = Math.max(st.pitch, 0.5); st.dist = Math.min(Math.max(st.dist, 4), 5.5); } // look over the rows behind
+    st.sit = true;
+  }
+
+  /** Swap the student's look (server mode character customizer), keeping the football kit if one is on. */
+  function setLook(look, kit = curKit) {
+    curLook = look; curKit = kit;
+    const next = makeStudent(look, kit);
     next.group.scale.setScalar(SCALE);
     next.blob.visible = s.blob.visible;
     next.blob.position.copy(s.blob.position);
@@ -616,6 +681,15 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   return {
     state: st,
     enter, exit, update, teleport, freeSpot, setLook,
+    setKit(kit) { if (kit !== curKit) setLook(curLook, kit); },
+    /** football rules on the walk (see PLAY0); null = normal walk */
+    setPlay(p) { play = { ...PLAY0, ...(p || {}) }; if (play.walkOnly && st.mode !== 'walk') setMode('walk'); },
+    kick() { st.kick = KICK_T; },
+    lunge(dx, dz) { if (st.mode !== 'walk' || st.slide > 0 || st.sit) return; st.slide = SLIDE_T; st.slideX = dx; st.slideZ = dz; st.heading = Math.atan2(dx, dz); },
+    face(h) { st.heading = h; },
+    sitAt, standUp() { st.sit = false; },
+    /** camera distance / pitch (e.g. a wider view of the pitch in a match) */
+    setView({ dist, pitch }) { if (st.fp) return; if (dist) st.dist = dist; if (pitch) st.pitch = pitch; },
     setJoy(x, y) { st.joy.x = x; st.joy.y = y; },
     jump() { st.jumpReq = true; },
     setMode,

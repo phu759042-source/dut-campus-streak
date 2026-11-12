@@ -1,0 +1,470 @@
+// Football on the stadium pitch, browser side (server mode of the 3D campus map).
+// Draws the ball and the two goalkeepers, predicts the ball between server updates with the same physics as the
+// world server (soccer-core.js), dresses players in their team kit, and turns keys / buttons into touches,
+// shots, passes and slide tackles. The world server is the referee: it decides who has the ball, goals and score.
+//   Desktop: run into the ball to take it · Space (hold for power, release) shoot · E pass · Q slide tackle · Shift sprint
+//   Phones: buttons Sút (hold) · Chuyền · Xoạc, push the joystick all the way to sprint
+import * as THREE from 'three';
+import {
+  F, HL, HW, GOAL_W, BALL_R, KEEPER_U, STEP, STEP_MS, MATCH_MS, TEAM_SIZE, TEAM_NAMES,
+  toLocal, toWorld, dirLocal, dirWorld, ballAtFeet, newSim, step, passSpeed, keeperHolds,
+} from './soccer-core.js';
+import { makeStudent, disposeStudent, SCALE } from './walk.js';
+
+export { TEAM_NAMES, TEAM_SIZE, MATCH_MS };
+export const KITS = [
+  { shirt: 0x2563eb, pants: 0xf8fafc, socks: 0x2563eb }, // Xanh
+  { shirt: 0xf97316, pants: 0x1f2937, socks: 0xf97316 }, // Cam
+];
+export const TEAM_CSS = ['#2563eb', '#f97316'];
+const KEEPER_KITS = [
+  { shirt: 0x16a34a, pants: 0x14532d, socks: 0x16a34a, gloves: 0xfacc15 },
+  { shirt: 0xfacc15, pants: 0x3f3f46, socks: 0xfacc15, gloves: 0x16a34a },
+];
+const TURF = 0.23;            // the pitch is drawn this high above the ground
+const BALL_LOOK = 1.45;       // the ball is drawn bigger than its physics size so it reads on a phone
+const RUN = 6.6, SPRINT = 9.2; // m/s in a match
+const CHARGE_MS = 900;        // holding the shoot key this long = full power
+const PLAYING = ['warm', 'count', 'play', 'wait'];
+const IN_MATCH = ['kick', 'play', 'goal', 'wait'];
+const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+
+/** Classic black-and-white ball: an icosphere with dark patches around the 12 icosahedron corners. */
+function makeBall() {
+  const geo = new THREE.IcosahedronGeometry(BALL_R * BALL_LOOK, 3);
+  const pos = geo.getAttribute('position');
+  const t = (1 + Math.sqrt(5)) / 2;
+  const corners = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]]
+    .map((c) => new THREE.Vector3(...c).normalize());
+  const colors = new Float32Array(pos.count * 3), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i += 3) {
+    a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2);
+    const m = a.add(b).add(c).normalize();
+    const v = corners.some((q) => q.dot(m) > 0.945) ? 0.07 : 0.97;
+    for (let j = 0; j < 3; j++) colors.set([v, v, v], (i + j) * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  mesh.castShadow = true;
+  const blob = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * BALL_LOOK * 1.3, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
+  blob.rotation.x = -Math.PI / 2;
+  blob.renderOrder = 1;
+  return { mesh, blob };
+}
+
+function makeKeeper(i, root) {
+  const s = makeStudent({ skin: i ? 3 : 1, hair: i ? 0 : 2, hc: i ? 0 : 1, shirt: 0, pants: 0, bag: 0, glasses: 0 }, KEEPER_KITS[i]);
+  s.group.scale.setScalar(SCALE);
+  const rig = new THREE.Group();
+  rig.add(s.group);
+  root.add(rig, s.blob);
+  const [dx, dz] = dirWorld(i ? -1 : 1, 0); // faces the pitch
+  const heading = Math.atan2(dx, dz);
+  // which way the keeper's own x axis points along v (to roll the right way when diving)
+  const side = Math.sign(Math.cos(heading) * F.vx - Math.sin(heading) * F.vz) || 1;
+  return { s, rig, heading, side, roll: 0, lastV: 0, phase: 0 };
+}
+
+// ---------- little sound effects (Web Audio, no files) ----------
+let actx = null, noiseBuf = null;
+function audio() {
+  try {
+    actx ??= new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    if (!noiseBuf) {
+      noiseBuf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    return actx;
+  } catch { return null; }
+}
+function noise(a, t, dur, type, freq, gain, attack = 0.005) {
+  const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+  src.buffer = noiseBuf; f.type = type; f.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(a.destination);
+  src.start(t, Math.random()); src.stop(t + dur + 0.05);
+}
+function tone(a, t, freq, dur, gain, trill = 0) {
+  const o = a.createOscillator(), g = a.createGain();
+  o.frequency.value = freq;
+  if (trill) { // whistle pea: fast wobble
+    const l = a.createOscillator(), lg = a.createGain();
+    l.frequency.value = 28; lg.gain.value = trill;
+    l.connect(lg).connect(o.frequency); l.start(t); l.stop(t + dur + 0.05);
+  }
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.015);
+  g.gain.setValueAtTime(gain, t + dur - 0.04);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(a.destination);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function sfx(kind, k = 1) {
+  const a = audio();
+  if (!a) return;
+  const t = a.currentTime + 0.01;
+  if (kind === 'kick') { noise(a, t, 0.09, 'lowpass', 500, 0.25 + 0.3 * k); tone(a, t, 95, 0.09, 0.12 + 0.12 * k); }
+  else if (kind === 'catch') noise(a, t, 0.12, 'lowpass', 900, 0.25);
+  else if (kind === 'post') { tone(a, t, 880, 0.35, 0.08); tone(a, t, 1320, 0.25, 0.05); }
+  else if (kind === 'slide') noise(a, t, 0.3, 'bandpass', 1800, 0.08, 0.04);
+  else if (kind === 'whistle') { tone(a, t, 2850, 0.16, 0.05, 140); tone(a, t + 0.22, 2850, 0.42, 0.05, 140); }
+  else if (kind === 'final') { tone(a, t, 2850, 0.3, 0.05, 140); tone(a, t + 0.4, 2850, 0.3, 0.05, 140); tone(a, t + 0.8, 2850, 0.8, 0.05, 140); }
+  else if (kind === 'goal') { noise(a, t, 2.6, 'bandpass', 900, 0.22, 0.35); noise(a, t + 0.1, 2.2, 'bandpass', 1500, 0.1, 0.3); }
+  else if (kind === 'cheer') noise(a, t, 1.2, 'bandpass', 1000, 0.08, 0.2);
+}
+
+/**
+ * Football client. map = the 3D campus API (scene, walker, players…), send(msg) to the world server,
+ * serverNow() = server clock estimate (ms), myId() = your player id, onChange() = something on screen changed.
+ */
+export function createSoccer({ map, send, serverNow, myId, onChange }) {
+  const { scene, walker, players } = map;
+  const root = new THREE.Group();
+  root.name = 'soccer';
+  scene.add(root);
+  const ball = makeBall();
+  root.add(ball.mesh, ball.blob);
+  const keepers = [makeKeeper(0, root), makeKeeper(1, root)];
+
+  let ms = { st: 'idle', teams: [[], []], score: [0, 0], goals: [], until: 0, endsAt: 0, rem: MATCH_MS, ko: 0, n: 0 };
+  let sim = newSim(1), simAt = 0, have = false;
+  let myTeam = -1, wantTeam = null;
+  let charge = 0, stamina = 1, tired = false;
+  let pending = 0, touchWait = 0, tackleWait = 0;
+  const off = { u: 0, v: 0, y: 0 };      // fades out the jump when a server update corrects the ball
+  let shown = [0, 0, BALL_R];            // ball position drawn last frame (pitch coordinates)
+  let banner = null, notice = null, lastN = null, uiAt = 0, flash = null, lastFb = 0, lastRejoin = 0;
+  const ev = [];
+  const q = new THREE.Quaternion(), axis = new THREE.Vector3();
+
+  const teamOf = (id) => (ms.teams[0].includes(id) ? 0 : ms.teams[1].includes(id) ? 1 : -1);
+  const canPlay = () => PLAYING.includes(ms.st);
+  const me = () => myId();
+  const mine = () => toLocal(walker.state.x, walker.state.z);
+  const holding = () => have && (sim.b.h === me() || (pending > 0 && sim.b.h == null));
+  function nearPitch(r) {
+    const s = map.self();
+    if (!s) return false;
+    const dx = s[0] - F.cx, dz = s[1] - F.cz;
+    return dx * dx + dz * dz < r * r;
+  }
+  function changed(now) {
+    const t = performance.now();
+    if (now || t - uiAt > 120) { uiAt = t; onChange?.(); }
+  }
+
+  // ---------- server messages ----------
+  function handle(m) {
+    if (m.t === 'fs') onState(m);
+    else if (m.t === 'fb') onBall(m);
+    else if (m.t === 'fe') onEvent(m);
+    else if (m.t === 'fpos') map.teleport(m.x, m.z, [m.lx, m.lz]);
+  }
+
+  function onState(m) {
+    const prev = ms;
+    ms = m;
+    const t = teamOf(me());
+    if (t !== myTeam) {
+      myTeam = t;
+      charge = 0;
+      if (t >= 0) walker.setView({ dist: 10, pitch: 0.42 });
+    }
+    applyKits();
+    // a match just kicked off: tell students elsewhere on the campus (they can come and watch)
+    if (lastN !== null && m.n !== lastN && m.st === 'kick' && myTeam < 0 && !nearPitch(130)) notice = { kind: 'start', at: performance.now() };
+    if (lastN === null && IN_MATCH.includes(m.st) && myTeam < 0 && !nearPitch(130)) notice = { kind: 'live', at: performance.now() };
+    lastN = m.n;
+    if (m.st === 'end' && prev.st !== 'end') banner = { kind: 'final', score: m.score, until: performance.now() + 8000 };
+    if (m.st === 'idle' || m.st === 'warm') notice = null;
+    changed(true);
+  }
+
+  function onBall(m) {
+    const before = have ? shown : null;
+    sim = m.s; simAt = m.at; have = true; lastFb = performance.now();
+    advance(serverNow());
+    if (sim.b.h != null) pending = 0; // the server gave it to us, or to someone else
+    const after = freeBall();
+    if (before && after) {
+      const du = before[0] - after[0], dv = before[1] - after[1], dy = before[2] - after[2];
+      if (du * du + dv * dv + dy * dy < 16) { off.u = du; off.v = dv; off.y = dy; } else off.u = off.v = off.y = 0;
+    }
+  }
+
+  function onEvent(m) {
+    const near = nearPitch(160) || myTeam >= 0, mine_ = m.id === me();
+    switch (m.e) {
+      case 'kick': case 'pass':
+        if (!mine_) { players.kick(m.id); if (near) sfx('kick', m.e === 'kick' ? 0.9 : 0.5); }
+        break;
+      case 'slide': if (!mine_) { players.slide(m.id); if (near) sfx('slide'); } break;
+      case 'steal':
+        if (near) sfx('kick', 0.3);
+        if (m.from === me()) { flash = { text: 'Bị cướp bóng!', until: performance.now() + 1500 }; changed(true); }
+        break;
+      case 'catch': case 'parry': if (near) sfx('catch'); break;
+      case 'punt': if (near) sfx('kick', 1); break;
+      case 'post': if (near) sfx('post'); break;
+      case 'whistle': if (near) sfx('whistle'); break;
+      case 'final': if (near) sfx('final'); break;
+      case 'goal':
+        if (m.practice) banner = { kind: 'practice', team: m.team, name: m.name, until: performance.now() + 2200 };
+        else { banner = { kind: 'goal', team: m.team, name: m.name, own: m.own, score: m.score, near, until: performance.now() + 4300 }; if (near) sfx('goal'); }
+        if (near && m.practice) sfx('cheer');
+        changed(true);
+        break;
+      default:
+    }
+  }
+
+  // ---------- prediction ----------
+  function advance(now) {
+    if (!have) return;
+    if (now - simAt > 3000) simAt = now - 3000; // far behind (tab was in the background): catch up 3 s at most
+    while (simAt + STEP_MS <= now) { step(sim, STEP, ev); simAt += STEP_MS; }
+    ev.length = 0;
+  }
+  /** The free ball (or one a goalkeeper holds) as the simulation has it, pitch coordinates. */
+  function freeBall() {
+    const b = sim.b;
+    if (b.h != null && !keeperHolds(sim)) return null;
+    return [b.u, b.v, b.y];
+  }
+
+  // ---------- your actions ----------
+  function grabNear(r = 1.7) {
+    const b = sim.b;
+    if (!have || b.h != null || performance.now() < touchWait || b.y > 1.4) return false;
+    const [mu, mv] = mine(), du = b.u - mu, dv = b.v - mv;
+    if (du * du + dv * dv > r * r) return false;
+    send({ t: 'ft', p: [walker.state.x, walker.state.z] });
+    pending = performance.now();
+    return true;
+  }
+  /** Shot direction: where you face, bent inside the post when it would just miss the goal. */
+  function aim() {
+    const w = walker.state;
+    let [fu, fv] = dirLocal(Math.sin(w.heading), Math.cos(w.heading));
+    const goalU = myTeam === 0 ? HL : -HL, [mu, mv] = mine();
+    const [bu, bv] = ballAtFeet(mu, mv, fu, fv);
+    if ((goalU - bu) * fu > 0 && Math.abs(goalU - bu) < 40) {
+      const cv = bv + fv * ((goalU - bu) / fu);
+      if (Math.abs(cv) < GOAL_W + 4) {
+        const tv = clamp(cv, -(GOAL_W - 0.45), GOAL_W - 0.45), du = goalU - bu, dv = tv - bv, L = Math.hypot(du, dv);
+        fu = du / L; fv = dv / L;
+      }
+    }
+    return [fu, fv];
+  }
+  function kick([du, dv], sp, lift, kind) {
+    const w = walker.state, [mu, mv] = mine();
+    const [fu, fv] = dirLocal(Math.sin(w.heading), Math.cos(w.heading));
+    const [bu, bv] = ballAtFeet(mu, mv, fu, fv);
+    const vel = [du * sp, dv * sp, lift];
+    send({ t: 'fk', k: kind, p: [bu, bv, BALL_R], d: vel });
+    // show it right away (the server sends the same thing back)
+    Object.assign(sim.b, { u: bu, v: bv, y: BALL_R, vu: vel[0], vv: vel[1], vy: lift, h: null });
+    simAt = serverNow();
+    pending = 0; touchWait = performance.now() + 350;
+    off.u = off.v = off.y = 0;
+    const [wx, wz] = dirWorld(du, dv);
+    walker.face(Math.atan2(wx, wz));
+    walker.kick();
+    sfx('kick', sp / 32);
+  }
+  function startCharge() { if (!charge && myTeam >= 0) { charge = performance.now(); changed(true); } }
+  function releaseCharge() {
+    if (!charge) return;
+    const p = Math.min(1, (performance.now() - charge) / CHARGE_MS);
+    charge = 0;
+    changed(true);
+    if (myTeam < 0 || !canPlay() || !have) return;
+    if (!holding() && !grabNear()) return;
+    kick(aim(), 12 + p * 20, 0.6 + p * p * 5.2, 's');
+  }
+  function pass() {
+    if (myTeam < 0 || !canPlay() || !have) return;
+    if (!holding() && !grabNear()) return;
+    const w = walker.state, [mu, mv] = mine(), [fu, fv] = dirLocal(Math.sin(w.heading), Math.cos(w.heading));
+    let best = null, bestScore = Infinity;
+    for (const id of ms.teams[myTeam]) {
+      if (id === me()) continue;
+      const p = players.get(id);
+      if (!p) continue;
+      const [pu, pv] = toLocal(p.x, p.z), [hu, hv] = dirLocal(Math.sin(p.h), Math.cos(p.h)), lead = Math.min(4, (p.speed || 0) * 0.45);
+      const du = pu + hu * lead - mu, dv = pv + hv * lead - mv, d = Math.hypot(du, dv);
+      if (d < 2.5 || d > 60) continue;
+      const cos = (du * fu + dv * fv) / d;
+      if (cos < 0.2) continue; // only teammates in front of you
+      const score = d * (2.2 - cos);
+      if (score < bestScore) { bestScore = score; best = [du / d, dv / d, d]; }
+    }
+    if (best) kick([best[0], best[1]], passSpeed(best[2], 4.5), best[2] > 28 ? 3 : 0, 'p');
+    else kick([fu, fv], 13, 0, 'p');
+  }
+  function tackle() {
+    if (myTeam < 0 || !canPlay() || holding() || performance.now() < tackleWait || walker.state.sit) return;
+    tackleWait = performance.now() + 1000;
+    const w = walker.state;
+    let hx = Math.sin(w.heading), hz = Math.cos(w.heading);
+    const h = have ? sim.b.h : null;
+    if (h && !keeperHolds(sim) && teamOf(h) === 1 - myTeam) { // aim at the opponent with the ball
+      const p = players.get(h);
+      if (p) { const dx = p.x - w.x, dz = p.z - w.z, d = Math.hypot(dx, dz); if (d > 0.05 && d < 5) { hx = dx / d; hz = dz / d; } }
+    }
+    walker.lunge(hx, hz);
+    send({ t: 'fx', p: [w.x + hx * 1.2, w.z + hz * 1.2], d: [hx, hz] });
+    sfx('slide');
+  }
+  function onKey(code, down, e) {
+    if (myTeam < 0) return false;
+    if (code === 'Space') { if (down) { if (!e.repeat) startCharge(); } else releaseCharge(); return true; }
+    if (code === 'KeyE') { if (down && !e.repeat) pass(); return true; }
+    if (code === 'KeyQ') { if (down && !e.repeat) tackle(); return true; }
+    return /^(Digit|Numpad)[123]$/.test(code); // no bikes on the pitch
+  }
+  // mouse-look (pointer locked): left button = shoot, right button = pass
+  const mdown = (e) => { if (!document.pointerLockElement || myTeam < 0) return; if (e.button === 0) startCharge(); else if (e.button === 2) pass(); };
+  const mup = (e) => { if (document.pointerLockElement && e.button === 0) releaseCharge(); };
+  window.addEventListener('mousedown', mdown);
+  window.addEventListener('mouseup', mup);
+
+  // stay on the pitch during a match
+  const bounds = (x, z) => {
+    const [u, v] = toLocal(x, z), cu = clamp(u, -HL - 3, HL + 3), cv = clamp(v, -HW - 3, HW + 3);
+    return cu === u && cv === v ? [x, z] : toWorld(cu, cv);
+  };
+  function applyRules() {
+    if (myTeam < 0) { walker.setPlay(null); return; }
+    walker.setPlay({ run: RUN, sprint: SPRINT, factor: holding() ? 0.88 : 1, frozen: ms.st === 'kick', bounds: IN_MATCH.includes(ms.st) ? bounds : null,
+      canSprint: !tired, walkOnly: true, onKey });
+  }
+  function applyKits() {
+    for (const id of players.ids()) { const t = teamOf(id); players.setKit(id, t >= 0 ? KITS[t] : null); }
+    const t = teamOf(me());
+    map.setKit(t >= 0 ? KITS[t] : null);
+  }
+
+  // ---------- every frame ----------
+  function update(dt) {
+    const w = walker.state;
+    advance(serverNow());
+    // run into the free ball to take it
+    if (myTeam >= 0 && have && w.on && canPlay() && sim.b.h == null && !pending && performance.now() > touchWait && !w.slide) {
+      const [mu, mv] = mine(), du = sim.b.u - mu, dv = sim.b.v - mv;
+      if (du * du + dv * dv < 1.0 && sim.b.y < 1.4) { send({ t: 'ft', p: [w.x, w.z] }); pending = performance.now(); touchWait = pending + 300; }
+    }
+    if (pending && performance.now() - pending > 450) pending = 0; // no answer: someone else got there first
+    // the server sends the ball at least once a second during a match; if that stops (the server restarted),
+    // join the team again so the match picks up where it can
+    const t = performance.now();
+    if (myTeam >= 0 && t - lastFb > 5000 && t - lastRejoin > 5000) { lastRejoin = t; send({ t: 'fjoin', team: myTeam }); }
+    if (myTeam >= 0) {
+      stamina = w.sprinting ? Math.max(0, stamina - dt * 0.2) : Math.min(1, stamina + dt * (w.speed > 0.5 ? 0.1 : 0.18));
+      if (stamina <= 0.02) tired = true; else if (tired && stamina > 0.3) tired = false;
+    } else stamina = 1;
+    applyRules();
+
+    // the ball: at a dribbler's feet, in a goalkeeper's hands, or where the simulation has it
+    const decay = Math.exp(-dt * 9);
+    off.u *= decay; off.v *= decay; off.y *= decay;
+    let holder = null;
+    if (pending && sim.b.h == null) holder = me();
+    else if (sim.b.h != null && !keeperHolds(sim)) holder = sim.b.h;
+    let pos = null;
+    if (holder) {
+      const p = holder === me() ? { x: w.x, z: w.z, h: w.heading, speed: w.speed, phase: w.phase } : players.get(holder);
+      if (p) {
+        const [pu, pv] = toLocal(p.x, p.z), [fu, fv] = dirLocal(Math.sin(p.h), Math.cos(p.h));
+        const wob = p.speed > 0.5 ? 0.1 * Math.sin((p.phase || 0) * 0.5) : 0; // little touches while dribbling
+        pos = [...ballAtFeet(pu + fu * wob, pv + fv * wob, fu, fv), BALL_R];
+      }
+    }
+    if (!pos) pos = [sim.b.u + off.u, sim.b.v + off.v, sim.b.y + off.y];
+    const [x, z] = toWorld(pos[0], pos[1]), [px, pz] = toWorld(shown[0], shown[1]);
+    const mx = x - px, mz = z - pz, moved = Math.hypot(mx, mz);
+    if (moved > 1e-4 && moved < 3) { // roll
+      axis.set(mz, 0, -mx).normalize();
+      q.setFromAxisAngle(axis, moved / (BALL_R * BALL_LOOK));
+      ball.mesh.quaternion.premultiply(q);
+    }
+    shown = pos;
+    ball.mesh.position.set(x, TURF + pos[2] + BALL_R * (BALL_LOOK - 1), z);
+    ball.blob.position.set(x, TURF + 0.02, z);
+    ball.blob.scale.setScalar(Math.max(0.4, 1 - pos[2] * 0.25));
+
+    // goalkeepers
+    for (let i = 0; i < 2; i++) {
+      const K = keepers[i], k = sim.k[i], s = K.s;
+      const [kx, kz] = toWorld(KEEPER_U[i], k.v);
+      const lateral = Math.abs(k.v - K.lastV) / Math.max(dt, 1e-3);
+      K.lastV = k.v;
+      const dive = k.dive > 0 ? Math.min(1, (0.6 - k.dive) / 0.2) : 0;
+      const hold = sim.b.h === 'k' + i;
+      K.roll += ((dive ? -k.dd * K.side * 1.15 * dive : 0) - K.roll) * Math.min(1, dt * 14);
+      K.rig.position.set(kx, -0.25 * Math.abs(K.roll) / 1.15, kz);
+      K.rig.rotation.set(0, K.heading, K.roll);
+      K.phase += dt * (3 + lateral * 2);
+      const sw = Math.sin(K.phase) * Math.min(0.5, lateral * 0.12);
+      const e = Math.min(1, dt * 12);
+      const armT = hold ? -1.5 : dive ? -2.9 : -0.55, legT = dive ? 0 : 0.18;
+      s.armL.rotation.x += (armT - s.armL.rotation.x) * e; s.armR.rotation.x += (armT - s.armR.rotation.x) * e;
+      s.armL.rotation.z += ((hold ? 0.25 : -0.35) - s.armL.rotation.z) * e; s.armR.rotation.z += ((hold ? -0.25 : 0.35) - s.armR.rotation.z) * e;
+      s.legL.rotation.x += (-legT + sw - s.legL.rotation.x) * e; s.legR.rotation.x += (-legT - sw - s.legR.rotation.x) * e;
+      s.group.position.y = dive ? 0 : -0.06; // ready stance: knees a little bent
+      s.blob.position.set(kx, 0.26, kz);
+      s.blob.scale.setScalar(0.8);
+    }
+
+    if (banner && performance.now() > banner.until) { banner = null; changed(true); }
+    if (notice && (performance.now() - notice.at > 25000 || nearPitch(120))) { notice = null; changed(true); } // came over, or not interested
+    if (flash && performance.now() > flash.until) { flash = null; changed(true); }
+    if (myTeam >= 0 || charge || IN_MATCH.includes(ms.st) || ms.st === 'count') changed();
+    return have && (sim.b.h != null || sim.b.vu !== 0 || sim.b.vv !== 0 || sim.b.vy !== 0 || Math.abs(off.u) + Math.abs(off.v) > 0.01 || sim.k.some((k) => k.dive > 0));
+  }
+  const unhook = map.addFrameHook(update);
+
+  function clock() {
+    if (ms.st === 'play') return Math.max(0, ms.endsAt - serverNow());
+    if (ms.st === 'end') return 0;
+    if (IN_MATCH.includes(ms.st)) return ms.rem;
+    return MATCH_MS;
+  }
+
+  return {
+    handle,
+    /** everything the football UI shows */
+    view() {
+      return {
+        st: ms.st, teams: ms.teams, score: ms.score, goals: ms.goals, n: ms.n, ko: ms.ko,
+        clock: clock(), left: ms.until ? Math.max(0, ms.until - serverNow()) : 0,
+        myTeam, holding: holding(), power: charge ? Math.min(1, (performance.now() - charge) / CHARGE_MS) : null,
+        stamina, tired, banner, notice, flash, near: nearPitch(130), wantTeam,
+      };
+    },
+    join(team) { wantTeam = team; send({ t: 'fjoin', team }); notice = null; changed(true); },
+    leave() { wantTeam = null; send({ t: 'fleave' }); changed(true); },
+    watch() { notice = null; map.watchMatch(); changed(true); },
+    dismiss() { notice = null; changed(true); },
+    shootDown: startCharge, shootUp: releaseCharge, pass, tackle,
+    /** after (re)connecting: back into the team you were in */
+    onWelcome() { if (wantTeam != null) send({ t: 'fjoin', team: wantTeam }); },
+    syncKits: applyKits,
+    dispose() {
+      unhook();
+      window.removeEventListener('mousedown', mdown);
+      window.removeEventListener('mouseup', mup);
+      walker.setPlay(null);
+      map.setKit(null);
+      for (const id of players.ids()) players.setKit(id, null);
+      scene.remove(root);
+      root.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); });
+      for (const K of keepers) disposeStudent(K.s);
+    },
+  };
+}

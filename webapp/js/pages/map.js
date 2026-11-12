@@ -262,6 +262,13 @@ export function MapPage() {
   const dataRef = useRef(null);
   const loggedIn = !!appStore.get().session;
   const stats = useMapStats();
+  // stands at the stadium: '' | 'can' (standing at a seat) | 'on' (sitting)
+  const [seat, setSeat] = useState('');
+  useEffect(() => {
+    if (!walking) { setSeat(''); return undefined; }
+    const id = setInterval(() => { const s = sceneRef.current; if (s) setSeat(s.sitting() ? 'on' : s.canSit() ? 'can' : ''); }, 300);
+    return () => clearInterval(id);
+  }, [walking]);
   // server mode (multiplayer): other students, chat, meetings with voice chat
   const [server, setServer] = useState(false);
   const [look, setLook] = useState(null);
@@ -484,9 +491,10 @@ export function MapPage() {
 
     ${state === 'ready' && server && walking && html`<${WorldLayer} scene=${sceneRef.current} frameRef=${worldFrame} pickRef=${worldPick} look=${look} fp=${view.fp} mobile=${mobile}
       onClosed=${() => setServer(false)} onEditLook=${changeLook} />`}
-    ${state === 'ready' && !server && stats.online > 0 && html`<div class="map-stats pop-in" title=${stats.visits ? `Hôm nay: ${fmtCount(stats.visits.today)} lượt · Tổng: ${fmtCount(stats.visits.total)} lượt` : 'Số người đang mở bản đồ'}>
+    ${state === 'ready' && !server && stats.online > 0 && html`<div class="map-stats pop-in" title=${stats.visits ? `Hôm nay: ${fmtCount(stats.visits.today)} lượt · Tổng: ${fmtCount(stats.visits.total)} lượt${stats.visits.users ? ` · ${fmtCount(stats.visits.users)} tài khoản đã đăng ký` : ''}` : 'Số người đang mở bản đồ'}>
       <span class="map-live-dot" aria-hidden="true"></span><span><b>${fmtCount(stats.online)}</b> đang xem</span>
       ${stats.visits && html`<span class="map-stats-sep" aria-hidden="true"></span><span><b>${fmtCount(stats.visits.total)}</b> lượt<span class="map-stats-long"> truy cập</span></span>`}
+      ${stats.visits?.users > 0 && html`<span class="map-stats-sep" aria-hidden="true"></span><span title="Số tài khoản đã đăng ký"><b>${fmtCount(stats.visits.users)}</b> tài khoản</span>`}
     </div>`}
     ${state === 'ready' && walking && html`<div class="map-mini"><canvas ref=${miniRef}></canvas><span class="map-mini-n" style=${`transform: rotate(${compass}rad)`}><b>N</b></span></div>`}
     ${state === 'ready' && walking && timeBtn('walk-time')}
@@ -498,6 +506,8 @@ export function MapPage() {
     </div>`}
     ${state === 'ready' && walking && near && !sel && html`<button class="map-near pop-in" key=${near.key} onClick=${() => select(near, { fly: false })}>
       <${Icon} name="pin" size=${16} /><span>Gần <b>${near.title}</b></span><span class="map-near-key">${mobile ? 'Chạm để xem' : 'Nhấn E'}</span></button>`}
+    ${state === 'ready' && walking && seat && html`<button class="map-seat pop-in" onClick=${(e) => { e.currentTarget.blur(); sceneRef.current?.toggleSit(); setSeat(sceneRef.current?.sitting() ? 'on' : 'can'); }}>
+      🪑 <span>${seat === 'on' ? 'Đứng dậy' : 'Ngồi xuống ghế'}</span>${!mobile && html`<span class="map-near-key">E</span>`}</button>`}
     ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà${server ? html` · <b>Enter</b> chat` : ''} · <b>Esc</b> thoát</div>`}
     ${state === 'ready' && walking && (view.fp || view.locked) && html`<div class="map-crosshair" aria-hidden="true"></div>`}
     ${state === 'ready' && walking && !mobile && html`<div class=${'map-lock-chip' + (view.locked ? ' on' : '')}>${view.locked

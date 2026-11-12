@@ -1,9 +1,11 @@
 // Server mode UI for the 3D campus map: name tags and chat bubbles over everyone, the shared chat,
-// player list, meetings with voice chat, emotes, and the character customizer.
+// player list, meetings with voice chat, emotes, the character customizer, and football at the stadium
+// (game in ../soccer.js, its UI in map-soccer.js).
 import { html, useState, useEffect, useRef } from 'preact';
 import { supabase } from '../lib.js';
 import { Icon, toast, openSheet } from '../ui.js';
 import { connectWorld, EMOTES, devName } from '../world.js';
+import { SoccerHud, SoccerPanel, SoccerChip, TEAM_CSS, showBoard } from './map-soccer.js';
 
 const LOOK_LABELS = { skin: 'Màu da', hair: 'Kiểu tóc', hc: 'Màu tóc', shirt: 'Áo', pants: 'Quần', bag: 'Balo', glasses: 'Kính' };
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
@@ -136,7 +138,9 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const [selPlayer, setSelPlayer] = useState(null);
   const [text, setText] = useState('');
   const [unread, setUnread] = useState(0);
+  const [socView, setSocView] = useState(null); // football: what to show (soccer.view())
   const world = useRef(null);
+  const soccer = useRef(null);
   const tags = useRef(new Map()); // id -> { el, name, bubble, until }
   const layer = useRef();
   const input = useRef();
@@ -150,11 +154,16 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   };
 
   useEffect(() => {
+    // football: loaded right after (it needs three.js, already there for the map); messages wait until then
+    const socQueue = [];
+    const toSoccer = (m) => (soccer.current ? soccer.current.handle(m) : socQueue.push(m));
+    let dead = false;
     const w = connectWorld({
       look,
       getSelf: () => scene.self(),
       on: (m) => {
         switch (m.t) {
+          case 'fs': case 'fb': case 'fe': case 'fpos': toSoccer(m); break;
           case 'status':
             setStatus(m.status);
             if (m.status === 'offline') { scene.players.clear(); setPlayers({}); }
@@ -167,11 +176,15 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
             for (const p of m.players) { all[p.id] = p; scene.players.add(p.id, p.look, p.p); }
             setPlayers(all); setMeetings(m.meetings || []); setChat(m.chat || []);
             setMyMeeting(null); setMchat([]);
+            st.current.me = m.me;
+            soccer.current?.onWelcome();
+            soccer.current?.syncKits();
             break;
           }
           case 'join':
             setPlayers((o) => ({ ...o, [m.p.id]: m.p }));
             scene.players.add(m.p.id, m.p.look, m.p.p);
+            soccer.current?.syncKits();
             break;
           case 'leave':
             setPlayers((o) => { const n = { ...o }; delete n[m.id]; return n; });
@@ -182,6 +195,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
           case 'away': setPlayers((o) => (o[m.id] ? { ...o, [m.id]: { ...o[m.id], away: !!m.v } } : o)); break;
           case 'look':
             scene.players.setLook(m.id, m.look);
+            soccer.current?.syncKits();
             setPlayers((o) => (o[m.id] ? { ...o, [m.id]: { ...o[m.id], look: m.look } } : o));
             break;
           case 'emo':
@@ -222,7 +236,20 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     world.current = w;
     pickRef.current = (id) => { setSelPlayer(id); setPanel(null); };
     frameRef.current = placeTags;
+    import('../soccer.js').then(({ createSoccer }) => {
+      if (dead) return;
+      soccer.current = createSoccer({
+        map: scene, send: (o) => world.current?.send(o), serverNow: () => w.serverNow(), myId: () => st.current.me?.id,
+        onChange: () => setSocView(soccer.current?.view() || null),
+      });
+      if (location.hostname === 'localhost') window.__soccer = soccer.current; // debugging
+      for (const m of socQueue.splice(0)) soccer.current.handle(m);
+      setSocView(soccer.current.view());
+    }).catch((e) => console.warn('football', e));
     return () => {
+      dead = true;
+      soccer.current?.dispose(); soccer.current = null;
+      document.querySelector('.map-page')?.classList.remove('in-soccer', 'soc-board-on');
       w.close(); world.current = null;
       scene.players.clear();
       pickRef.current = null; frameRef.current = null;
@@ -245,6 +272,11 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // while in a team: the football buttons replace jump / bikes on the map page
+  const inTeam = socView ? socView.myTeam >= 0 : false, board = showBoard(socView);
+  useEffect(() => { document.querySelector('.map-page')?.classList.toggle('in-soccer', inTeam); }, [inTeam]);
+  useEffect(() => { document.querySelector('.map-page')?.classList.toggle('soc-board-on', board); }, [board]);
+
   // keep look in sync when edited
   useEffect(() => { world.current?.setLook(look); }, [look]);
 
@@ -254,7 +286,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     const { me: self, players: ps, fp: firstPerson } = st.current;
     const heads = scene.players.heads();
     const mine = scene.self();
-    if (self && mine && !firstPerson) heads.push({ id: self.id, x: mine[0], y: mine[2] + (mine[4] ? 2.05 : 1.85), z: mine[1], me: true });
+    if (self && mine && !firstPerson) heads.push({ id: self.id, x: mine[0], y: mine[2] + (mine[4] === 3 ? 1.38 : mine[4] ? 2.05 : 1.85), z: mine[1], me: true });
+    const teams = soccer.current?.view().teams;
     const now = performance.now();
     const seen = new Set();
     for (const h of heads) {
@@ -284,6 +317,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       if (t.shown !== bt) { t.shown = bt; const b = t.el.querySelector('.world-bubble'); b.textContent = bt; b.style.display = bt ? '' : 'none'; }
       if (showB) scene.requestRender(); // keep drawing until the bubble disappears
       t.el.classList.toggle('far', far > 60);
+      const team = teams ? (teams[0].includes(h.id) ? 0 : teams[1].includes(h.id) ? 1 : -1) : -1;
+      if (t.team !== team) { t.team = team; t.el.style.setProperty('--team', team >= 0 ? TEAM_CSS[team] : ''); t.el.classList.toggle('team', team >= 0); }
       t.el.classList.toggle('away', !!info.away && !h.me);
     }
     for (const [id, t] of tags.current) if (!seen.has(id) && t.el) t.el.style.display = 'none';
@@ -333,9 +368,13 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       </button>
       <button class=${'map-btn sm' + (panel === 'meetings' ? ' on' : '')} title="Phòng họp & voice chat" aria-label="Phòng họp" onClick=${() => setPanel(panel === 'meetings' ? null : 'meetings')}>🎙</button>
       <button class=${'map-btn sm' + (panel === 'emotes' ? ' on' : '')} title="Biểu cảm" aria-label="Biểu cảm" onClick=${() => setPanel(panel === 'emotes' ? null : 'emotes')}>😀</button>
+      <${SoccerChip} v=${socView} open=${panel === 'soccer'} onOpen=${() => setPanel(panel === 'soccer' ? null : 'soccer')} />
       <button class="map-btn sm" title="Đổi nhân vật" aria-label="Đổi nhân vật" onClick=${() => { setPanel(null); onEditLook(); }}>👕</button>
       ${mobile && html`<button class=${'map-btn sm' + (panel === 'chat' ? ' on' : '')} aria-label="Chat" onClick=${() => { setUnread(0); setPanel(panel === 'chat' ? null : 'chat'); }}>💬${unread > 0 && html`<span class="world-badge">${unread > 9 ? '9+' : unread}</span>`}</button>`}
     </div>
+
+    <${SoccerHud} v=${socView} soccer=${soccer.current} mobile=${mobile} onOpen=${() => setPanel('soccer')} />
+    ${panel === 'soccer' && html`<${SoccerPanel} v=${socView} soccer=${soccer.current} me=${me?.id} nameOf=${nameOf} mobile=${mobile} onClose=${() => setPanel(null)} />`}
 
     ${panel === 'emotes' && html`<div class="world-panel emotes pop-in">${EMOTES.map((e, i) => html`<button class="world-emote" onClick=${() => emote(i)}>${e}</button>`)}</div>`}
 

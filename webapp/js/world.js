@@ -23,6 +23,8 @@ export function devName() {
 export function connectWorld({ look, on, getSelf }) {
   let ws = null, closed = false, tries = 0, retryTimer = 0, posTimer = 0, pingTimer = 0;
   let last = null, lastAt = 0, lastMsg = 0, meetingId = null, waiting = false;
+  let clockOff = 0, bestRtt = Infinity; // server clock = Date.now() + clockOff (football timing)
+  const ping = () => send({ t: 'ping', c: Date.now() });
   let ice = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
   let myLook = look;
   const voice = createVoice({ send: (o) => send(o), emit: (v) => on({ t: 'voice', ...v }), ice: () => ice });
@@ -41,9 +43,17 @@ export function connectWorld({ look, on, getSelf }) {
     ws.onmessage = (e) => {
       lastMsg = Date.now();
       let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m.t === 'pong' && m.c) {
+        // keep the estimate from the quickest round trip
+        const rtt = Date.now() - m.c;
+        if (rtt >= 0 && rtt < bestRtt) { bestRtt = rtt; clockOff = m.s - (m.c + rtt / 2); }
+        return;
+      }
       if (m.t === 'welcome') {
         if (Array.isArray(m.ice) && m.ice.length) ice = m.ice;
         last = null;
+        bestRtt = Infinity;
+        for (const d of [0, 300, 800, 1600]) setTimeout(ping, d);
         on({ t: 'status', status: 'online' });
         if (document.hidden) send({ t: 'away', v: 1 });
         if (meetingId) send({ t: 'mjoin', id: meetingId }); // back after a dropped connection: rejoin the meeting
@@ -97,7 +107,7 @@ export function connectWorld({ look, on, getSelf }) {
     last = p.slice(); lastAt = now;
     send({ t: 'p', p });
   }, 125);
-  pingTimer = setInterval(() => send({ t: 'ping' }), 25000);
+  pingTimer = setInterval(() => { bestRtt += 20; ping(); }, 25000); // (slowly forget an old fast sample)
   open();
 
   return {
@@ -108,6 +118,9 @@ export function connectWorld({ look, on, getSelf }) {
     joinMeeting: (id) => send({ t: 'mjoin', id }),
     leaveMeeting: () => { meetingId = null; send({ t: 'mleave' }); },
     invite: (to) => send({ t: 'minv', to }),
+    /** raw message (football) and the server clock estimate */
+    send: (o) => send(o),
+    serverNow: () => Date.now() + clockOff,
     voice,
     close() {
       closed = true;
