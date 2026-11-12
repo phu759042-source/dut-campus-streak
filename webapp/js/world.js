@@ -120,12 +120,9 @@ function createVoice({ send, emit, ice }) {
     stop(true);
     meeting = id;
     starting = (async () => {
-      try {
-        mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-        if (meeting !== id) { mic.getTracks().forEach((t) => t.stop()); mic = null; return; }
-        for (const t of mic.getAudioTracks()) t.enabled = !muted;
-        micAnalyser = analyse(mic);
-      } catch { mic = null; emit({ warn: 'Không mở được micro: bạn vẫn nghe được mọi người. Hãy cho phép micro trong trình duyệt nếu muốn nói.' }); }
+      const m = await getMic();
+      if (meeting !== id) { m?.getTracks().forEach((t) => t.stop()); return; }
+      setMic(m);
     })();
     await starting;
     if (meeting !== id) return;
@@ -138,6 +135,46 @@ function createVoice({ send, emit, ice }) {
       if (changed) state();
     }, 150);
     for (const pid of peerIds) call(pid);
+    state();
+  }
+
+  /** Asks the browser for the microphone. Returns the stream, or null after telling the user why it failed. */
+  async function getMic() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      emit({ warn: 'Trình duyệt này không cho dùng micro (thường gặp khi mở link trong Messenger/Zalo). Hãy mở bằng Chrome hoặc Safari. Bạn vẫn nghe được mọi người.' });
+      return null;
+    }
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    } catch (e) {
+      const name = e && e.name;
+      emit({ warn: name === 'NotAllowedError' || name === 'SecurityError'
+        ? 'Micro đang bị chặn cho trang này. Bấm biểu tượng ổ khóa cạnh địa chỉ web → cho phép Micro, rồi bấm nút 🎤 trong phòng họp. Bạn vẫn nghe được mọi người.'
+        : name === 'NotFoundError' ? 'Không tìm thấy micro trên máy này. Bạn vẫn nghe được mọi người.'
+        : name === 'NotReadableError' ? 'Micro đang bị ứng dụng khác dùng (Zoom, Meet…). Tắt ứng dụng đó rồi bấm 🎤 lại.'
+        : 'Không mở được micro. Bạn vẫn nghe được mọi người.' });
+      return null;
+    }
+  }
+  function setMic(m) {
+    mic = m;
+    if (!mic) return;
+    for (const t of mic.getAudioTracks()) t.enabled = !muted;
+    micAnalyser = analyse(mic);
+  }
+  /** Turns the mic on after joining (first try failed or was blocked): adds it to every call and renegotiates. */
+  async function enableMic() {
+    if (!meeting || mic) return;
+    const m = await getMic();
+    if (!m || !meeting) { m?.getTracks().forEach((t) => t.stop()); return; }
+    setMic(m);
+    const track = m.getAudioTracks()[0];
+    for (const [id, p] of peers) {
+      const tr = p.pc.getTransceivers().find((x) => !x.stopped && x.receiver.track?.kind === 'audio');
+      if (tr) { await tr.sender.replaceTrack(track); tr.sender.setStreams?.(m); tr.direction = 'sendrecv'; }
+      else p.pc.addTrack(track, m);
+      call(id).catch((e) => console.warn('voice', e));
+    }
     state();
   }
 
@@ -176,6 +213,8 @@ function createVoice({ send, emit, ice }) {
     const p = peer(from);
     try {
       if (d.sdp) {
+        // both sides renegotiating at once: drop our own offer and take theirs
+        if (d.sdp.type === 'offer' && p.pc.signalingState !== 'stable') await p.pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
         await p.pc.setRemoteDescription(d.sdp);
         for (const c of p.queue.splice(0)) await p.pc.addIceCandidate(c).catch(() => {});
         if (d.sdp.type === 'offer') {
@@ -209,5 +248,5 @@ function createVoice({ send, emit, ice }) {
     if (mic) for (const t of mic.getAudioTracks()) t.enabled = !m;
     state();
   }
-  return { start, signal, drop, stop, setMuted, get muted() { return muted; } };
+  return { start, signal, drop, stop, setMuted, enableMic, get muted() { return muted; } };
 }

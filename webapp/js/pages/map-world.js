@@ -209,7 +209,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
           case 'mpeer': toast(`${m.name} vừa vào phòng họp`, 'info', 2200); break;
           case 'mleft': setMyMeeting(null); setChatTab('all'); break;
           case 'voice':
-            if (m.warn) toast(m.warn, 'info', 4500);
+            if (m.warn) toast(m.warn, 'info', 8000);
             else setVoice(m);
             break;
           case 'error': toast(m.msg || 'Có lỗi.', 'error', 3500); break;
@@ -386,8 +386,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
         const peer = voice.peers.find((p) => p.id === id);
         return html`<span class=${'world-avatar' + (speaking ? ' speaking' : '') + (peer?.state === 'failed' ? ' failed' : '')} title=${nameOf(id) + (peer?.state === 'failed' ? ' (không kết nối được giọng nói)' : '')}>${nameOf(id).trim().charAt(0).toUpperCase()}</span>`;
       })}</div>
-      <button class=${'map-btn sm' + (voice.muted || !voice.mic ? ' off' : '')} disabled=${!voice.mic} aria-label=${voice.muted ? 'Bật mic' : 'Tắt mic'} title=${voice.muted ? 'Bật mic' : 'Tắt mic'}
-        onClick=${() => world.current?.voice.setMuted(!voice.muted)}>${voice.muted || !voice.mic ? '🔇' : '🎤'}</button>
+      <button class=${'map-btn sm' + (voice.muted || !voice.mic ? ' off' : '')} aria-label=${!voice.mic || voice.muted ? 'Bật mic' : 'Tắt mic'} title=${!voice.mic ? 'Bật micro' : voice.muted ? 'Bật mic' : 'Tắt mic'}
+        onClick=${() => (voice.mic ? world.current?.voice.setMuted(!voice.muted) : world.current?.voice.enableMic())}>${voice.muted || !voice.mic ? '🔇' : '🎤'}</button>
       <button class="map-btn sm danger" aria-label="Rời phòng họp" title="Rời phòng họp" onClick=${() => world.current?.leaveMeeting()}>📞</button>
     </div>`}
   </div>`;
