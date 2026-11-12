@@ -288,6 +288,10 @@ const ERROR_VI = {
   'Invalid login credentials': 'Email hoặc mật khẩu không đúng.',
   'Email not confirmed': 'Email chưa được xác nhận. Hãy kiểm tra hộp thư.',
   'User already registered': 'Email này đã được đăng ký.',
+  // the email service ran out of today's quota, or Supabase's hourly email limit was hit
+  'Error sending confirmation email': 'Hôm nay đã chạm giới hạn tạo tài khoản mới. Bạn quay lại đăng ký vào ngày mai nhé!',
+  'Error sending recovery email': 'Hôm nay đã chạm giới hạn gửi email. Bạn thử lại vào ngày mai nhé!',
+  'email rate limit exceeded': 'Đang có quá nhiều lượt đăng ký cùng lúc. Bạn thử lại sau ít phút nhé!',
   'Check-in is not allowed at this time': 'Chưa đến giờ check-in hoặc lớp đã kết thúc.',
   'Room verification failed': 'Không xác minh được phòng học. Hãy chụp rõ biển số phòng.',
   'No active class occurrence found for today': 'Hôm nay không có buổi học này.',
