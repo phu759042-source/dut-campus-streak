@@ -35,6 +35,7 @@ export class Soccer {
     this.simAt = Date.now();
     this.lt = null;          // last player to touch the ball
     this.ltName = '';
+    this.lk = null;          // how they last struck it: s shot, p / l low / lofted pass, v volley, h header, b bicycle kick
     this.cool = new Map();   // id -> { touch, tackle, stun } until (server ms)
     this.timer = 0; this.acc = 0; this.last = 0; this.ticks = 0; this.resetAt = 0;
   }
@@ -133,15 +134,15 @@ export class Soccer {
       if (this.st === 'play') {
         const team = e.team, by = this.lt, t = by ? this.teamOf(by) : -1;
         this.score[team]++;
-        this.goals.push({ id: by, name: this.ltName || 'Ai đó', team, own: t >= 0 && t !== team, ms: Math.max(0, MATCH_MS - (this.endsAt - now)) });
+        this.goals.push({ id: by, name: this.ltName || 'Ai đó', team, own: t >= 0 && t !== team, how: this.lk, ms: Math.max(0, MATCH_MS - (this.endsAt - now)) });
         this.rem = Math.max(0, this.endsAt - now);
         this.st = 'goal'; this.until = now + GOAL_MS; this.ko = 1 - team;
         this.pushState();
-        this.event({ e: 'goal', team, id: by, name: this.ltName, own: t >= 0 && t !== team, score: this.score });
+        this.event({ e: 'goal', team, id: by, name: this.ltName, own: t >= 0 && t !== team, how: this.lk, score: this.score });
         return;
       }
       if (this.st !== 'goal') this.resetAt = now + 2500; // warm-up goal: the ball goes back to the middle
-      this.event({ e: 'goal', team: e.team, id: this.lt, name: this.ltName, practice: true });
+      this.event({ e: 'goal', team: e.team, id: this.lt, name: this.ltName, how: this.lk, practice: true });
       return;
     }
     this.event(e);
@@ -194,7 +195,7 @@ export class Soccer {
   }
   kickoff(now, team) {
     this.st = 'kick'; this.until = now + KICKOFF_MS; this.ko = team;
-    resetBall(this.sim); this.lt = null; this.ltName = ''; this.resetAt = 0;
+    resetBall(this.sim); this.lt = null; this.ltName = ''; this.lk = null; this.resetAt = 0;
     for (const t of [0, 1]) {
       const spots = kickoffSpots(t, this.teams[t].length, team);
       this.teams[t].forEach((id, i) => this.place(id, spots[i], t));
@@ -216,6 +217,8 @@ export class Soccer {
       case 'ft': this.touch(a, msg, now); return;
       case 'fk': this.kick(a, msg, now); return;
       case 'fx': this.tackle(a, msg, now); return;
+      case 'fa': this.strike(a, msg, now); return;
+      case 'fd': this.dribble(a, now); return;
       default:
     }
   }
@@ -262,11 +265,14 @@ export class Soccer {
     const me = this.local(a), p = Array.isArray(msg.p) ? toLocal(num(msg.p[0]), num(msg.p[1])) : null;
     if (!me || !p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return;
     if (dist(p, me) > 4 || dist(p, [b.u, b.v]) > 2.4 || b.y > 1.6) return;
-    b.h = a.id; this.lt = a.id; this.ltName = a.name;
+    b.h = a.id; this.lt = a.id; this.ltName = a.name; this.lk = null;
     this.pushBall();
   }
 
-  /** Shot or pass: the player sends where the ball starts and its velocity (the server caps the power). */
+  /**
+   * The player with the ball kicks it: shot (s), low pass (p), lofted pass (l) or bicycle kick after flicking it
+   * up (b). They send where the ball starts and its velocity; the server checks it and caps the power.
+   */
   kick(a, msg, now) {
     const b = this.sim.b;
     if (b.h !== a.id || !this.canPlay() || !Array.isArray(msg.p) || !Array.isArray(msg.d)) return;
@@ -277,11 +283,41 @@ export class Soccer {
     const sp = Math.sqrt(vu * vu + vv * vv);
     if (sp > MAX_KICK) { vu *= MAX_KICK / sp; vv *= MAX_KICK / sp; }
     u = clamp(u, -HL + 0.2, HL - 0.2); v = clamp(v, -HW + 0.2, HW - 0.2);
-    Object.assign(b, { u, v, y: BALL_R, vu, vv, vy: clamp(vy, 0, MAX_LIFT), h: null });
-    this.lt = a.id; this.ltName = a.name;
+    const y = clamp(num(msg.p[2]) || BALL_R, BALL_R, 2.6);
+    const k = ['s', 'p', 'l', 'b'].includes(msg.k) ? msg.k : 's';
+    Object.assign(b, { u, v, y, vu, vv, vy: clamp(vy, 0, MAX_LIFT), h: null });
+    this.lt = a.id; this.ltName = a.name; this.lk = k;
     this.cooldown(a.id, 'touch', now + 350);
     this.pushBall();
-    this.event({ e: msg.k === 'p' ? 'pass' : 'kick', id: a.id });
+    this.event({ e: 'kick', k, id: a.id });
+  }
+
+  /** Volley (v), header (h) or bicycle kick (b) on a free ball in the air, checked against where it really is. */
+  strike(a, msg, now) {
+    const b = this.sim.b, k = msg.k;
+    if (this.teamOf(a.id) < 0 || !this.canPlay() || b.h != null || !['v', 'h', 'b'].includes(k)) return;
+    if (this.cooling(a.id, 'touch', now) || this.cooling(a.id, 'stun', now)) return;
+    if (!Array.isArray(msg.p) || !Array.isArray(msg.d)) return;
+    const u = num(msg.p[0]), v = num(msg.p[1]), y = num(msg.p[2]);
+    let vu = num(msg.d[0]), vv = num(msg.d[1]), vy = num(msg.d[2]);
+    if (![u, v, y, vu, vv, vy].every(Number.isFinite)) return;
+    const me = this.local(a);
+    if (!me || dist([u, v], [b.u, b.v]) > 2.6 || Math.abs(y - b.y) > 1.5 || dist([u, v], me) > 4.5) return;
+    const max = { v: 30, h: 20, b: 28 }[k], sp = Math.sqrt(vu * vu + vv * vv);
+    if (sp > max) { vu *= max / sp; vv *= max / sp; }
+    Object.assign(b, { u: clamp(u, -HL + 0.2, HL - 0.2), v: clamp(v, -HW + 0.2, HW - 0.2), y: clamp(y, BALL_R, 3), vu, vv, vy: clamp(vy, -4, 8), h: null });
+    this.lt = a.id; this.ltName = a.name; this.lk = k;
+    this.cooldown(a.id, 'touch', now + 350);
+    this.pushBall();
+    this.event({ e: 'kick', k, id: a.id });
+  }
+
+  /** Dribble burst: for a moment tackles on the dribbler miss. */
+  dribble(a, now) {
+    if (this.sim.b.h !== a.id || this.cooling(a.id, 'dribble', now)) return;
+    this.cooldown(a.id, 'dribble', now + 1300);
+    this.cooldown(a.id, 'dodge', now + 650);
+    this.event({ e: 'dribble', id: a.id });
   }
 
   /** Slide tackle: wins the ball from an opponent close enough to the tackler. */
@@ -292,6 +328,7 @@ export class Soccer {
     this.event({ e: 'slide', id: a.id });
     const h = b.h;
     if (h == null || keeperHolds(this.sim) || this.teamOf(h) === t || this.teamOf(h) < 0) return;
+    if (this.cooling(h, 'dodge', now)) { this.event({ e: 'dodged', id: h, by: a.id }); return; } // dribbled past
     const me = this.local(a), p = Array.isArray(msg.p) ? toLocal(num(msg.p[0]), num(msg.p[1])) : null;
     if (!me || !p || !Number.isFinite(p[0]) || !Number.isFinite(p[1]) || dist(p, me) > 4 || dist(p, [b.u, b.v]) > 2.8) return;
     let du = 0, dv = 0;
@@ -299,7 +336,7 @@ export class Soccer {
     const L = Math.sqrt(du * du + dv * dv) || 1;
     Object.assign(b, { h: null, vu: (du / L) * 4.5, vv: (dv / L) * 4.5, vy: 1.2 });
     this.cooldown(h, 'stun', now + 900);
-    this.lt = a.id; this.ltName = a.name;
+    this.lt = a.id; this.ltName = a.name; this.lk = null;
     this.pushBall();
     this.event({ e: 'steal', id: a.id, from: h });
   }

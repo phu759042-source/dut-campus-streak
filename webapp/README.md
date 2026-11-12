@@ -153,12 +153,18 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   **Ghép ngẫu nhiên**. Vào đội là mặc áo đội và được đưa xuống sân. Khi cả hai đội đều có người: đếm ngược 10 giây,
   giao bóng, trận 5 phút; bàn thắng có thông báo lớn, hết giờ có kết quả và danh sách ghi bàn, rồi tự đá trận mới.
   Thủ môn hai bên do máy điều khiển (bắt bóng, đẩy bóng, phát bóng).
-- Cách chơi: chạy vào bóng để dắt bóng. Máy tính: **Space** giữ để lấy lực rồi thả để sút (sút gần khung thành thì
-  bóng được nắn vào trong cột), **E** chuyền cho đồng đội phía trước, **Q** xoạc để cướp bóng, **Shift** chạy nhanh
-  (tốn thể lực). Khi khóa chuột (O): chuột trái sút, chuột phải chuyền. Điện thoại: nút Sút / Chuyền / Xoạc.
+- Cách chơi: chạy vào bóng để dắt bóng. Máy tính (bóng bay theo hướng camera):
+  - **Chuột phải** giữ để lấy lực, thả để sút (sút gần khung thành thì bóng được nắn vào trong cột).
+  - **Chuột trái** bấm: chuyền thấp; giữ: chuyền cao (bổng qua đầu tới đồng đội). Kéo chuột trái vẫn là xoay camera.
+  - **Space** nhảy; đang ở trên không bấm (hoặc giữ) **chuột phải** để vô lê, **chuột trái** để đánh đầu khi bóng tới.
+  - Giữ chuột trái hoặc phải rồi bấm **Space**: xe đạp chổng ngược (bóng bay về phía camera nhìn).
+  - **E** xoạc cướp bóng, **Q** lừa bóng (lướt nhanh, đối thủ xoạc lúc đó sẽ hụt), **Shift** chạy nhanh (tốn thể lực).
+  - Điện thoại: nút Sút / Chuyền (chạm: thấp, giữ: cao) / Nhảy / Xoạc / Lừa; Nhảy rồi bấm Sút = vô lê, Nhảy rồi bấm
+    Chuyền = đánh đầu, giữ Sút hoặc Chuyền rồi bấm Nhảy = xe đạp chổng ngược (bóng bay ra sau lưng).
 - Khán đài 7 bậc hai bên sân (đi lên được, nhấn **E** hoặc nút 🪑 để ngồi xuống ghế). Khi một trận bắt đầu, người
   đang ở chỗ khác trong trường thấy thông báo **Đến xem** (đưa lên ghế khán đài) hoặc **Vào đá**.
-- Server là trọng tài: `world-server/src/soccer.js` giữ đội, tỉ số, đồng hồ, kiểm tra từng lần chạm bóng / sút / xoạc,
+- Server là trọng tài: `world-server/src/soccer.js` giữ đội, tỉ số, đồng hồ, kiểm tra từng lần chạm bóng / sút / xoạc /
+  vô lê / đánh đầu / xe đạp chổng ngược (bóng phải thật sự ở gần) và lừa bóng,
   và chạy bóng + thủ môn bằng `js/soccer-core.js`. Trình duyệt chạy đúng file đó để đoán trước đường bóng giữa các lần
   server gửi (`js/soccer.js`), nên bóng chạy mượt. Giao diện: `js/pages/map-soccer.js`; khán đài: `js/stadium.js`.
 - Thử ở máy: chạy `world-server` như trên rồi mở 2 tab `/map?dev=A`, `/map?dev=B`, mỗi tab vào một đội.

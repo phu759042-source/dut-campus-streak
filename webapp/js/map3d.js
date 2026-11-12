@@ -498,11 +498,11 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   // ---------- picking ----------
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
-  let down = null;
+  let down = null, picking = true; // picking is off while playing football (clicks are passes then)
   const el = renderer.domElement;
   el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; anim = null; });
   el.addEventListener('pointerup', (e) => {
-    if (document.pointerLockElement) return; // mouse-look: clicks are not for picking
+    if (document.pointerLockElement || !picking) return; // mouse-look: clicks are not for picking
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6 || performance.now() - down.t > 600) return;
     const r = el.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -604,6 +604,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     setKit: (kit) => { walker.setKit(kit); requestRender(); },
     scene, walker,
     addFrameHook(f) { frameHooks.add(f); return () => frameHooks.delete(f); },
+    setPicking(on) { picking = on; },
     /** stands: can sit here / sit or stand up / go and sit on a seat with a good view */
     canSit: () => !!seatHere(), toggleSit, sitting: () => !!walker.state.sit,
     watchMatch() { const s = stadium?.randomSeat(); if (!s || !walker.state.on) return false; walker.sitAt(s); requestRender(); return true; },

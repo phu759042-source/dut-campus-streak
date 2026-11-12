@@ -1,8 +1,8 @@
 // Other students in server mode: one low-poly avatar per player, moved smoothly towards the last position the
 // server sent (positions arrive a few times per second), with the same walking / riding / sitting animation as
-// your own, football kits and kick / slide-tackle animations.
+// your own, football kits and the football moves (kick, volley, header, bicycle kick, slide tackle, dribble burst).
 import * as THREE from 'three';
-import { makeStudent, disposeStudent, vehicleKit, SCALE } from './walk.js';
+import { makeStudent, disposeStudent, vehicleKit, limbPose, MOVE_T, SCALE } from './walk.js';
 
 export const MODES = ['walk', 'scooter', 'moto']; // mode 3 = sitting on the stands
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -38,7 +38,7 @@ export function createPlayers(scene) {
   function add(id, look, pos) {
     if (list.has(id)) { setLook(id, look); if (pos) setPos(id, pos, true); return; }
     const p = { id, rig: new THREE.Group(), s: null, kit: null, x: 0, z: 0, y: 0, h: 0, mode: 0, speed: 0, phase: Math.random() * 6,
-      tx: 0, tz: 0, ty: 0, th: 0, seen: false, wave: 0, kick: 0, slide: 0, meshes: [], look: null, kit: null };
+      tx: 0, tz: 0, ty: 0, th: 0, seen: false, wave: 0, kick: 0, volley: 0, slide: 0, bike: 0, head: 0, dash: 0, meshes: [], look: null, kit: null };
     root.add(p.rig);
     list.set(id, p);
     build(p, look);
@@ -83,8 +83,17 @@ export function createPlayers(scene) {
   }
   function clear() { for (const id of [...list.keys()]) remove(id); }
   function wave(id) { const p = list.get(id); if (p) p.wave = 2.2; }
-  function kick(id) { const p = list.get(id); if (p) p.kick = 0.32; }
-  function slide(id) { const p = list.get(id); if (p) p.slide = 0.45; }
+  /** A football move seen from another player: kick | volley | header | bicycle | slide | dash. */
+  function move(id, kind) {
+    const p = list.get(id);
+    if (!p) return;
+    if (kind === 'kick') p.kick = MOVE_T.kick;
+    else if (kind === 'volley') { p.kick = MOVE_T.kick; p.volley = MOVE_T.kick; }
+    else if (kind === 'header') p.head = MOVE_T.head;
+    else if (kind === 'bicycle') p.bike = MOVE_T.bike;
+    else if (kind === 'slide') p.slide = MOVE_T.slide;
+    else if (kind === 'dash') p.dash = MOVE_T.dash;
+  }
 
   /** Moves everyone a little towards their latest position. Returns true while something is still moving. */
   function update(dt) {
@@ -93,13 +102,13 @@ export function createPlayers(scene) {
     for (const p of list.values()) {
       if (!p.seen) continue;
       const dx = p.tx - p.x, dz = p.tz - p.z, dy = p.ty - p.y, dh = wrap(p.th - p.h);
-      const moving = Math.abs(dx) + Math.abs(dz) + Math.abs(dy) > 0.01 || Math.abs(dh) > 0.01 || p.speed > 0.2 || p.wave > 0 || p.kick > 0 || p.slide > 0;
+      const moving = Math.abs(dx) + Math.abs(dz) + Math.abs(dy) > 0.01 || Math.abs(dh) > 0.01 || p.speed > 0.2 || p.wave > 0 || p.kick > 0 || p.slide > 0 || p.bike > 0 || p.head > 0 || p.dash > 0;
       if (moving) busy = true;
       p.x += dx * k; p.z += dz * k; p.y += dy * k; p.h += dh * k;
       const s = p.s, ease = Math.min(1, dt * 12);
       p.phase += dt * (3 + p.speed * 1.9);
       p.rig.position.set(p.x, p.y, p.z);
-      p.kick = Math.max(0, p.kick - dt); p.slide = Math.max(0, p.slide - dt);
+      for (const k of ['kick', 'volley', 'slide', 'bike', 'head', 'dash']) p[k] = Math.max(0, p[k] - dt);
       if (p.mode === 3) { // sitting on the stands
         for (const [limb, target] of [[s.legL, -1.35], [s.legR, -1.35], [s.armL, -0.35], [s.armR, -0.35]]) limb.rotation.x += (target - limb.rotation.x) * ease;
         s.group.position.set(0, -0.5, 0);
@@ -119,20 +128,19 @@ export function createPlayers(scene) {
         const swing = Math.sin(p.phase) * Math.min(0.95, 0.25 + Math.min(1, p.speed / 7.2) * 1.1) * (p.speed > 0.2 ? 1 : 0);
         p.wave = Math.max(0, p.wave - dt);
         const waveArm = p.wave > 0 ? -2.6 + Math.sin(p.wave * 12) * 0.35 : null;
-        let legL = swing + air, legR = -swing - air * 0.3, armL = -swing * 0.85 - air, armR = waveArm ?? swing * 0.85 - air, lean = 0, gy = p.speed > 0.2 ? Math.abs(Math.sin(p.phase)) * 0.045 : 0;
-        if (p.kick > 0) { // swing the right leg through the ball
-          const k = 1 - p.kick / 0.32;
-          legR = k < 0.3 ? 0.9 * (k / 0.3) : 0.9 - 2.7 * Math.min(1, (k - 0.3) / 0.45);
-          armL = -0.9; armR = 0.5;
-        }
-        if (p.slide > 0) { legL = -1.3; legR = -1.15; armL = -0.7; armR = -0.4; lean = -1.0; gy = 0.05; }
-        s.legL.rotation.x += (legL - s.legL.rotation.x) * ease;
-        s.legR.rotation.x = p.kick > 0 ? legR : s.legR.rotation.x + (legR - s.legR.rotation.x) * ease;
-        s.armL.rotation.x += (armL - s.armL.rotation.x) * ease;
-        s.armR.rotation.x += (armR - s.armR.rotation.x) * ease;
+        const P = limbPose(p, swing, air);
+        const snap = p.kick > 0 || p.bike > 0;
+        s.legL.rotation.x += (P.legL - s.legL.rotation.x) * ease;
+        s.legR.rotation.x = snap ? P.legR : s.legR.rotation.x + (P.legR - s.legR.rotation.x) * ease;
+        s.armL.rotation.x += (P.armL - s.armL.rotation.x) * ease;
+        s.armR.rotation.x += ((waveArm ?? P.armR) - s.armR.rotation.x) * ease;
         s.armR.rotation.z += ((p.wave > 0 ? 0.35 : 0) - s.armR.rotation.z) * ease;
-        s.group.position.set(0, gy, 0);
-        s.group.rotation.x += (lean - s.group.rotation.x) * Math.min(1, dt * 18);
+        s.group.position.set(0, P.y ?? (p.speed > 0.2 ? Math.abs(Math.sin(p.phase)) * 0.045 : 0), P.z);
+        s.group.rotation.x = p.bike > 0 ? P.lean : s.group.rotation.x + (P.lean - s.group.rotation.x) * Math.min(1, dt * 18);
+        s.group.rotation.z += (P.roll - s.group.rotation.z) * Math.min(1, dt * 18);
+        // positions arrive only a few times a second: show the hop of a bicycle kick / header here
+        const hop = p.bike > 0 ? 1.1 * Math.sin(Math.PI * (1 - p.bike / MOVE_T.bike)) : p.head > 0 ? 0.35 * Math.sin(Math.PI * (1 - p.head / MOVE_T.head)) : 0;
+        if (hop) p.rig.position.y = p.y + hop;
         p.rig.rotation.set(0, p.h, 0);
         s.blob.scale.setScalar(0.8);
       }
@@ -150,5 +158,5 @@ export function createPlayers(scene) {
   }
   function get(id) { const p = list.get(id); return p && p.seen ? { x: p.x, z: p.z, y: p.y, h: p.h, speed: p.speed, phase: p.phase } : null; }
 
-  return { add, setLook, setKit, setPos, remove, clear, wave, kick, slide, update, heads, get, ids: () => [...list.keys()], pickables, dispose() { clear(); scene.remove(root); } };
+  return { add, setLook, setKit, setPos, remove, clear, wave, move, update, heads, get, ids: () => [...list.keys()], pickables, dispose() { clear(); scene.remove(root); } };
 }

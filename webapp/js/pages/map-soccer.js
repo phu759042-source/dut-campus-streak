@@ -12,6 +12,8 @@ const mmss = (ms) => {
 };
 const secs = (ms) => Math.max(0, Math.ceil(ms / 1000));
 const CLOCK = ['kick', 'play', 'goal', 'wait', 'end'];
+const HOW = { v: 'bằng cú vô lê', h: 'bằng cú đánh đầu', b: 'bằng cú xe đạp chổng ngược', l: 'bằng cú lốp bóng' };
+const HOW_SHORT = { v: 'vô lê', h: 'đánh đầu', b: 'xe đạp chổng ngược' };
 
 /** One line about where the match is at. */
 export function soccerStatus(v) {
@@ -60,7 +62,7 @@ export function SoccerHud({ v, soccer, mobile, onOpen }) {
 
     ${b && b.kind === 'goal' && (b.near || inTeam) && html`<div class="soc-banner" key=${'g' + b.until} style=${`--c:${TEAM_CSS[b.team]}`}>
       <b>VÀOOO!</b>
-      <span>${b.own ? `${b.name || 'Ai đó'} đá phản lưới nhà` : `${b.name || 'Ai đó'} ghi bàn cho đội ${TEAM_NAMES[b.team]}`}</span>
+      <span>${b.own ? `${b.name || 'Ai đó'} đá phản lưới nhà` : `${b.name || 'Ai đó'} ghi bàn ${HOW[b.how] ? HOW[b.how] + ' ' : ''}cho đội ${TEAM_NAMES[b.team]}`}</span>
       ${b.score && html`<span class="soc-banner-score">${TEAM_NAMES[0]} ${b.score[0]} – ${b.score[1]} ${TEAM_NAMES[1]}</span>`}
     </div>`}
     ${b && b.kind === 'goal' && !b.near && !inTeam && html`<div class="soc-ticker pop-in" key=${'t' + b.until} onClick=${onOpen}>⚽ <b>${b.name || 'Ai đó'}</b> ghi bàn · ${TEAM_NAMES[0]} ${b.score?.[0]}–${b.score?.[1]} ${TEAM_NAMES[1]}</div>`}
@@ -69,21 +71,28 @@ export function SoccerHud({ v, soccer, mobile, onOpen }) {
       <b>HẾT GIỜ</b>
       <span>${b.score[0] === b.score[1] ? 'Hai đội hòa nhau' : `Đội ${TEAM_NAMES[b.score[0] > b.score[1] ? 0 : 1]} thắng`}</span>
       <span class="soc-banner-score">${TEAM_NAMES[0]} ${b.score[0]} – ${b.score[1]} ${TEAM_NAMES[1]}</span>
-      ${v.goals.length > 0 && html`<span class="soc-banner-goals">${v.goals.map((g) => `⚽ ${g.name}${g.own ? ' (phản lưới)' : ''} ${Math.floor(g.ms / 60000) + 1}'`).join('   ')}</span>`}
+      ${v.goals.length > 0 && html`<span class="soc-banner-goals">${v.goals.map((g) => `⚽ ${g.name}${g.own ? ' (phản lưới)' : HOW_SHORT[g.how] ? ` (${HOW_SHORT[g.how]})` : ''} ${Math.floor(g.ms / 60000) + 1}'`).join('   ')}</span>`}
     </div>`}
     ${v.flash && html`<div class="soc-ticker warn pop-in">${v.flash.text}</div>`}
 
     ${inTeam && html`<div class=${'soc-meters' + (mobile ? ' m' : '')}>
+      ${v.armed && html`<div class="soc-armed">${v.armed === 'v' ? 'Vô lê' : 'Đánh đầu'}: chờ bóng tới…</div>`}
       ${v.power != null && html`<div class="soc-meter power"><span style=${`width:${Math.round(v.power * 100)}%`}></span><b>Lực sút</b></div>`}
+      ${v.lob != null && html`<div class="soc-meter lob"><span style=${`width:${Math.round(v.lob * 100)}%`}></span><b>Chuyền cao</b></div>`}
       <div class=${'soc-meter stamina' + (v.tired ? ' tired' : '')}><span style=${`width:${Math.round(v.stamina * 100)}%`}></span><b>${v.tired ? 'Mệt, chờ hồi sức' : 'Thể lực'}</b></div>
     </div>`}
-    ${inTeam && !mobile && html`<div class="soc-keys"><b>Space</b> giữ để lấy lực, thả để sút · <b>E</b> chuyền · <b>Q</b> xoạc bóng · <b>Shift</b> chạy nhanh · chạy vào bóng để dắt</div>`}
+    ${inTeam && !mobile && html`<div class="soc-keys">
+      <span><b>Chuột phải</b> giữ rồi thả: sút · <b>Chuột trái</b> bấm: chuyền thấp, giữ: chuyền cao · <b>E</b> xoạc · <b>Q</b> lừa bóng · <b>Shift</b> chạy nhanh</span>
+      <span><b>Space</b> nhảy, trên không: <b>chuột phải</b> vô lê, <b>chuột trái</b> đánh đầu · giữ chuột rồi bấm <b>Space</b>: xe đạp chổng ngược</span>
+    </div>`}
     ${inTeam && mobile && html`<div class="soc-pad">
       <button class="soc-btn tackle" aria-label="Xoạc bóng" onPointerDown=${(e) => { e.preventDefault(); soccer.tackle(); }}>Xoạc</button>
-      <button class="soc-btn pass" aria-label="Chuyền bóng" onPointerDown=${(e) => { e.preventDefault(); soccer.pass(); }}>Chuyền</button>
-      <button class="soc-btn shoot" aria-label="Sút (giữ lâu để sút mạnh)"
-        onPointerDown=${(e) => { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* old browser */ } soccer.shootDown(); }}
-        onPointerUp=${() => soccer.shootUp()} onPointerCancel=${() => soccer.shootUp()}>Sút</button>
+      <button class="soc-btn dribble" aria-label="Lừa bóng" onPointerDown=${(e) => { e.preventDefault(); soccer.dribble(); }}>Lừa</button>
+      <button class="soc-btn jump" aria-label="Nhảy (giữ Sút hoặc Chuyền rồi bấm: xe đạp chổng ngược)" onPointerDown=${(e) => { e.preventDefault(); soccer.jump(); }}>Nhảy</button>
+      ${[['pass', 'Chuyền', 'Chuyền (chạm: thấp, giữ: cao; trên không: đánh đầu)'], ['shoot', 'Sút', 'Sút (giữ lâu sút mạnh; trên không: vô lê)']].map(([k, label, aria]) => html`
+        <button class=${'soc-btn ' + k} aria-label=${aria}
+          onPointerDown=${(e) => { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* old browser */ } soccer.press(k); }}
+          onPointerUp=${() => soccer.release(k)} onPointerCancel=${() => soccer.release(k)}>${label}</button>`)}
     </div>`}
 
     ${v.notice && !inTeam && html`<div class="soc-notice pop-in">
@@ -128,8 +137,11 @@ export function SoccerPanel({ v, soccer, me, nameOf, mobile, onClose }) {
     ${v.goals.length > 0 && html`<div class="soc-goals">${v.goals.map((g) => html`<div class="small"><span class="soc-dot" style=${`--c:${TEAM_CSS[g.team]}`}></span> ${g.name}${g.own ? ' (phản lưới)' : ''} · phút ${Math.floor(g.ms / 60000) + 1}</div>`)}</div>`}
     <div class="soc-help small">
       <b>Cách chơi.</b> Chạy vào bóng để dắt bóng. ${mobile
-        ? html`Nút <b>Sút</b> (giữ lâu sút càng mạnh), <b>Chuyền</b> cho đồng đội phía trước, <b>Xoạc</b> để cướp bóng; đẩy cần điều khiển hết cỡ để chạy nhanh.`
-        : html`<b>Space</b> giữ để lấy lực rồi thả để sút, <b>E</b> chuyền cho đồng đội phía trước, <b>Q</b> xoạc để cướp bóng, <b>Shift</b> chạy nhanh (tốn thể lực).`}${' '}
+        ? html`Nút <b>Sút</b> (giữ lâu sút càng mạnh), <b>Chuyền</b> (chạm: chuyền thấp, giữ: chuyền cao), <b>Xoạc</b> cướp bóng, <b>Lừa</b> lừa bóng.
+          Bấm <b>Nhảy</b> rồi bấm <b>Sút</b> để vô lê, bấm <b>Chuyền</b> để đánh đầu; giữ Sút hoặc Chuyền rồi bấm Nhảy: xe đạp chổng ngược. Đẩy cần điều khiển hết cỡ để chạy nhanh.`
+        : html`<b>Chuột phải</b> giữ để lấy lực rồi thả để sút (bóng bay theo hướng camera), <b>chuột trái</b> bấm để chuyền thấp, giữ để chuyền cao,
+          <b>E</b> xoạc cướp bóng, <b>Q</b> lừa bóng (lướt nhanh, người khác xoạc hụt), <b>Shift</b> chạy nhanh (tốn thể lực).
+          <b>Space</b> để nhảy; trên không bấm <b>chuột phải</b> để vô lê, <b>chuột trái</b> để đánh đầu. Giữ chuột rồi bấm <b>Space</b>: xe đạp chổng ngược.`}${' '}
       Mỗi trận 5 phút, mỗi đội tối đa ${TEAM_SIZE} người, thủ môn do máy bắt. Người không đá có thể lên khán đài hai bên sân ngồi xem.
     </div>
   </div>`;

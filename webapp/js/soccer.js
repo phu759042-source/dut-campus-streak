@@ -2,11 +2,13 @@
 // Draws the ball and the two goalkeepers, predicts the ball between server updates with the same physics as the
 // world server (soccer-core.js), dresses players in their team kit, and turns keys / buttons into touches,
 // shots, passes and slide tackles. The world server is the referee: it decides who has the ball, goals and score.
-//   Desktop: run into the ball to take it · Space (hold for power, release) shoot · E pass · Q slide tackle · Shift sprint
-//   Phones: buttons Sút (hold) · Chuyền · Xoạc, push the joystick all the way to sprint
+//   Desktop: run into the ball to take it · right mouse (hold for power) shoot · left mouse pass (tap low, hold lofted)
+//            Space jump; in the air right mouse volley, left mouse header · hold a mouse button + Space = bicycle kick
+//            E slide tackle · Q dribble burst · Shift sprint
+//   Phones: buttons Sút / Chuyền / Nhảy / Xoạc / Lừa, push the joystick all the way to sprint
 import * as THREE from 'three';
 import {
-  F, HL, HW, GOAL_W, BALL_R, KEEPER_U, STEP, STEP_MS, MATCH_MS, TEAM_SIZE, TEAM_NAMES,
+  F, HL, HW, GOAL_W, BALL_R, KEEPER_U, STEP, STEP_MS, MATCH_MS, TEAM_SIZE, TEAM_NAMES, MAX_KICK,
   toLocal, toWorld, dirLocal, dirWorld, ballAtFeet, newSim, step, passSpeed, keeperHolds,
 } from './soccer-core.js';
 import { makeStudent, disposeStudent, SCALE } from './walk.js';
@@ -24,7 +26,7 @@ const KEEPER_KITS = [
 const TURF = 0.23;            // the pitch is drawn this high above the ground
 const BALL_LOOK = 1.45;       // the ball is drawn bigger than its physics size so it reads on a phone
 const RUN = 6.6, SPRINT = 9.2; // m/s in a match
-const CHARGE_MS = 900;        // holding the shoot key this long = full power
+const CHARGE_MS = 900;        // holding the shoot button this long = full power
 const PLAYING = ['warm', 'count', 'play', 'wait'];
 const IN_MATCH = ['kick', 'play', 'goal', 'wait'];
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -133,7 +135,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   let ms = { st: 'idle', teams: [[], []], score: [0, 0], goals: [], until: 0, endsAt: 0, rem: MATCH_MS, ko: 0, n: 0 };
   let sim = newSim(1), simAt = 0, have = false;
   let myTeam = -1, wantTeam = null;
-  let charge = 0, stamina = 1, tired = false;
+  let stamina = 1, tired = false;
   let pending = 0, touchWait = 0, tackleWait = 0;
   const off = { u: 0, v: 0, y: 0 };      // fades out the jump when a server update corrects the ball
   let shown = [0, 0, BALL_R];            // ball position drawn last frame (pitch coordinates)
@@ -171,7 +173,8 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     const t = teamOf(me());
     if (t !== myTeam) {
       myTeam = t;
-      charge = 0;
+      hold.shoot = hold.pass = null; air = null; bike = null;
+      map.setPicking(t < 0); // in a team, clicks on the pitch are for passing, not for opening cards
       if (t >= 0) walker.setView({ dist: 10, pitch: 0.42 });
     }
     applyKits();
@@ -200,9 +203,18 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     const near = nearPitch(160) || myTeam >= 0, mine_ = m.id === me();
     switch (m.e) {
       case 'kick': case 'pass':
-        if (!mine_) { players.kick(m.id); if (near) sfx('kick', m.e === 'kick' ? 0.9 : 0.5); }
+        if (!mine_) {
+          players.move(m.id, { v: 'volley', h: 'header', b: 'bicycle' }[m.k] || 'kick');
+          if (near) sfx('kick', m.e === 'pass' || m.k === 'p' ? 0.5 : m.k === 'h' ? 0.6 : 0.9);
+        }
         break;
-      case 'slide': if (!mine_) { players.slide(m.id); if (near) sfx('slide'); } break;
+      case 'slide': if (!mine_) { players.move(m.id, 'slide'); if (near) sfx('slide'); } break;
+      case 'dribble': if (!mine_) players.move(m.id, 'dash'); break;
+      case 'dodged':
+        if (m.id === me()) flash = { text: 'Lừa qua người!', until: performance.now() + 1300 };
+        else if (m.by === me()) flash = { text: 'Bị lừa qua rồi!', until: performance.now() + 1300 };
+        changed(true);
+        break;
       case 'steal':
         if (near) sfx('kick', 0.3);
         if (m.from === me()) { flash = { text: 'Bị cướp bóng!', until: performance.now() + 1500 }; changed(true); }
@@ -214,7 +226,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       case 'final': if (near) sfx('final'); break;
       case 'goal':
         if (m.practice) banner = { kind: 'practice', team: m.team, name: m.name, until: performance.now() + 2200 };
-        else { banner = { kind: 'goal', team: m.team, name: m.name, own: m.own, score: m.score, near, until: performance.now() + 4300 }; if (near) sfx('goal'); }
+        else { banner = { kind: 'goal', team: m.team, name: m.name, own: m.own, how: m.how, score: m.score, near, until: performance.now() + 4300 }; if (near) sfx('goal'); }
         if (near && m.practice) sfx('cheer');
         changed(true);
         break;
@@ -237,6 +249,14 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   }
 
   // ---------- your actions ----------
+  // Kick buttons held right now: shoot (right mouse / Sút) and pass (left mouse / Chuyền), each { t, aim, moved }.
+  // aim 'cam' = where the camera looks (mouse players), 'head' = where you face (phone buttons).
+  const hold = { shoot: null, pass: null };
+  let air = null;     // volley (v) / header (h) waiting in the air for the ball: { kind, aim }
+  let bike = null;    // bicycle kick in progress: { dir, t0, done }
+  let dribbleWait = 0;
+  const HIGH_MS = 250; // holding pass longer than this = lofted pass
+
   function grabNear(r = 1.7) {
     const b = sim.b;
     if (!have || b.h != null || performance.now() < touchWait || b.y > 1.4) return false;
@@ -246,51 +266,72 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     pending = performance.now();
     return true;
   }
-  /** Shot direction: where you face, bent inside the post when it would just miss the goal. */
-  function aim() {
+  /** Kick direction in pitch coordinates: where the camera looks, or where you face. */
+  function aimDir(aim) {
     const w = walker.state;
-    let [fu, fv] = dirLocal(Math.sin(w.heading), Math.cos(w.heading));
-    const goalU = myTeam === 0 ? HL : -HL, [mu, mv] = mine();
-    const [bu, bv] = ballAtFeet(mu, mv, fu, fv);
+    const [u, v] = aim === 'cam' ? dirLocal(-Math.sin(w.yaw), -Math.cos(w.yaw)) : dirLocal(Math.sin(w.heading), Math.cos(w.heading));
+    const L = Math.hypot(u, v) || 1;
+    return [u / L, v / L];
+  }
+  /** A shot from (bu, bv) that would just miss the goal is bent inside the post. */
+  function onTarget([fu, fv], bu, bv) {
+    const goalU = myTeam === 0 ? HL : -HL;
     if ((goalU - bu) * fu > 0 && Math.abs(goalU - bu) < 40) {
       const cv = bv + fv * ((goalU - bu) / fu);
       if (Math.abs(cv) < GOAL_W + 4) {
         const tv = clamp(cv, -(GOAL_W - 0.45), GOAL_W - 0.45), du = goalU - bu, dv = tv - bv, L = Math.hypot(du, dv);
-        fu = du / L; fv = dv / L;
+        return [du / L, dv / L];
       }
     }
     return [fu, fv];
   }
-  function kick([du, dv], sp, lift, kind) {
+  const feet = () => {
     const w = walker.state, [mu, mv] = mine();
     const [fu, fv] = dirLocal(Math.sin(w.heading), Math.cos(w.heading));
-    const [bu, bv] = ballAtFeet(mu, mv, fu, fv);
-    const vel = [du * sp, dv * sp, lift];
-    send({ t: 'fk', k: kind, p: [bu, bv, BALL_R], d: vel });
-    // show it right away (the server sends the same thing back)
-    Object.assign(sim.b, { u: bu, v: bv, y: BALL_R, vu: vel[0], vv: vel[1], vy: lift, h: null });
+    return ballAtFeet(mu, mv, fu, fv);
+  };
+  function predict(u, v, y, vel) { // show the kick right away (the server sends the same thing back)
+    Object.assign(sim.b, { u, v, y, vu: vel[0], vv: vel[1], vy: vel[2], h: null });
     simAt = serverNow();
     pending = 0; touchWait = performance.now() + 350;
     off.u = off.v = off.y = 0;
-    const [wx, wz] = dirWorld(du, dv);
-    walker.face(Math.atan2(wx, wz));
-    walker.kick();
+  }
+  /** Kick the ball at your feet: shot s, low pass p, lofted pass l, bicycle kick b (flicked up to height y). */
+  function kick([du, dv], sp, lift, kind, y = BALL_R) {
+    const [bu, bv] = feet(), vel = [du * sp, dv * sp, lift];
+    send({ t: 'fk', k: kind, p: [bu, bv, y], d: vel });
+    predict(bu, bv, y, vel);
+    if (kind !== 'b') { const [wx, wz] = dirWorld(du, dv); walker.face(Math.atan2(wx, wz)); walker.kick(); }
     sfx('kick', sp / 32);
   }
-  function startCharge() { if (!charge && myTeam >= 0) { charge = performance.now(); changed(true); } }
-  function releaseCharge() {
-    if (!charge) return;
-    const p = Math.min(1, (performance.now() - charge) / CHARGE_MS);
-    charge = 0;
+  /** Strike a free ball in the air: volley v, header h, bicycle kick b. */
+  function strike(kind, [du, dv], sp, lift) {
+    const b = sim.b, vel = [du * sp, dv * sp, lift];
+    send({ t: 'fa', k: kind, p: [b.u, b.v, b.y], d: vel });
+    predict(b.u, b.v, b.y, vel);
+    if (kind !== 'b') { const [wx, wz] = dirWorld(du, dv); walker.face(Math.atan2(wx, wz)); }
+    if (kind === 'v') walker.volley(); else if (kind === 'h') walker.header();
+    flash = { text: { v: 'Vô lê!', h: 'Đánh đầu!', b: 'Xe đạp chổng ngược!' }[kind], until: performance.now() + 1300 };
+    sfx('kick', kind === 'h' ? 0.6 : 1);
     changed(true);
-    if (myTeam < 0 || !canPlay() || !have) return;
-    if (!holding() && !grabNear()) return;
-    kick(aim(), 12 + p * 20, 0.6 + p * p * 5.2, 's');
   }
-  function pass() {
-    if (myTeam < 0 || !canPlay() || !have) return;
-    if (!holding() && !grabNear()) return;
-    const w = walker.state, [mu, mv] = mine(), [fu, fv] = dirLocal(Math.sin(w.heading), Math.cos(w.heading));
+  /** Can a volley / header / bicycle kick reach the free ball now? (height measured from your feet) */
+  function inReach(kind) {
+    const b = sim.b, w = walker.state;
+    if (!have || b.h != null) return false;
+    const [mu, mv] = mine(), d = Math.hypot(b.u - mu, b.v - mv), y = b.y - w.y;
+    if (kind === 'v') return d < 1.45 && y > 0.1 && y < 1.45;
+    if (kind === 'h') return d < 1.15 && y > 1.1 && y < 2.35;
+    return d < 1.9 && y > 0.25 && y < 2.8;
+  }
+  function fireAir(kind, aim) {
+    const b = sim.b, dir = onTarget(aimDir(aim), b.u, b.v);
+    if (kind === 'v') strike('v', dir, 27, 1.2);
+    else strike('h', dir, 16, b.y > 1.7 ? -1.5 : 0.8); // a header from high up goes down into the grass
+  }
+  /** Teammate to pass to: in front of you (within ~80°) and not too far. [du, dv, distance] or null. */
+  function mate([fu, fv]) {
+    const [mu, mv] = mine();
     let best = null, bestScore = Infinity;
     for (const id of ms.teams[myTeam]) {
       if (id === me()) continue;
@@ -300,12 +341,67 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       const du = pu + hu * lead - mu, dv = pv + hv * lead - mv, d = Math.hypot(du, dv);
       if (d < 2.5 || d > 60) continue;
       const cos = (du * fu + dv * fv) / d;
-      if (cos < 0.2) continue; // only teammates in front of you
+      if (cos < 0.2) continue;
       const score = d * (2.2 - cos);
       if (score < bestScore) { bestScore = score; best = [du / d, dv / d, d]; }
     }
-    if (best) kick([best[0], best[1]], passSpeed(best[2], 4.5), best[2] > 28 ? 3 : 0, 'p');
-    else kick([fu, fv], 13, 0, 'p');
+    return best;
+  }
+  function shoot(p, aim) {
+    if (!holding() && !grabNear()) return;
+    const [bu, bv] = feet();
+    kick(onTarget(aimDir(aim), bu, bv), 12 + p * 20, 0.6 + p * p * 5.2, 's');
+  }
+  function lowPass(aim) {
+    if (!holding() && !grabNear()) return;
+    const dir = aimDir(aim), m = mate(dir);
+    if (m) kick([m[0], m[1]], passSpeed(m[2], 4.5), m[2] > 28 ? 2.5 : 0, 'p');
+    else kick(dir, 13, 0, 'p');
+  }
+  function highPass(aim, p) {
+    if (!holding() && !grabNear()) return;
+    const dir = aimDir(aim), m = mate(dir);
+    if (m) { // up and over, landing a little short of them so it bounces on (gravity is 11 m/s² in soccer-core)
+      const d = m[2] * 0.9, vy = clamp(4.8 + d * 0.11, 5.5, 9.5), T = (2 * vy) / 11;
+      kick([m[0], m[1]], Math.min(MAX_KICK, d / T), vy, 'l');
+    } else kick(dir, 10 + p * 11, 6 + p * 3, 'l');
+  }
+  /** Bicycle kick: the ball goes where you aim (camera), or behind you (phones); you flip with your back to it. */
+  function startBicycle(aim) {
+    let dir = aimDir(aim);
+    if (aim === 'head') dir = [-dir[0], -dir[1]];
+    const [wx, wz] = dirWorld(-dir[0], -dir[1]);
+    if (!walker.bicycle(Math.atan2(wx, wz))) return false;
+    bike = { dir, t0: performance.now(), done: false };
+    hold.shoot = hold.pass = null; air = null;
+    sfx('slide');
+    changed(true);
+    return true;
+  }
+  function press(kind, aim) {
+    if (myTeam < 0 || !canPlay()) return;
+    if (walker.airborne() && !holding() && !bike) { // in the air: volley (shoot) / header (pass) as the ball comes
+      const k = kind === 'shoot' ? 'v' : 'h';
+      if (inReach(k)) fireAir(k, aim); else air = { kind: k, aim };
+      return;
+    }
+    hold[kind] = { t: performance.now(), aim, moved: false };
+    changed(true);
+  }
+  function release(kind) {
+    const h = hold[kind];
+    hold[kind] = null;
+    if (air && air.kind === (kind === 'shoot' ? 'v' : 'h')) air = null;
+    if (!h) return;
+    changed(true);
+    if (myTeam < 0 || !canPlay() || !have) return;
+    const held = performance.now() - h.t;
+    if (kind === 'shoot') shoot(Math.min(1, held / CHARGE_MS), h.aim);
+    else if (!h.moved) { if (held < HIGH_MS) lowPass(h.aim); else highPass(h.aim, Math.min(1, (held - HIGH_MS) / CHARGE_MS)); }
+  }
+  /** Space / Nhảy with a kick button held = bicycle kick (returns true); otherwise false (a normal jump). */
+  function jumpKick(aim) {
+    return myTeam >= 0 && canPlay() && !!(hold.shoot || hold.pass) && startBicycle(aim);
   }
   function tackle() {
     if (myTeam < 0 || !canPlay() || holding() || performance.now() < tackleWait || walker.state.sit) return;
@@ -321,18 +417,45 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     send({ t: 'fx', p: [w.x + hx * 1.2, w.z + hz * 1.2], d: [hx, hz] });
     sfx('slide');
   }
+  /** Dribble burst (Q / Lừa): a quick dash; with the ball, tackles miss you for a moment. */
+  function dribble() {
+    if (myTeam < 0 || !canPlay() || performance.now() < dribbleWait) return;
+    const w = walker.state;
+    if (!walker.dash(Math.sin(w.heading), Math.cos(w.heading))) return;
+    dribbleWait = performance.now() + 1300;
+    stamina = Math.max(0, stamina - 0.12);
+    if (holding()) send({ t: 'fd' });
+    sfx('slide');
+  }
   function onKey(code, down, e) {
     if (myTeam < 0) return false;
-    if (code === 'Space') { if (down) { if (!e.repeat) startCharge(); } else releaseCharge(); return true; }
-    if (code === 'KeyE') { if (down && !e.repeat) pass(); return true; }
-    if (code === 'KeyQ') { if (down && !e.repeat) tackle(); return true; }
+    if (code === 'Space') return down && !e.repeat ? jumpKick('cam') : false; // else the normal jump
+    if (code === 'KeyE') { if (down && !e.repeat) tackle(); return true; }
+    if (code === 'KeyQ') { if (down && !e.repeat) dribble(); return true; }
     return /^(Digit|Numpad)[123]$/.test(code); // no bikes on the pitch
   }
-  // mouse-look (pointer locked): left button = shoot, right button = pass
-  const mdown = (e) => { if (!document.pointerLockElement || myTeam < 0) return; if (e.button === 0) startCharge(); else if (e.button === 2) pass(); };
-  const mup = (e) => { if (document.pointerLockElement && e.button === 0) releaseCharge(); };
+  // Mouse: right button = shoot (hold for power), left button = pass (tap low, hold lofted). A left drag that
+  // moves the mouse turns the camera instead. Phones use the on-screen buttons (touches also fire mouse events).
+  const touchFirst = matchMedia('(pointer: coarse)').matches;
+  let lastTouch = 0, downAt = null;
+  const onView = (e) => !!document.pointerLockElement || !!e.target?.closest?.('.map-canvas');
+  const mouseOk = (e) => !touchFirst && performance.now() - lastTouch > 1000 && myTeam >= 0;
+  const tstart = () => { lastTouch = performance.now(); };
+  const mdown = (e) => {
+    if (!mouseOk(e) || !onView(e)) return;
+    if (e.button === 2) press('shoot', 'cam');
+    else if (e.button === 0) { downAt = [e.clientX, e.clientY]; press('pass', 'cam'); }
+  };
+  const mmove = (e) => {
+    if (hold.pass && downAt && !document.pointerLockElement && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 8) hold.pass.moved = true;
+  };
+  const mup = (e) => { if (e.button === 2) release('shoot'); else if (e.button === 0) { release('pass'); downAt = null; } };
+  const ctxmenu = (e) => { if (myTeam >= 0 && onView(e)) e.preventDefault(); };
+  window.addEventListener('touchstart', tstart, { passive: true });
   window.addEventListener('mousedown', mdown);
+  window.addEventListener('mousemove', mmove);
   window.addEventListener('mouseup', mup);
+  window.addEventListener('contextmenu', ctxmenu);
 
   // stay on the pitch during a match
   const bounds = (x, z) => {
@@ -355,11 +478,25 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     const w = walker.state;
     advance(serverNow());
     // run into the free ball to take it
-    if (myTeam >= 0 && have && w.on && canPlay() && sim.b.h == null && !pending && performance.now() > touchWait && !w.slide) {
+    if (myTeam >= 0 && have && w.on && canPlay() && sim.b.h == null && !pending && performance.now() > touchWait && !w.slide && !air && !bike && !w.bike) {
       const [mu, mv] = mine(), du = sim.b.u - mu, dv = sim.b.v - mv;
       if (du * du + dv * dv < 1.0 && sim.b.y < 1.4) { send({ t: 'ft', p: [w.x, w.z] }); pending = performance.now(); touchWait = pending + 300; }
     }
     if (pending && performance.now() - pending > 450) pending = 0; // no answer: someone else got there first
+    // bicycle kick: hit the ball when it comes in reach during the flip (or flick up the one you were dribbling)
+    if (bike && !bike.done) {
+      const bt = performance.now() - bike.t0;
+      if (bt > 650 || !canPlay()) bike = null;
+      else if (bt > 160) {
+        if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 23, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
+        else if (inReach('b')) { bike.done = true; strike('b', onTarget(bike.dir, sim.b.u, sim.b.v), 25, 2); }
+      }
+    } else if (bike && performance.now() - bike.t0 > 900) bike = null;
+    // volley / header waiting in the air
+    if (air) {
+      if (!walker.airborne() || !canPlay()) air = null;
+      else if (inReach(air.kind)) { const a = air; air = null; fireAir(a.kind, a.aim); }
+    }
     // the server sends the ball at least once a second during a match; if that stops (the server restarted),
     // join the team again so the match picks up where it can
     const t = performance.now();
@@ -424,7 +561,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     if (banner && performance.now() > banner.until) { banner = null; changed(true); }
     if (notice && (performance.now() - notice.at > 25000 || nearPitch(120))) { notice = null; changed(true); } // came over, or not interested
     if (flash && performance.now() > flash.until) { flash = null; changed(true); }
-    if (myTeam >= 0 || charge || IN_MATCH.includes(ms.st) || ms.st === 'count') changed();
+    if (myTeam >= 0 || IN_MATCH.includes(ms.st) || ms.st === 'count') changed();
     return have && (sim.b.h != null || sim.b.vu !== 0 || sim.b.vv !== 0 || sim.b.vy !== 0 || Math.abs(off.u) + Math.abs(off.v) > 0.01 || sim.k.some((k) => k.dive > 0));
   }
   const unhook = map.addFrameHook(update);
@@ -443,22 +580,30 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       return {
         st: ms.st, teams: ms.teams, score: ms.score, goals: ms.goals, n: ms.n, ko: ms.ko,
         clock: clock(), left: ms.until ? Math.max(0, ms.until - serverNow()) : 0,
-        myTeam, holding: holding(), power: charge ? Math.min(1, (performance.now() - charge) / CHARGE_MS) : null,
-        stamina, tired, banner, notice, flash, near: nearPitch(130), wantTeam,
+        myTeam, holding: holding(), stamina, tired, banner, notice, flash, near: nearPitch(130), wantTeam,
+        power: hold.shoot ? Math.min(1, (performance.now() - hold.shoot.t) / CHARGE_MS) : null,
+        lob: hold.pass && !hold.pass.moved && performance.now() - hold.pass.t > HIGH_MS ? Math.min(1, (performance.now() - hold.pass.t - HIGH_MS) / CHARGE_MS) : null,
+        armed: air ? air.kind : null,
       };
     },
     join(team) { wantTeam = team; send({ t: 'fjoin', team }); notice = null; changed(true); },
     leave() { wantTeam = null; send({ t: 'fleave' }); changed(true); },
     watch() { notice = null; map.watchMatch(); changed(true); },
     dismiss() { notice = null; changed(true); },
-    shootDown: startCharge, shootUp: releaseCharge, pass, tackle,
+    /** on-screen buttons: press / release 'shoot' | 'pass', jump (bicycle kick when a kick button is held), tackle, dribble */
+    press: (kind) => press(kind, 'head'), release, tackle, dribble,
+    jump() { if (!jumpKick('head')) walker.jump(); },
     /** after (re)connecting: back into the team you were in */
     onWelcome() { if (wantTeam != null) send({ t: 'fjoin', team: wantTeam }); },
     syncKits: applyKits,
     dispose() {
       unhook();
       window.removeEventListener('mousedown', mdown);
+      window.removeEventListener('mousemove', mmove);
       window.removeEventListener('mouseup', mup);
+      window.removeEventListener('contextmenu', ctxmenu);
+      window.removeEventListener('touchstart', tstart);
+      map.setPicking(true);
       walker.setPlay(null);
       map.setKit(null);
       for (const id of players.ids()) players.setKit(id, null);
