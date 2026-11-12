@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWalker } from './walk.js';
+import { createPlayers } from './players.js';
 import { prepareInteriors, buildInteriors } from './interiors.js';
 import { buildStadium } from './stadium.js';
 import { styleOf, wallMaterials, buildBuildingDetails, buildWalls, buildGates, buildCanopies, buildLamps, avenueTreeSpots } from './campus-details.js';
@@ -131,7 +132,7 @@ function rng(seed) {
 }
 
 // ---------- the scene ----------
-export function createCampus(container, data, { dark = false, mobile = false, onPick, onFrame, onNear, onInteract, onExitWalk, onView } = {}) {
+export function createCampus(container, data, { dark = false, mobile = false, onPick, onPickPlayer, onFrame, onNear, onInteract, onExitWalk, onView } = {}) {
   let needs = true, raf = 0, disposed = false;
   function requestRender() { needs = true; }
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -447,6 +448,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   // ---------- walk mode ----------
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
     posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...(stadium ? stadium.posts : [])], extraWalls: inter.walls, surfaces: inter.surfaces, indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear, onInteract, onExit: onExitWalk, onView });
+  // other students (server mode)
+  const players = createPlayers(scene);
   function startWalk(at, lookAt) {
     let x, z, facing;
     if (at) {
@@ -491,6 +494,10 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     const r = el.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
+    if (players.pickables.length) {
+      const ph = ray.intersectObjects(players.pickables, false)[0];
+      if (ph) { onPickPlayer?.(ph.object.userData.playerId); return; }
+    }
     const hit = ray.intersectObjects(clickables, false)[0];
     onPick?.(hit ? (hit.object === details.mesh ? details.pick(hit.faceIndex) : hit.object.userData.building) : null);
   });
@@ -529,6 +536,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       if (t >= 1) anim = null;
       needs = true;
     }
+    if (players.update(Math.min(dt, 0.1))) needs = true;
     if (!walker.state.on && controls.update()) needs = true;
     if (!needs) return;
     needs = false;
@@ -575,12 +583,17 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     bounds: all,
     flyTo, focusBox, goHome, faceNorth, setSelected, setTheme, requestRender,
     startWalk, stopWalk, walking: () => walker.state.on,
+    players,
+    /** your own student: [x, z, y, heading, mode index, speed] for the world server */
+    self() { const w = walker.state; return w.on ? [w.x, w.z, w.y, w.heading, ['walk', 'scooter', 'moto'].indexOf(w.mode), w.speed] : null; },
+    setLook: (look) => { walker.setLook(look); requestRender(); },
     setJoy: (x, y) => walker.setJoy(x, y), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt) => walker.teleport(x, z, lookAt),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
       walker.dispose();
+      players.dispose();
       ro.disconnect();
       controls.dispose();
       scene.traverse((o) => { o.geometry?.dispose?.(); });

@@ -38,7 +38,9 @@ export function LoginPage() {
     setLoading(true); setError(null);
     const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (err) { setLoading(false); return setError(errMsg(err)); }
-    navigate('/', { replace: true });
+    let next = '/';
+    try { next = sessionStorage.getItem('cs-after-login') || '/'; sessionStorage.removeItem('cs-after-login'); } catch { /* storage off */ }
+    navigate(next.startsWith('/map') ? next : '/', { replace: true });
   }
 
   return html`<${AuthShell} title="Chào mừng trở lại 👋" subtitle="Đăng nhập để tiếp tục chuỗi check-in của bạn.">

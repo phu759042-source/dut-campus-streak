@@ -126,3 +126,23 @@ Camera trên web cần HTTPS (hoặc `localhost`).
 - Đi vào bên trong (`js/interiors.js`): Căn tin cạnh Khu E1 (cửa trước + cửa hông, 5 bàn ăn, tủ lạnh nước, quầy cà phê, bếp
   phía sau quầy phục vụ; mái tự ẩn khi đứng trong) và Khu E1 có hành lang tầng 1–2 + cầu thang ở đầu gần căn tin.
   Bộ đi bộ hỗ trợ sàn tầng 2, bậc thang (ramp) và tường/lan can chỉ chặn ở đúng độ cao.
+
+### Chế độ server (nhiều người chơi)
+
+- Nút **Vào server** trên `/map` (cần đăng nhập). Lần đầu chọn nhân vật (màu da, kiểu tóc, màu tóc, áo, quần, balo, kính);
+  lựa chọn lưu trong `user_metadata.campus_look` của tài khoản Supabase. Tên trên đầu là `profiles.display_name`.
+- Thấy các bạn khác đi bộ / đi xe theo thời gian thực, chat chung (Enter để gõ, bong bóng chữ trên đầu), biểu cảm,
+  danh sách người online (bấm vào tên/nhân vật để Đi tới, Vẫy tay, Mời họp).
+- Phòng họp: công khai hoặc riêng tư (chỉ người được mời), tối đa 8 người, có chat riêng và **voice chat** bằng micro.
+  Giọng nói đi thẳng giữa các trình duyệt (WebRTC, mesh); server chỉ chuyển tin nhắn thiết lập.
+  Không có TURN nên một số mạng 4G/công ty có thể không nối được giọng (vòng tên mờ đi). Có thể bật TURN miễn phí của
+  Cloudflare: tạo TURN key trong dashboard Cloudflare (Realtime → TURN) rồi
+  `npx wrangler secret put TURN_KEY_ID` và `npx wrangler secret put TURN_KEY_API_TOKEN`.
+- Server: `world-server/` (Cloudflare Worker + Durable Object, WebSocket Hibernation), địa chỉ
+  `wss://dut-campus-world.dut-campus-world.workers.dev/world` (khai báo ở `js/world.js`). Server kiểm tra token đăng nhập
+  với Supabase Auth, chỉ nhận kết nối từ campusstreak.com (và localhost, preview Vercel), mỗi tài khoản một kết nối.
+  Deploy: `cd world-server && npm install && npx wrangler deploy` (cần `npx wrangler login` một lần).
+- Thử ở máy: `cd world-server && npx wrangler dev --port 8787`, tạo file `world-server/.dev.vars` với `DEV_FAKE_AUTH=1`,
+  rồi mở nhiều tab `http://localhost:5173/map?dev=TenBatKy` để vào server như các sinh viên giả (chỉ có ở máy cục bộ).
+- Code: `js/world.js` (kết nối, gửi vị trí ~8 lần/giây khi di chuyển, voice), `js/players.js` (nhân vật của người khác,
+  nội suy chuyển động), `js/pages/map-world.js` (giao diện server, chỉnh nhân vật).

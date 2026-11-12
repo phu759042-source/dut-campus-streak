@@ -3,3 +3,4 @@ dev/
 dev_server.py
 build.py
 __pycache__/
+world-server/

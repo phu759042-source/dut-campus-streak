@@ -8,27 +8,59 @@
 import * as THREE from 'three';
 import { inside, bbox } from './map3d.js';
 
-const SCALE = 0.76;          // student is ~1.65 m tall
+export const SCALE = 0.76;         // student is ~1.65 m tall
 let R = 0.34;                // collision radius (m); larger on a bike
 const WALK = 3.6, RUN = 7.2; // m/s
 const GRAVITY = 16, JUMP_V = 4.8;
 const EYE = 1.2;
 
+// Character looks (server mode lets each student pick one). Indexes into these lists are what gets saved
+// (Supabase user_metadata.campus_look) and sent to other players; the world server checks the ranges.
+export const LOOK = {
+  skin: [0xf6d3b3, 0xf1c7a1, 0xd9a47a, 0xb07a52, 0x7d5536],
+  hair: ['Ngắn', 'Dài', 'Búi', 'Mũ lưỡi trai', 'Mũ bảo hiểm'],
+  hc: [0x2b2018, 0x5a3a22, 0x9b6a3c, 0xd8b26a, 0x8f2f3a, 0x3d4f8f],
+  shirt: [0x2f6bff, 0xffffff, 0xe5484d, 0x12b76a, 0xf5a524, 0x7c4dff, 0x1b1f2a, 0xff7eb6],
+  pants: [0x26324a, 0x1b1f2a, 0x5a6b8a, 0xc9b28a, 0x6b4a32, 0xe9e5dc],
+  bag: [0xe5484d, 0x2f6bff, 0x12b76a, 0x1b1f2a, 0xf5a524, 0xff7eb6],
+  glasses: ['Không', 'Có'],
+};
+export const DEFAULT_LOOK = { skin: 1, hair: 0, hc: 0, shirt: 0, pants: 0, bag: 0, glasses: 0 };
+const pick = (list, i) => list[Math.max(0, Math.min(list.length - 1, i | 0))];
+
 /** Low-poly student made from primitives (original design). */
-function makeStudent() {
+export function makeStudent(look = DEFAULT_LOOK) {
+  const L = { ...DEFAULT_LOOK, ...(look || {}) };
   const M = (c) => new THREE.MeshLambertMaterial({ color: c });
-  const shirt = M(0x2f6bff), pants = M(0x26324a), skin = M(0xf1c7a1), hair = M(0x2b2018), bag = M(0xe5484d), shoe = M(0x1b1f2a), white = M(0xffffff);
+  const shirt = M(pick(LOOK.shirt, L.shirt)), pants = M(pick(LOOK.pants, L.pants)), skin = M(pick(LOOK.skin, L.skin)), hair = M(pick(LOOK.hc, L.hc));
+  const bagC = pick(LOOK.bag, L.bag), bag = M(bagC), shoe = M(0x1b1f2a), white = M(0xffffff);
   const g = new THREE.Group();
   const add = (geo, mat, x, y, z, parent = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
 
   add(new THREE.CapsuleGeometry(0.3, 0.42, 4, 10), shirt, 0, 1.28, 0);           // torso
   add(new THREE.BoxGeometry(0.5, 0.56, 0.22), bag, 0, 1.32, -0.3);              // backpack
-  add(new THREE.BoxGeometry(0.36, 0.12, 0.06), M(0xc2313a), 0, 1.12, -0.43);    // bag pocket
+  add(new THREE.BoxGeometry(0.36, 0.12, 0.06), M(new THREE.Color(bagC).multiplyScalar(0.8)), 0, 1.12, -0.43); // bag pocket
   const head = add(new THREE.SphereGeometry(0.27, 14, 10), skin, 0, 1.94, 0);
-  const cap = add(new THREE.SphereGeometry(0.285, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), hair, 0, 1.97, -0.01);
-  cap.scale.set(1, 0.9, 1);
+  const style = L.hair | 0;
+  if (style === 4) { // helmet (mũ bảo hiểm)
+    const hm = add(new THREE.SphereGeometry(0.31, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), hair, 0, 1.95, -0.01);
+    hm.scale.set(1, 0.95, 1.05);
+    add(new THREE.BoxGeometry(0.5, 0.03, 0.12), hair, 0, 1.97, 0.27);
+  } else {
+    const cap = add(new THREE.SphereGeometry(0.285, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), style === 3 ? shirt : hair, 0, 1.97, -0.01);
+    cap.scale.set(1, 0.9, 1);
+    if (style === 1) add(new THREE.BoxGeometry(0.5, 0.42, 0.14), hair, 0, 1.78, -0.17);                 // long hair
+    if (style === 2) add(new THREE.SphereGeometry(0.12, 10, 8), hair, 0, 2.2, -0.12);                    // bun
+    if (style === 3) { const brim = add(new THREE.BoxGeometry(0.34, 0.03, 0.22), shirt, 0, 1.99, 0.28); brim.rotation.x = 0.12; } // cap
+    if (style !== 3) add(new THREE.BoxGeometry(0.46, 0.08, 0.1), hair, 0, 2.1, 0.17);                    // fringe
+  }
   add(new THREE.SphereGeometry(0.035, 6, 6), shoe, -0.09, 1.97, 0.245);           // eyes
   add(new THREE.SphereGeometry(0.035, 6, 6), shoe, 0.09, 1.97, 0.245);
+  if (L.glasses) {
+    const fr = M(0x1b1f2a);
+    for (const x of [-0.09, 0.09]) { const r = add(new THREE.TorusGeometry(0.06, 0.012, 6, 14), fr, x, 1.97, 0.255); r.castShadow = false; }
+    add(new THREE.BoxGeometry(0.06, 0.012, 0.012), fr, 0, 1.97, 0.26);
+  }
   add(new THREE.BoxGeometry(0.06, 0.02, 0.02), white, 0, 1.86, 0.26);           // smile hint
 
   const limb = (x, y, len, rad, mat, footMat) => {
@@ -50,9 +82,14 @@ function makeStudent() {
   return { group: g, legL, legR, armL, armR, head, blob };
 }
 
+/** Frees the geometries and materials of a student made by makeStudent. */
+export function disposeStudent(s) {
+  for (const root of [s.group, s.blob]) root.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); });
+}
+
 
 /** Low-poly scooter (xe tay ga) and motorbike (xe số), front along +z. Returns { group, wheels, fork }. */
-function vehicleKit() {
+export function vehicleKit() {
   const M = (c) => new THREE.MeshLambertMaterial({ color: c });
   const make = () => {
     const g = new THREE.Group();
@@ -137,7 +174,7 @@ function horn() {
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], extraWalls = [], surfaces = [], indoor = [], posts = [], limits, onNear, onInteract, onExit, onView }) {
-  const s = makeStudent();
+  let s = makeStudent();
   s.group.scale.setScalar(SCALE);
   const rig = new THREE.Group(); // position + heading; holds the student and the vehicles
   rig.add(s.group);
@@ -254,7 +291,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   }
 
   // ---------- input ----------
-  const isTyping = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+  // typing in a field, or a dialog is open over the map: keys are not for walking
+  const isTyping = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') || document.body.classList.contains('no-scroll');
   const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
   function keydown(e) {
     if (!st.on || isTyping()) return;
@@ -263,7 +301,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     if (e.code === 'Digit1' || e.code === 'Numpad1') setMode('walk');
     if (e.code === 'Digit2' || e.code === 'Numpad2') setMode('scooter');
     if (e.code === 'Digit3' || e.code === 'Numpad3') setMode('moto');
-    if (e.code === 'KeyE' || e.code === 'Enter') onInteract?.(st.nearIdx >= 0 ? data.buildings[st.nearIdx] : null);
+    if (e.code === 'KeyE') onInteract?.(st.nearIdx >= 0 ? data.buildings[st.nearIdx] : null);
     if (e.code === 'KeyO') { toggleLock(); e.preventDefault(); }
     if (e.code === 'KeyF' || e.code === 'KeyV') setFirstPerson(!st.fp);
     // Esc first releases a locked mouse (the browser does that); only a separate Esc leaves walk mode.
@@ -308,7 +346,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   function setMode(m) {
     if (!st.on || m === st.mode || !(m === 'walk' || RIDE[m])) return;
     st.mode = m;
-    st.v = 0; st.speed = 0; st.steer = 0; st.y = 0; st.vy = 0;
+    st.v = 0; st.speed = 0; st.steer = 0; st.y = 0; st.vy = 0; st.air = false;
     R = m === 'walk' ? 0.34 : 0.62;
     [st.x, st.z] = freeSpot(st.x, st.z);
     for (const [k, v] of Object.entries(kit)) v.group.visible = k === m;
@@ -442,14 +480,19 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     // floors / stairs under the feet, jump + gravity
     const { g } = groundAt(st.x, st.z, st.y);
     st.ground = g;
-    if (st.y < g) { st.y = g; st.vy = 0; }                 // stepped up (stairs)
-    if (st.jumpReq && st.y <= g + 0.001 && !riding) st.vy = JUMP_V;
+    if (st.y < g) { st.y = g; st.vy = 0; st.air = false; } // stepped up (stairs)
+    if (st.jumpReq && !st.air && st.y <= g + 0.001 && !riding) { st.vy = JUMP_V; st.air = true; }
     st.jumpReq = false;
     if (st.y > g + 0.001 || st.vy > 0) {
-      st.vy -= GRAVITY * dt;
-      st.y = Math.max(g, st.y + st.vy * dt);
-      if (st.y === g && st.vy < 0) st.vy = 0;
-      if (st.y - g < 0.35 && st.vy <= 0 && st.y > g) st.y = g; // walking down stairs: stick to the steps
+      // walking down stairs: stay on the steps. Only while walking, never in the middle of a jump or a fall,
+      // otherwise the student would be pulled down to the ground before the jump finishes.
+      if (!st.air && st.vy <= 0 && st.y - g < 0.35) { st.y = g; st.vy = 0; }
+      else {
+        st.air = true;
+        st.vy -= GRAVITY * dt;
+        st.y = Math.max(g, st.y + st.vy * dt);
+        if (st.y === g) { st.vy = 0; st.air = false; st.land = 1; } // landed
+      }
     }
 
     // animate limbs (or the riding pose)
@@ -474,7 +517,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       s.armL.rotation.x += (-swing * 0.85 - air - s.armL.rotation.x) * ease;
       s.armR.rotation.x += (swing * 0.85 - air - s.armR.rotation.x) * ease;
       const bob = st.speed > 0.2 && st.y === (st.ground || 0) ? Math.abs(Math.sin(st.phase)) * 0.045 : Math.sin(st.t * 2) * 0.01;
-      s.group.position.set(0, bob, 0);
+      st.land = Math.max(0, (st.land || 0) - dt * 6);                       // small knee bend on landing
+      s.group.position.set(0, bob - Math.sin(st.land * Math.PI) * 0.07, 0);
       s.group.rotation.x = 0;
       rig.position.set(st.x, st.y, st.z);
       rig.rotation.set(0, st.heading, 0);
@@ -523,7 +567,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
 
   function enter({ x, z, facing }) {
     [st.x, st.z] = freeSpot(x, z);
-    st.y = 0; st.vy = 0; st.speed = 0; st.t = 0; st.nearIdx = -1; st.nearTimer = 0;
+    st.y = 0; st.vy = 0; st.air = false; st.speed = 0; st.t = 0; st.nearIdx = -1; st.nearTimer = 0;
     st.heading = facing ?? 0;
     st.yaw = st.heading + Math.PI; // camera behind the student
     st.pitch = 0.32; st.dist = 6.5; camPitch = 0.32; st.fp = false;
@@ -547,7 +591,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   }
   function teleport(x, z, lookAt) {
     [st.x, st.z] = freeSpot(x, z);
-    st.y = 0; st.vy = 0; st.v = 0; st.t = 0.6; // short glide
+    st.y = 0; st.vy = 0; st.air = false; st.v = 0; st.t = 0.6; // short glide
     if (lookAt) {
       st.heading = Math.atan2(lookAt[0] - st.x, lookAt[1] - st.z);
       st.yaw = st.heading + Math.PI; // camera behind, looking at the building
@@ -555,9 +599,23 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     }
   }
 
+  /** Swap the student's look (server mode character customizer). */
+  function setLook(look) {
+    const next = makeStudent(look);
+    next.group.scale.setScalar(SCALE);
+    next.blob.visible = s.blob.visible;
+    next.blob.position.copy(s.blob.position);
+    next.blob.scale.copy(s.blob.scale);
+    rig.remove(s.group); scene.remove(s.blob);
+    disposeStudent(s);
+    s = next;
+    rig.add(s.group); scene.add(s.blob);
+
+  }
+
   return {
     state: st,
-    enter, exit, update, teleport, freeSpot,
+    enter, exit, update, teleport, freeSpot, setLook,
     setJoy(x, y) { st.joy.x = x; st.joy.y = y; },
     jump() { st.jumpReq = true; },
     setMode,

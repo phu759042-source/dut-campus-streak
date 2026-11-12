@@ -1,0 +1,17 @@
+name = "dut-campus-world"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+SUPABASE_URL = "https://gmwurbvhhzgdikogxiqb.supabase.co"
+# publishable (anon) key: only used to check the player's own login token with Supabase Auth
+SUPABASE_KEY = "sb_publishable_i7IHac8LyrXoG3aiLDlS7A_1Vua8h8l"
+ALLOWED_ORIGINS = "https://www.campusstreak.com,https://campusstreak.com,http://localhost:5173,http://127.0.0.1:5173"
+
+[[durable_objects.bindings]]
+name = "WORLD"
+class_name = "World"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["World"]

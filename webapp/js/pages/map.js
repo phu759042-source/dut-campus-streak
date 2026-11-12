@@ -3,7 +3,9 @@
 import { html, useState, useEffect, useRef } from 'preact';
 import { appStore, loadTodayClasses, fmtTime, readLocal, writeLocal, supabase } from '../lib.js';
 import { Icon, Spinner, toast } from '../ui.js';
-import { back } from '../router.js';
+import { back, navigate } from '../router.js';
+import { WorldLayer, editLook, savedLook } from './map-world.js';
+import { devName } from '../world.js';
 
 // Zone names as printed on the official campus map.
 const ZONE_META = {
@@ -260,6 +262,11 @@ export function MapPage() {
   const dataRef = useRef(null);
   const loggedIn = !!appStore.get().session;
   const stats = useMapStats();
+  // server mode (multiplayer): other students, chat, meetings with voice chat
+  const [server, setServer] = useState(false);
+  const [look, setLook] = useState(null);
+  const worldFrame = useRef(null);
+  const worldPick = useRef(null);
 
   useEffect(() => {
     document.title = 'Bản đồ DUT 3D · Campus Streak';
@@ -295,8 +302,10 @@ export function MapPage() {
             setView({ fp: v.fp, locked: v.locked, mode: v.mode || 'walk' });
           },
           onExitWalk: () => exitWalk(),
+          onPickPlayer: (id) => worldPick.current?.(id),
           onFrame: ({ project, compass: c, distance, walk }) => {
             if (walk) drawMinimap(miniRef.current, mmRef.current, walk);
+            worldFrame.current?.(project);
             // place labels by priority (zones first, nearest first) and hide ones that would overlap
             const placed = [];
             const items = labelEls.map((l) => ({ ...l, p: project(...l.t.anchor) }))
@@ -340,6 +349,7 @@ export function MapPage() {
           const hit = search(ts, want)[0];
           if (hit) setTimeout(() => select(hit), 400);
         }
+        if (sp.get('server') === '1') { history.replaceState(history.state, '', location.pathname); setTimeout(() => startServer(), 300); }
       } catch (e) {
         console.error(e);
         setErr(e.message || String(e));
@@ -391,7 +401,28 @@ export function MapPage() {
     setTimeout(() => setWalkHint(false), 9000);
     history.replaceState(history.state, '', location.pathname);
   }
+  async function startServer() {
+    if (!appStore.get().session && !devName()) {
+      try { sessionStorage.setItem('cs-after-login', '/map?server=1'); } catch { /* storage off */ }
+      toast('Đăng nhập (hoặc đăng ký) để vào server cùng các bạn sinh viên khác nhé.', 'info', 4200);
+      navigate('/login');
+      return;
+    }
+    let l = await savedLook().catch(() => null);
+    if (!l) { l = await editLook(null, { first: true }); if (!l) return; }
+    setLook(l);
+    sceneRef.current?.setLook(l);
+    startWalk(null);
+    setServer(true);
+  }
+  async function changeLook() {
+    const l = await editLook(look);
+    if (!l) return;
+    setLook(l);
+    sceneRef.current?.setLook(l);
+  }
   function exitWalk() {
+    setServer(false);
     sceneRef.current?.stopWalk();
     setWalking(false);
     setView({ fp: false, locked: false, mode: 'walk' });
@@ -451,7 +482,9 @@ export function MapPage() {
       </div>
     </div>
 
-    ${state === 'ready' && stats.online > 0 && html`<div class="map-stats pop-in" title=${stats.visits ? `Hôm nay: ${fmtCount(stats.visits.today)} lượt · Tổng: ${fmtCount(stats.visits.total)} lượt` : 'Số người đang mở bản đồ'}>
+    ${state === 'ready' && server && walking && html`<${WorldLayer} scene=${sceneRef.current} frameRef=${worldFrame} pickRef=${worldPick} look=${look} fp=${view.fp} mobile=${mobile}
+      onClosed=${() => setServer(false)} onEditLook=${changeLook} />`}
+    ${state === 'ready' && !server && stats.online > 0 && html`<div class="map-stats pop-in" title=${stats.visits ? `Hôm nay: ${fmtCount(stats.visits.today)} lượt · Tổng: ${fmtCount(stats.visits.total)} lượt` : 'Số người đang mở bản đồ'}>
       <span class="map-live-dot" aria-hidden="true"></span><span><b>${fmtCount(stats.online)}</b> đang xem</span>
       ${stats.visits && html`<span class="map-stats-sep" aria-hidden="true"></span><span><b>${fmtCount(stats.visits.total)}</b> lượt<span class="map-stats-long"> truy cập</span></span>`}
     </div>`}
@@ -465,7 +498,7 @@ export function MapPage() {
     </div>`}
     ${state === 'ready' && walking && near && !sel && html`<button class="map-near pop-in" key=${near.key} onClick=${() => select(near, { fly: false })}>
       <${Icon} name="pin" size=${16} /><span>Gần <b>${near.title}</b></span><span class="map-near-key">${mobile ? 'Chạm để xem' : 'Nhấn E'}</span></button>`}
-    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà · <b>Esc</b> thoát</div>`}
+    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà${server ? html` · <b>Enter</b> chat` : ''} · <b>Esc</b> thoát</div>`}
     ${state === 'ready' && walking && (view.fp || view.locked) && html`<div class="map-crosshair" aria-hidden="true"></div>`}
     ${state === 'ready' && walking && !mobile && html`<div class=${'map-lock-chip' + (view.locked ? ' on' : '')}>${view.locked
       ? html`<b>Đang khóa chuột</b> · di chuột để nhìn · nhấn <b>O</b> hoặc <b>Esc</b> để mở`
@@ -474,8 +507,12 @@ export function MapPage() {
     ${state === 'ready' && walking && mobile && html`<${Joystick} onMove=${(x, y) => sceneRef.current?.setJoy(x, y)} />
       <button class=${'joy-eye' + (view.fp ? ' on' : '')} aria-label="Đổi góc nhìn" onClick=${() => sceneRef.current?.setFirstPerson(!view.fp)}><${Icon} name="eye" size=${22} /></button>
       <button class="joy-jump" aria-label=${view.mode === 'walk' ? 'Nhảy' : 'Bóp còi'} onPointerDown=${(e) => { e.preventDefault(); sceneRef.current?.jump(); }}>${view.mode === 'walk' ? html`<span class="joy-jump-arrow"></span>` : html`<${Icon} name="bell" size=${26} />`}</button>`}
-    ${state === 'ready' && !walking && !sel && html`<button class="map-walk-btn pop-in" onClick=${() => startWalk(null)}>
-      <span class="map-walk-ico">🚶</span><span class="grow"><b>Đi dạo quanh trường</b><span class="small">Nhập vai sinh viên, xuất phát từ cổng chính</span></span></button>`}
+    ${state === 'ready' && !walking && !sel && html`<div class="map-walk-btns pop-in">
+      <button class="map-walk-btn" onClick=${() => startWalk(null)}>
+        <span class="map-walk-ico">🚶</span><span class="grow"><b>Đi dạo một mình</b><span class="small">Nhập vai sinh viên, xuất phát từ cổng chính</span></span></button>
+      <button class="map-walk-btn server" onClick=${startServer}>
+        <span class="map-walk-ico">🌐</span><span class="grow"><b>Vào server</b><span class="small">${loggedIn ? 'Gặp, chat và họp voice với các bạn khác' : 'Cần đăng nhập · gặp và chat với các bạn khác'}</span></span></button>
+    </div>`}
 
     ${state === 'ready' && !walking && html`<div class="map-tools">
       <button class="map-btn compass" aria-label="Xoay về hướng Bắc" title="Hướng Bắc" onClick=${() => sceneRef.current?.faceNorth()}>
