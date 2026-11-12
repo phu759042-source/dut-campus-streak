@@ -136,7 +136,12 @@ export class World {
       const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${TURN_KEY_ID}/credentials/generate-ice-servers`, {
         method: 'POST', headers: { Authorization: `Bearer ${TURN_KEY_API_TOKEN}`, 'Content-Type': 'application/json' }, body: json({ ttl: 86400 }),
       });
-      if (r.ok) { const d = await r.json(); return [...stun, ...(d.iceServers ? [].concat(d.iceServers) : [])]; }
+      if (r.ok) {
+        const d = await r.json();
+        // browsers reject TURN on port 53, so those urls are dropped (Cloudflare's own advice)
+        const turn = [].concat(d.iceServers || []).map((s) => ({ ...s, urls: [].concat(s.urls).filter((u) => !/:53(\?|$)/.test(u)) })).filter((s) => s.urls.length);
+        return [...stun, ...turn];
+      }
     } catch { /* STUN only */ }
     return stun;
   }

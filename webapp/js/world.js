@@ -197,6 +197,7 @@ function createVoice({ send, emit, ice }) {
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState;
       p.state = s === 'connected' ? 'ok' : s === 'failed' ? 'failed' : s === 'disconnected' ? 'connecting' : p.state;
+      if (s === 'failed' && !p.warned) { p.warned = true; emit({ failed: id }); }
       state();
     };
     return p;

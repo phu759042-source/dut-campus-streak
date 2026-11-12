@@ -210,6 +210,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
           case 'mleft': setMyMeeting(null); setChatTab('all'); break;
           case 'voice':
             if (m.warn) toast(m.warn, 'info', 8000);
+            else if (m.failed) toast(`Không nối được giọng nói với ${st.current.players[m.failed]?.name || 'một bạn'}: mạng hai bên không kết nối thẳng được với nhau. Chat chữ vẫn dùng bình thường.`, 'error', 9000);
             else setVoice(m);
             break;
           case 'error': toast(m.msg || 'Có lỗi.', 'error', 3500); break;
