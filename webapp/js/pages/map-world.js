@@ -179,6 +179,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
             setSelPlayer((s) => (s === m.id ? null : s));
             break;
           case 'p': scene.players.setPos(m.id, m.p); break;
+          case 'away': setPlayers((o) => (o[m.id] ? { ...o, [m.id]: { ...o[m.id], away: !!m.v } } : o)); break;
           case 'look':
             scene.players.setLook(m.id, m.look);
             setPlayers((o) => (o[m.id] ? { ...o, [m.id]: { ...o[m.id], look: m.look } } : o));
@@ -276,13 +277,14 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       t.el.style.display = '';
       t.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
       t.el.style.zIndex = String(1000 - Math.round(p.depth * 1000));
-      const name = info.name + (info.m && !h.me ? ' 🎙' : '');
+      const name = info.name + (info.m && !h.me ? ' 🎙' : '') + (info.away && !h.me ? ' 💤' : '');
       if (t.name !== name) { t.name = name; t.el.querySelector('.world-name span').textContent = name; }
       const showB = t.bubble && t.until > now;
       const bt = showB ? t.bubble : '';
       if (t.shown !== bt) { t.shown = bt; const b = t.el.querySelector('.world-bubble'); b.textContent = bt; b.style.display = bt ? '' : 'none'; }
       if (showB) scene.requestRender(); // keep drawing until the bubble disappears
       t.el.classList.toggle('far', far > 60);
+      t.el.classList.toggle('away', !!info.away && !h.me);
     }
     for (const [id, t] of tags.current) if (!seen.has(id) && t.el) t.el.style.display = 'none';
   }
@@ -341,7 +343,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       <div class="world-panel-head"><b>Đang online (${online})</b><button class="icon-btn" aria-label="Đóng" onClick=${() => setPanel(null)}><${Icon} name="x" size=${18} /></button></div>
       ${me && html`<div class="world-row me"><span class="world-dot"></span><span class="grow"><b>${me.name}</b> <span class="muted small">(bạn)</span></span></div>`}
       ${list.length ? list.map((p) => html`<button class="world-row" onClick=${() => { setSelPlayer(p.id); setPanel(null); }}>
-        <span class="world-dot"></span><span class="grow"><b>${p.name}</b>${p.m && html` <span class="muted small">🎙 đang họp</span>`}</span><${Icon} name="chevron" size=${16} />
+        <span class=${'world-dot' + (p.away ? ' away' : '')}></span><span class="grow"><b>${p.name}</b>${p.m && html` <span class="muted small">🎙 đang họp</span>`}${p.away && html` <span class="muted small">💤 tạm vắng</span>`}</span><${Icon} name="chevron" size=${16} />
       </button>`) : html`<p class="muted small">Chưa có ai khác. Rủ bạn bè vào campusstreak.com/map nhé!</p>`}
     </div>`}
 
@@ -351,6 +353,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
 
     ${sel && html`<div class="world-card pop-in">
       <div class="world-panel-head"><b>${sel.name}</b><button class="icon-btn" aria-label="Đóng" onClick=${() => setSelPlayer(null)}><${Icon} name="x" size=${18} /></button></div>
+      ${sel.away && html`<div class="muted small">💤 Bạn này đang tạm vắng (để tab ở nền hoặc khoá màn hình), nên nhân vật đứng yên.</div>`}
       ${sel.m && html`<div class="muted small">🎙 Đang ở ${meetings.find((x) => x.id === sel.m)?.name || 'một phòng họp'}</div>`}
       <div class="world-card-actions">
         <button class="btn btn-ghost btn-sm" onClick=${() => goTo(sel.id)}>📍 Đi tới</button>

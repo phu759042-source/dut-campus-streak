@@ -8,6 +8,12 @@
 const LOOK_RANGES = { skin: 5, hair: 5, hc: 6, shirt: 8, pants: 6, bag: 6, glasses: 2 };
 const MAX_MEETING = 8;          // voice is a mesh (everyone connects to everyone), so keep meetings small
 const CHAT_KEEP = 40;           // last messages of the shared chat sent to newcomers
+// A player whose browser goes quiet is removed, so nobody is left standing frozen on the map
+// (phones that lock or switch app often never send a proper "close"). Open tabs send something every 10 s;
+// a tab in the background ("away") is throttled by the browser, so it gets longer.
+const SILENT_MS = 45000;
+const SILENT_AWAY_MS = 150000;
+const SWEEP_MS = 20000;
 
 const json = (o) => JSON.stringify(o);
 const clampInt = (v, n) => { v = Math.floor(Number(v)); return Number.isFinite(v) && v >= 0 && v < n ? v : 0; };
@@ -81,7 +87,7 @@ export class World {
     return out;
   }
   players() { return this.sockets().map(([, a]) => a); }
-  pub(a) { return { id: a.id, name: a.name, look: a.look, p: a.p || null, m: a.m || null }; }
+  pub(a) { return { id: a.id, name: a.name, look: a.look, p: a.p || null, m: a.m || null, away: !!a.away }; }
   send(ws, o) { try { ws.send(typeof o === 'string' ? o : json(o)); } catch { /* closed */ } }
   broadcast(o, except) {
     const s = json(o);
@@ -122,7 +128,7 @@ export class World {
       await this.dropPlayer(old, a);
       try { old.close(4409, 'opened elsewhere'); } catch { /* closed */ }
     }
-    const a = { auth: true, id: user.id, name, look: cleanLook(look || savedLook), p: null, m: null, lastChat: 0, at: Date.now() };
+    const a = { auth: true, id: user.id, name, look: cleanLook(look || savedLook), p: null, m: null, lastChat: 0, at: Date.now(), seen: Date.now(), away: false };
     ws.serializeAttachment(a);
     await this.load();
     this.send(ws, {
@@ -131,6 +137,20 @@ export class World {
       meetings: this.meetingList(), chat: this.chat, ice: await this.iceServers(),
     });
     this.broadcast({ t: 'join', p: this.pub(a) }, ws);
+    if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + SWEEP_MS);
+  }
+
+  /** Every 20 s while anyone is connected: remove players that went silent. */
+  async alarm() {
+    const now = Date.now();
+    let left = 0;
+    for (const [ws, a] of this.sockets()) {
+      if (now - (a.seen || a.at || 0) > (a.away ? SILENT_AWAY_MS : SILENT_MS)) {
+        await this.dropPlayer(ws, a);
+        try { ws.close(4408, 'timed out'); } catch { /* closed */ }
+      } else left++;
+    }
+    if (left) await this.ctx.storage.setAlarm(now + SWEEP_MS);
   }
 
   async iceServers() {
@@ -160,12 +180,14 @@ export class World {
       return;
     }
     await this.load();
+    const now = Date.now();
+    if (now - (a.seen || 0) > 5000) { a.seen = now; ws.serializeAttachment(a); } // still here
     switch (msg.t) {
       case 'p': { // position: [x, z, y, heading, mode, speed]
         if (!Array.isArray(msg.p) || msg.p.length !== 6) return;
         const p = msg.p.map((v) => (Number.isFinite(+v) ? Math.round(+v * 100) / 100 : 0));
         p[4] = clampInt(p[4], 3);
-        a.p = p; ws.serializeAttachment(a);
+        a.p = p; a.seen = now; ws.serializeAttachment(a);
         this.broadcast({ t: 'p', id: a.id, p }, ws);
         return;
       }
@@ -236,9 +258,15 @@ export class World {
         this.toUser(msg.to, { t: 'rtc', from: a.id, d: msg.d });
         return;
       }
-      case 'ping': this.send(ws, { t: 'pong' }); return;
+      case 'away': { // the tab went to the background (or came back)
+        a.away = !!msg.v; ws.serializeAttachment(a);
+        this.broadcast({ t: 'away', id: a.id, v: a.away }, ws);
+        return;
+      }
+      case 'ping': break;
       default:
     }
+    if (msg.t === 'ping') this.send(ws, { t: 'pong' });
   }
 
   async leaveMeeting(ws, a) {
@@ -246,6 +274,7 @@ export class World {
     a.m = null; ws.serializeAttachment(a);
     if (!m) return;
     m.members = m.members.filter((u) => u !== a.id);
+    if (!m.invited.includes(a.id)) m.invited.push(a.id); // may come back (e.g. after a dropped connection)
     if (!m.members.length) delete this.meetings[m.id];
     else {
       if (m.host === a.id) m.host = m.members[0];

@@ -22,7 +22,7 @@ export function devName() {
  */
 export function connectWorld({ look, on, getSelf }) {
   let ws = null, closed = false, tries = 0, retryTimer = 0, posTimer = 0, pingTimer = 0;
-  let last = null, lastAt = 0;
+  let last = null, lastAt = 0, lastMsg = 0, meetingId = null, waiting = false;
   let ice = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
   let myLook = look;
   const voice = createVoice({ send: (o) => send(o), emit: (v) => on({ t: 'voice', ...v }), ice: () => ice });
@@ -39,11 +39,19 @@ export function connectWorld({ look, on, getSelf }) {
     ws = new WebSocket(WORLD_URL);
     ws.onopen = () => { tries = 0; send({ t: 'hello', token, look: myLook }); };
     ws.onmessage = (e) => {
+      lastMsg = Date.now();
       let m; try { m = JSON.parse(e.data); } catch { return; }
-      if (m.t === 'welcome') { if (Array.isArray(m.ice) && m.ice.length) ice = m.ice; last = null; on({ t: 'status', status: 'online' }); }
-      if (m.t === 'mjoined') voice.start(m.id, m.peers || []);
+      if (m.t === 'welcome') {
+        if (Array.isArray(m.ice) && m.ice.length) ice = m.ice;
+        last = null;
+        on({ t: 'status', status: 'online' });
+        if (document.hidden) send({ t: 'away', v: 1 });
+        if (meetingId) send({ t: 'mjoin', id: meetingId }); // back after a dropped connection: rejoin the meeting
+      }
+      if (m.t === 'mjoined') { meetingId = m.id; voice.start(m.id, m.peers || []); }
       if (m.t === 'mgone') voice.drop(m.who);
-      if (m.t === 'mleft') voice.stop();
+      if (m.t === 'mleft') { meetingId = null; voice.stop(); }
+      if (m.t === 'error' && m.code === 'meeting') meetingId = null;
       if (m.t === 'rtc') voice.signal(m.from, m.d);
       on(m);
     };
@@ -53,10 +61,30 @@ export function connectWorld({ look, on, getSelf }) {
       if (closed) return;
       if (e.code === 4401 || e.code === 4409) { on({ t: 'status', status: 'closed', msg: e.code === 4409 ? 'Bạn đã vào server ở một tab khác.' : 'Phiên đăng nhập hết hạn, hãy đăng nhập lại.' }); return; }
       on({ t: 'status', status: 'offline' });
+      // in a background tab, wait until the student comes back instead of reconnecting in a loop
+      if (document.hidden) { waiting = true; return; }
       tries++;
       retryTimer = setTimeout(open, Math.min(15000, 800 * 2 ** Math.min(tries, 5)));
     };
   }
+
+  /** Drops the current socket (if any) and connects again at once. */
+  function reconnect() {
+    clearTimeout(retryTimer); tries = 0; waiting = false;
+    if (ws) { const old = ws; ws = null; old.onclose = null; voice.stop(); try { old.close(1000, 'reconnect'); } catch { /* closed */ } }
+    open();
+  }
+  // tab hidden: tell the others you are away. Tab back: say so, and if the connection died meanwhile
+  // (phones often kill it silently while locked), reconnect right away.
+  function onVisible() {
+    if (closed) return;
+    if (document.hidden) { send({ t: 'away', v: 1 }); return; }
+    if (waiting || !ws) { reconnect(); return; }
+    if (ws.readyState === 1 && Date.now() - lastMsg > 30000) { reconnect(); return; }
+    send({ t: 'away', v: 0 });
+  }
+  document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('online', onVisible);
 
   // your position, only when it changed (about 8 times a second while moving)
   posTimer = setInterval(() => {
@@ -78,12 +106,14 @@ export function connectWorld({ look, on, getSelf }) {
     setLook: (l) => { myLook = l; send({ t: 'look', look: l }); },
     createMeeting: (name, open, invite = []) => send({ t: 'mnew', name, open, invite }),
     joinMeeting: (id) => send({ t: 'mjoin', id }),
-    leaveMeeting: () => send({ t: 'mleave' }),
+    leaveMeeting: () => { meetingId = null; send({ t: 'mleave' }); },
     invite: (to) => send({ t: 'minv', to }),
     voice,
     close() {
       closed = true;
       clearTimeout(retryTimer); clearInterval(posTimer); clearInterval(pingTimer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onVisible);
       voice.stop();
       try { ws?.close(1000, 'bye'); } catch { /* closed */ }
     },

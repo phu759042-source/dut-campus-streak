@@ -1011,6 +1011,8 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .world-tag.speaking .world-name { box-shadow: 0 0 0 2px #12b76a, 0 0 12px rgba(18, 183, 106, 0.7); }
 .world-tag.speaking .world-name i { display: block; }
 .world-tag.far .world-name { opacity: 0.75; font-size: 11px; }
+.world-tag.away .world-name { opacity: 0.55; }
+.world-dot.away { background: #98a2b3; }
 .world-bubble { position: absolute; left: 0; bottom: 30px; transform: translateX(-50%); width: max-content; max-width: 220px; padding: 6px 11px; border-radius: 14px; font-size: 13px; font-weight: 600; line-height: 1.35;
   color: #14182b; background: #fff; box-shadow: 0 6px 18px rgba(15, 27, 61, 0.22); overflow-wrap: anywhere; }
 .world-bubble::after { content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-top-color: #fff; border-bottom: 0; }
