@@ -1,4 +1,5 @@
 import { html, useState, useEffect } from 'preact';
+import { RatePrompt } from '../rating.js';
 import {
   appStore, loadTodayClasses, loadMyLeaderboardRow, loadMyProfile, vnNow, fmtRange, fmtDateIso, timeToMinutes,
   isAbsenceReported, isCheckInExcluded, isTodayStreakComplete, checkInWindow, fmtDuration, errMsg, DAY_NAMES, supabase,
@@ -269,6 +270,7 @@ export function HomePage() {
     </div>
 
     <${PushPrompt} />
+    <${RatePrompt} />
     <button class="map-promo slide-up" onClick=${() => navigate('/map')}>
       <span class="map-promo-art" aria-hidden="true"><span></span><span></span><span></span></span>
       <span class="grow"><b>Bản đồ trường 3D</b><span class="small">Xoay, phóng to, tìm phòng học như F305 ngay trên mô hình DUT.</span></span>

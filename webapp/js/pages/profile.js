@@ -13,6 +13,7 @@ import { PageHeader } from './shared.js';
 import { useStore } from './home.js';
 import { InstallButton } from '../install.js';
 import { useIsAdmin } from './admin.js';
+import { openRating, loadMyRating, Stars } from '../rating.js';
 
 // ------------------------------------------------------------------
 // Image cropper (drag to move, slider / wheel / pinch to zoom)
@@ -194,6 +195,8 @@ export async function logout() {
 export function ProfilePage() {
   const store = useStore();
   const isAdmin = useIsAdmin();
+  const [myRate, setMyRate] = useState(null);
+  useEffect(() => { loadMyRating().then(setMyRate, () => {}); }, []);
   const [orig, setOrig] = useState(null);
   const [f, setF] = useState(null);
   const [avatar, setAvatar] = useState(null); // { blob, url }
@@ -363,6 +366,7 @@ export function ProfilePage() {
       <${PushSetting} />
       <button class="setting" onClick=${() => navigate('/achievements')}><span class="list-icon amber"><${Icon} name="trophy" /></span><span class="grow"><b>Thành tích</b></span><${Icon} name="chevron" size=${18} /></button>
       ${isAdmin && html`<button class="setting" onClick=${() => navigate('/admin')}><span class="list-icon violet"><${Icon} name="chart" /></span><span class="grow"><b>Quản trị · Thống kê</b><br /><span class="muted small">Lượt truy cập, người quay lại, biểu đồ</span></span><${Icon} name="chevron" size=${18} /></button>`}
+      <button class="setting" onClick=${async () => { const r = await openRating('profile'); if (r) setMyRate(r); }}><span class="list-icon amber">★</span><span class="grow"><b>Đánh giá ứng dụng</b><br /><span class="muted small">${myRate ? html`Bạn đã chấm <${Stars} value=${myRate.stars} size=${13} /> · bấm để sửa` : 'Chấm sao và góp ý cho tác giả'}</span></span><${Icon} name="chevron" size=${18} /></button>
       <button class="setting" onClick=${() => navigate('/about')}><span class="list-icon blue"><${Icon} name="info" /></span><span class="grow"><b>Liên hệ & Giới thiệu</b></span><${Icon} name="chevron" size=${18} /></button>
       <button class="setting" onClick=${changePassword}><span class="list-icon green"><${Icon} name="key" /></span><span class="grow"><b>Đổi mật khẩu</b></span><${Icon} name="chevron" size=${18} /></button>
       <button class="setting" onClick=${logout}><span class="list-icon gray"><${Icon} name="logout" /></span><span class="grow"><b>Đăng xuất</b></span></button>

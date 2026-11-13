@@ -6,6 +6,7 @@ import { supabase } from '../lib.js';
 import { Icon, toast, openSheet } from '../ui.js';
 import { connectWorld, EMOTES, devName } from '../world.js';
 import { SoccerHud, SoccerPanel, SoccerChip, TEAM_CSS, showBoard } from './map-soccer.js';
+import { shouldAskRating, snoozeRating, openRating, Stars } from '../rating.js';
 
 const LOOK_LABELS = { skin: 'Màu da', hair: 'Kiểu tóc', hc: 'Màu tóc', shirt: 'Áo', pants: 'Quần', bag: 'Balo', glasses: 'Kính' };
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
@@ -143,6 +144,13 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const [myRide, setMyRide] = useState(null);
   const [rideNear, setRideNear] = useState(null);
   const rideRef = useRef({});
+  // after 5 minutes in the server: a small "how do you like it?" card (once, unless already rated / snoozed)
+  const [rateAsk, setRateAsk] = useState(false);
+  useEffect(() => {
+    if (status !== 'online') return undefined;
+    const id = setTimeout(() => { shouldAskRating(0).then((v) => v && setRateAsk(true)); }, 5 * 60e3);
+    return () => clearTimeout(id);
+  }, [status === 'online']);
   rideRef.current = { mine: myRide, near: rideNear };
   const world = useRef(null);
   const soccer = useRef(null);
@@ -469,6 +477,12 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       <button class="btn btn-primary btn-sm" onClick=${() => { world.current?.joinMeeting(iv.id); setInvites((l) => l.filter((x) => x.id !== iv.id)); }}>Vào</button>
       <button class="btn btn-ghost btn-sm" onClick=${() => setInvites((l) => l.filter((x) => x.id !== iv.id))}>Bỏ qua</button>
     </div>`)}
+
+    ${rateAsk && html`<div class="world-rate pop-in">
+      <span>Bạn thấy bản đồ 3D thế nào?</span>
+      <${Stars} size=${24} onPick=${(s) => { setRateAsk(false); if (document.pointerLockElement) document.exitPointerLock(); openRating('map', s); }} />
+      <button class="icon-btn" aria-label="Để sau" onClick=${() => { snoozeRating(); setRateAsk(false); }}>✕</button>
+    </div>`}
 
     ${myRide ? html`<div class="world-ride pop-in"><span>🛵 Đang ngồi sau xe <b>${nameOf(myRide)}</b></span>
         <button class="btn btn-primary btn-sm" onClick=${(e) => { e.currentTarget.blur(); hopOff(); }}>Xuống xe${mobile ? '' : ' (E)'}</button></div>`

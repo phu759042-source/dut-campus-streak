@@ -4,6 +4,7 @@ import { html, useState, useEffect, useRef } from 'preact';
 import { supabase, errMsg } from '../lib.js';
 import { Icon, Skeleton, ErrorBox, Segmented } from '../ui.js';
 import { PageHeader } from './shared.js';
+import { Stars, STAR_LABELS } from '../rating.js';
 
 // two-series palette (checked for colour-blind separation and contrast on light and dark surfaces)
 const C1 = '#2f6bff', C2 = '#c96a12';
@@ -116,6 +117,64 @@ function Card({ title, note, children }) {
   </section>`;
 }
 
+const SOURCE = { app: 'Trang chủ', map: 'Bản đồ 3D', profile: 'Hồ sơ' };
+const SORTS = [['new', 'Mới nhất'], ['high', 'Nhiều sao nhất'], ['low', 'Ít sao nhất']];
+
+/** Store-style ratings: average, how many of each star (click to filter), then the reviews. */
+function RatingsCard() {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const [star, setStar] = useState(0);        // 0 = all
+  const [onlyText, setOnlyText] = useState(false);
+  const [sort, setSort] = useState('new');
+  const [shown, setShown] = useState(20);
+  async function load() {
+    setErr('');
+    const { data, error } = await supabase.rpc('admin_ratings');
+    if (error) setErr(errMsg(error)); else setD(data);
+  }
+  useEffect(() => { load(); }, []);
+  useEffect(() => { setShown(20); }, [star, onlyText, sort]);
+  if (err) return html`<${Card} title="Đánh giá từ người dùng"><${ErrorBox} message=${err} onRetry=${load} /><//>`;
+  if (!d) return html`<${Card} title="Đánh giá từ người dùng"><${Skeleton} h=${120} /><//>`;
+  const max = Math.max(1, ...d.dist.map((x) => x.n));
+  let list = d.list.filter((r) => (!star || r.stars === star) && (!onlyText || r.comment));
+  if (sort === 'high') list = list.slice().sort((a, b) => b.stars - a.stars || (a.at < b.at ? 1 : -1));
+  if (sort === 'low') list = list.slice().sort((a, b) => a.stars - b.stars || (a.at < b.at ? 1 : -1));
+  const when = (t) => new Date(t).toLocaleString('vi-VN', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return html`<${Card} title="Đánh giá từ người dùng">
+    ${!d.count ? html`<p class="muted">Chưa có đánh giá nào. Người dùng được mời chấm sao trên trang chủ (từ ngày thứ hai sau khi đăng ký), sau 5 phút chơi trong server bản đồ 3D, và trong Hồ sơ.</p>` : html`
+      <div class="rv-summary">
+        <div class="rv-avg">
+          <div class="rv-avg-num">${nf.format(d.avg)}</div>
+          <${Stars} value=${+d.avg} size=${18} />
+          <div class="muted small">${n(d.count)} đánh giá · ${n(d.with_comment)} có góp ý</div>
+        </div>
+        <div class="rv-dist">${d.dist.map((x) => html`<button class=${'rv-row' + (star === x.stars ? ' on' : '')} onClick=${() => setStar(star === x.stars ? 0 : x.stars)} title=${STAR_LABELS[x.stars]}>
+          <span class="rv-row-k">${x.stars} ★</span>
+          <span class="rv-track"><span style=${`width:${(100 * x.n) / max}%`}></span></span>
+          <span class="rv-row-n">${n(x.n)}</span>
+        </button>`)}</div>
+      </div>
+      <div class="rv-filters">
+        <button class=${'chip-btn' + (!star ? ' on' : '')} onClick=${() => setStar(0)}>Tất cả</button>
+        ${[5, 4, 3, 2, 1].map((s) => html`<button class=${'chip-btn' + (star === s ? ' on' : '')} onClick=${() => setStar(star === s ? 0 : s)}>${s} ★</button>`)}
+        <button class=${'chip-btn' + (onlyText ? ' on' : '')} onClick=${() => setOnlyText(!onlyText)}>Có góp ý</button>
+        <select class="input rv-sort" value=${sort} onChange=${(e) => setSort(e.target.value)} aria-label="Sắp xếp">
+          ${SORTS.map(([v, l]) => html`<option value=${v}>${l}</option>`)}
+        </select>
+      </div>
+      ${!list.length ? html`<p class="muted small">Không có đánh giá nào khớp bộ lọc.</p>` : html`<div class="rv-list">
+        ${list.slice(0, shown).map((r) => html`<article class="rv-item">
+          <div class="rv-head"><b>${r.name}</b><${Stars} value=${r.stars} size=${14} /><span class="muted small">${when(r.at)}${r.edited ? ' · đã sửa' : ''} · ${SOURCE[r.source] || r.source}</span></div>
+          ${r.comment ? html`<p class="rv-text">${r.comment}</p>` : html`<p class="muted small rv-text">(Không có góp ý)</p>`}
+        </article>`)}
+        ${list.length > shown && html`<button class="btn btn-ghost btn-sm" onClick=${() => setShown(shown + 30)}>Xem thêm (${n(list.length - shown)})</button>`}
+      </div>`}
+    `}
+  <//>`;
+}
+
 export function AdminPage() {
   const isAdmin = useIsAdmin();
   const [days, setDays] = useState(30);
@@ -166,6 +225,8 @@ export function AdminPage() {
         <${Tile} label="Lượt mở bản đồ 3D" value=${n(T.map_views)} sub=${T.app_views ? `Lượt vào web: ${n(T.app_views)}` : 'Đếm từ 11/11'} />
         <${Tile} label="Đăng ký chưa xác nhận" value=${n(T.unconfirmed)} sub="Không nhận được / chưa bấm email xác nhận" />
       </div>
+
+      <${RatingsCard} />
 
       <${Card} title="Người dùng hoạt động mỗi ngày" note="Mỗi tài khoản tính một lần mỗi ngày: người mới (đăng ký hôm đó) và người quay lại (đăng ký từ trước).">
         <${Legend} series=${[{ name: 'Quay lại', color: C1 }, { name: 'Mới đăng ký', color: C2 }]} />
