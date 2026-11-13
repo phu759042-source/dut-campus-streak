@@ -3,7 +3,7 @@
 // your own, football kits and the football moves (kick, volley, header, bicycle kick, slide tackle, dribble burst).
 // A player riding pillion (on the back seat of someone's scooter / motorbike) is drawn on that bike every frame.
 import * as THREE from 'three';
-import { makeStudent, disposeStudent, vehicleKit, limbPose, MOVE_T, SCALE, SOLE, pillionPose } from './walk.js';
+import { makeStudent, disposeStudent, vehicleKit, limbPose, MOVE_T, SCALE, SOLE, pillionPose, gaitRate, runBlend } from './walk.js';
 
 export const MODES = ['walk', 'scooter', 'moto']; // mode 3 = sitting on the stands, 4 = on someone's back seat
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -119,6 +119,7 @@ export function createPlayers(scene) {
     else if (kind === 'bicycle') p.bike = MOVE_T.bike;
     else if (kind === 'slide') p.slide = MOVE_T.slide;
     else if (kind === 'dash') p.dash = MOVE_T.dash;
+    else if (kind === 'fall') { p.fall = MOVE_T.fall; p.slide = p.dash = p.kick = 0; }
   }
 
   /** Moves everyone a little towards their latest position. Returns true while something is still moving. */
@@ -134,13 +135,14 @@ export function createPlayers(scene) {
       }
       p.seated = false;
       const dx = p.tx - p.x, dz = p.tz - p.z, dy = p.ty - p.y, dh = wrap(p.th - p.h);
-      const moving = Math.abs(dx) + Math.abs(dz) + Math.abs(dy) > 0.01 || Math.abs(dh) > 0.01 || p.speed > 0.2 || p.wave > 0 || p.kick > 0 || p.slide > 0 || p.bike > 0 || p.head > 0 || p.dash > 0;
+      const moving = Math.abs(dx) + Math.abs(dz) + Math.abs(dy) > 0.01 || Math.abs(dh) > 0.01 || p.speed > 0.2 || p.wave > 0 || p.kick > 0 || p.slide > 0 || p.bike > 0 || p.head > 0 || p.dash > 0 || p.fall > 0;
       if (moving) busy = true;
       p.x += dx * k; p.z += dz * k; p.y += dy * k; p.h += dh * k;
       const s = p.s, ease = Math.min(1, dt * 12);
-      p.phase += dt * (3 + p.speed * 1.9);
+      const football = !!p.kit, run = runBlend(p.speed, football);
+      p.phase += dt * gaitRate(p.speed, football);
       p.rig.position.set(p.x, p.y, p.z);
-      for (const k of ['kick', 'volley', 'slide', 'bike', 'head', 'dash']) p[k] = Math.max(0, p[k] - dt);
+      for (const k of ['kick', 'volley', 'slide', 'bike', 'head', 'dash', 'fall']) p[k] = Math.max(0, (p[k] || 0) - dt);
       if (p.mode === 3) { // sitting on the stands
         for (const [limb, target] of [[s.legL, -1.35], [s.legR, -1.35], [s.armL, -0.35], [s.armR, -0.35]]) limb.rotation.x += (target - limb.rotation.x) * ease;
         s.group.position.set(0, -0.5, 0);
@@ -165,14 +167,15 @@ export function createPlayers(scene) {
         const swing = Math.sin(p.phase) * Math.min(0.95, 0.25 + Math.min(1, p.speed / 7.2) * 1.1) * (p.speed > 0.2 ? 1 : 0);
         p.wave = Math.max(0, p.wave - dt);
         const waveArm = p.wave > 0 ? -2.6 + Math.sin(p.wave * 12) * 0.35 : null;
-        const P = limbPose(p, swing, air);
+        const P = limbPose(p, swing, air, p.fall > 0 ? 0 : run, Math.sin(p.phase));
         const snap = p.kick > 0 || p.bike > 0;
         s.legL.rotation.x += (P.legL - s.legL.rotation.x) * ease;
         s.legR.rotation.x = snap ? P.legR : s.legR.rotation.x + (P.legR - s.legR.rotation.x) * ease;
         s.armL.rotation.x += (P.armL - s.armL.rotation.x) * ease;
         s.armR.rotation.x += ((waveArm ?? P.armR) - s.armR.rotation.x) * ease;
         s.armR.rotation.z += ((p.wave > 0 ? 0.35 : 0) - s.armR.rotation.z) * ease;
-        s.group.position.set(0, (P.y ?? (p.speed > 0.2 ? Math.abs(Math.sin(p.phase)) * 0.045 : 0)) - SOLE, P.z); // soles on the ground
+        s.group.position.set(0, (P.y ?? (p.speed > 0.2 ? Math.abs(Math.sin(p.phase)) * (0.045 + 0.05 * run) : 0)) - SOLE, P.z); // soles on the ground
+        s.group.rotation.y = p.fall > 0 ? 0 : run * 0.14 * Math.sin(p.phase);
         s.group.rotation.x = p.bike > 0 ? P.lean : s.group.rotation.x + (P.lean - s.group.rotation.x) * Math.min(1, dt * 18);
         s.group.rotation.z += (P.roll - s.group.rotation.z) * Math.min(1, dt * 18);
         // positions arrive only a few times a second: show the hop of a bicycle kick / header here

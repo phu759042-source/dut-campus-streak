@@ -189,8 +189,17 @@ function horn() {
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 // Football moves: how long each one lasts (s)
-export const MOVE_T = { kick: 0.32, slide: 0.45, bike: 0.8, head: 0.35, dash: 0.35 };
-const KICK_T = MOVE_T.kick, SLIDE_T = MOVE_T.slide, BIKE_T = MOVE_T.bike, HEAD_T = MOVE_T.head, DASH_T = MOVE_T.dash;
+// fall: knocked over by a slide tackle: going down, 3 s on the ground, then getting up (FALL_T in all)
+export const MOVE_T = { kick: 0.32, slide: 0.62, bike: 0.8, head: 0.35, dash: 0.35, fall: 4.0 };
+const KICK_T = MOVE_T.kick, SLIDE_T = MOVE_T.slide, BIKE_T = MOVE_T.bike, HEAD_T = MOVE_T.head, DASH_T = MOVE_T.dash, FALL_T = MOVE_T.fall;
+const SLIDE_V = 11; // slide tackle: starts at this speed (m/s) and slows to 0, about 3.4 m in all
+
+/** Walk / run cycle speed (radians of the step cycle per second). Football running takes long strides. */
+export function gaitRate(speed, football) {
+  return football && speed > 3 ? (Math.PI * speed) / (1.35 + 0.08 * speed) : 3 + speed * 1.9;
+}
+/** How much of the running style to use (0 = walking, 1 = running) for someone on the pitch. */
+export const runBlend = (speed, football) => (football ? Math.min(1, Math.max(0, (speed - 3.8) / 2.5)) : 0);
 const HIP = 0.9 * SCALE; // a bicycle kick turns the body around the hips
 
 /**
@@ -199,7 +208,15 @@ const HIP = 0.9 * SCALE; // a bicycle kick turns the body around the hips
  * bicycle kick (body flips back, right leg snaps over the head), slide tackle, dribble burst.
  * Returns { legL, legR, armL, armR, lean (x), roll (z), y, z (body offset; y null = normal bob) }.
  */
-export function limbPose(t, swing, air) {
+export function limbPose(t, swing, air, run = 0, s = 0) {
+  if (t.fall > 0) { // knocked over: down on the back, lying there, then sitting up and standing
+    const e = FALL_T - t.fall, mix = (a, b, k) => a + (b - a) * k;
+    if (e < 0.35) { const k = e / 0.35; return { legL: -0.5 * k, legR: -0.25 * k, armL: -2.3 * k, armR: -1.7 * k, lean: -1.5 * k * k, roll: 0, y: 0.22 * k, z: 0 }; }
+    if (e < 3.0) return { legL: -0.4, legR: -0.12, armL: -2.6, armR: -2.0, lean: -1.5, roll: 0, y: 0.22, z: 0 };
+    if (e < 3.5) { const k = (e - 3.0) / 0.5; return { legL: mix(-0.4, -1.4, k), legR: mix(-0.12, -1.3, k), armL: mix(-2.6, 0.7, k), armR: mix(-2.0, 0.7, k), lean: mix(-1.5, 0.2, k), roll: 0, y: mix(0.22, -0.62, k), z: 0 }; }
+    const k = (e - 3.5) / 0.5;
+    return { legL: mix(-1.4, 0, k), legR: mix(-1.3, 0, k), armL: mix(0.7, 0, k), armR: mix(0.7, 0, k), lean: mix(0.45, 0, k), roll: 0, y: mix(-0.62, 0, k), z: 0 };
+  }
   if (t.bike > 0) {
     const k = 1 - t.bike / BIKE_T, lean = -2.7 * Math.sin(Math.PI * Math.min(1, k * 1.15));
     const strike = k > 0.32 && k < 0.62;
@@ -208,6 +225,12 @@ export function limbPose(t, swing, air) {
   if (t.slide > 0) return { legL: -1.3, legR: -1.15, armL: -0.7, armR: -0.4, lean: -1.0, roll: 0, y: 0.05, z: 0 };
   if (t.sit) return { legL: -1.35, legR: -1.35, armL: -0.35, armR: -0.35, lean: 0, roll: 0, y: -0.5, z: 0 };
   const P = { legL: swing + air, legR: -swing - air * 0.3, armL: -swing * 0.85 - air, armR: swing * 0.85 - air, lean: 0, roll: 0, y: null, z: 0 };
+  if (run > 0 && !air) { // running (football): long strides, knees up, arms pumping in front, leaning into it
+    const A = 0.75 + 0.3 * run, mix = (a, b) => a + (b - a) * run;
+    P.legL = mix(P.legL, A * s - 0.12); P.legR = mix(P.legR, -A * s - 0.12);
+    P.armL = mix(P.armL, -0.95 * s - 0.35); P.armR = mix(P.armR, 0.95 * s - 0.35);
+    P.lean = 0.12 + 0.14 * run;
+  }
   if (t.dash > 0) { P.lean = 0.3; P.armL = -0.9; P.armR = 0.9; }
   if (t.head > 0) { // nod through the ball
     const k = 1 - t.head / HEAD_T;
@@ -536,6 +559,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       st.heading = ride.h; st.speed = ride.speed;
     } else if (st.bike > 0) {
       st.speed = 0; // bicycle kick: up in the air on the spot (gravity below brings you down)
+    } else if (st.fall > 0) {
+      st.fall = Math.max(0, st.fall - dt); st.speed = 0; st.jumpReq = false; // on the ground, then getting up
     } else if (st.dash > 0) {
       // dribble burst: a quick dash with the ball that fades out
       st.dash = Math.max(0, st.dash - dt);
@@ -548,7 +573,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     } else if (st.slide > 0) {
       // slide tackle: a quick burst forward that fades out
       st.slide = Math.max(0, st.slide - dt);
-      const v = 9 * (st.slide / SLIDE_T);
+      const v = SLIDE_V * (st.slide / SLIDE_T);
       let [qx, qz] = resolve(st.x + st.slideX * v * dt, st.z + st.slideZ * v * dt);
       if (play.bounds) [qx, qz] = play.bounds(qx, qz);
       if (!groundAt(qx, qz, st.y).blocked) { st.x = qx; st.z = qz; }
@@ -618,7 +643,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     const bodyY = st.y + st.lift;
     // animate limbs (or the riding pose)
     const moving = Math.min(1, st.speed / RUN);
-    st.phase += dt * (3 + st.speed * 1.9);
+    const football = !!play.run, run = runBlend(st.speed, football) * (st.sprinting ? 1 : 0.85);
+    st.phase += dt * gaitRate(st.speed, football);
     const swing = Math.sin(st.phase) * Math.min(0.95, 0.25 + moving * 1.1) * (st.speed > 0.2 ? 1 : 0);
     const air = st.y > (st.ground || 0) + 0.05 ? 0.6 : 0;
     const ease = Math.min(1, dt * 14);
@@ -644,13 +670,14 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       rig.rotation.set(st.tilt, st.heading, st.steer * 0.2 * Math.min(1, st.speed / 6)); // lean into turns
       s.blob.scale.set(1.1, 1.9, 1);
     } else {
-      const P = limbPose(st, swing, air);
+      const P = limbPose(st, swing, air, run, Math.sin(st.phase));
       const snap = st.kick > 0 || st.bike > 0; // fast moves are not smoothed
       s.legL.rotation.x += (P.legL - s.legL.rotation.x) * ease;
       s.legR.rotation.x = snap ? P.legR : s.legR.rotation.x + (P.legR - s.legR.rotation.x) * ease;
       s.armL.rotation.x += (P.armL - s.armL.rotation.x) * ease;
       s.armR.rotation.x += (P.armR - s.armR.rotation.x) * ease;
-      const bob = st.speed > 0.2 && st.y === (st.ground || 0) && !st.slide ? Math.abs(Math.sin(st.phase)) * 0.045 : Math.sin(st.t * 2) * 0.01;
+      const bob = st.speed > 0.2 && st.y === (st.ground || 0) && !st.slide ? Math.abs(Math.sin(st.phase)) * (0.045 + 0.05 * run) : Math.sin(st.t * 2) * 0.01;
+      s.group.rotation.y = run * 0.14 * Math.sin(st.phase); // shoulders turn with the stride
       st.land = Math.max(0, (st.land || 0) - dt * 6);                       // small knee bend on landing
       s.group.position.set(0, (P.y ?? bob - Math.sin(st.land * Math.PI) * 0.07) - (st.sit ? 0 : SOLE), P.z); // soles on the ground
       s.group.rotation.x = st.bike > 0 ? P.lean : s.group.rotation.x + (P.lean - s.group.rotation.x) * Math.min(1, dt * 18);
@@ -702,7 +729,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   }
 
   function enter({ x, z, facing }) {
-    st.carry = null; st.sit = false; st.kick = 0; st.slide = 0; st.bike = 0; st.head = 0; st.dash = 0; st.volley = 0;
+    st.carry = null; st.sit = false; st.kick = 0; st.slide = 0; st.bike = 0; st.head = 0; st.dash = 0; st.volley = 0; st.fall = 0;
     [st.x, st.z] = freeSpot(x, z);
     st.y = 0; st.vy = 0; st.air = false; st.speed = 0; st.t = 0; st.nearIdx = -1; st.nearTimer = 0;
     st.heading = facing ?? 0;
@@ -773,12 +800,14 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     kick() { st.kick = KICK_T; },
     volley() { st.kick = KICK_T; st.volley = KICK_T; },
     header() { st.head = HEAD_T; },
-    lunge(dx, dz) { if (st.mode !== 'walk' || st.slide > 0 || st.sit || st.bike > 0) return; st.slide = SLIDE_T; st.slideX = dx; st.slideZ = dz; st.heading = Math.atan2(dx, dz); },
+    /** knocked over (slide tackle): lie on the ground, then get up; no moving meanwhile */
+    fall() { st.fall = FALL_T; st.slide = 0; st.dash = 0; st.kick = 0; st.head = 0; st.speed = 0; st.sit = false; },
+    lunge(dx, dz) { if (st.mode !== 'walk' || st.slide > 0 || st.sit || st.bike > 0 || st.fall > 0) return; st.slide = SLIDE_T; st.slideX = dx; st.slideZ = dz; st.heading = Math.atan2(dx, dz); },
     /** dribble burst in a direction */
-    dash(dx, dz) { if (st.mode !== 'walk' || st.sit || st.bike > 0 || st.slide > 0) return false; st.dash = DASH_T; st.dashX = dx; st.dashZ = dz; return true; },
+    dash(dx, dz) { if (st.mode !== 'walk' || st.sit || st.bike > 0 || st.slide > 0 || st.fall > 0) return false; st.dash = DASH_T; st.dashX = dx; st.dashZ = dz; return true; },
     /** bicycle kick: jump and flip back, facing heading h (your back to where the ball goes) */
     bicycle(h) {
-      if (st.mode !== 'walk' || st.air || st.sit || st.bike > 0 || st.slide > 0 || play.frozen) return false;
+      if (st.mode !== 'walk' || st.air || st.sit || st.bike > 0 || st.slide > 0 || st.fall > 0 || play.frozen) return false;
       st.heading = h; st.vy = 6.4; st.air = true; st.bike = BIKE_T; st.jumpReq = false; st.dash = 0;
       return true;
     },

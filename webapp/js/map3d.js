@@ -628,7 +628,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     },
     /** debug: advance walk mode by `sec` seconds at 60 fps synchronously, then draw */
     _step(sec) {
-      for (let i = 0; i < Math.round(sec * 60); i++) { players.update(1 / 60); if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); treeOcclusion(camera.position, l); inter.update(walker.state); seatPassengers(); } }
+      for (let i = 0; i < Math.round(sec * 60); i++) { players.update(1 / 60); if (walker.state.on) { const l = walker.update(1 / 60); controls.target.copy(l); treeOcclusion(camera.position, l); inter.update(walker.state); seatPassengers(); } for (const f of frameHooks) f(1 / 60); }
       needs = true;
       last = performance.now();
       const w = walker.state;

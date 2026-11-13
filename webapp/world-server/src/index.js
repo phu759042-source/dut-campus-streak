@@ -289,7 +289,7 @@ export class World {
         this.broadcast({ t: 'away', id: a.id, v: a.away }, ws);
         return;
       }
-      case 'fjoin': case 'fleave': case 'ft': case 'fk': case 'fx': case 'fa': case 'fd': // football
+      case 'fjoin': case 'fleave': case 'ft': case 'fk': case 'fx': case 'fxh': case 'fa': case 'fd': // football
         this.soccer.message(a, msg);
         return;
       case 'ping': // also used by the browser to estimate the server clock (football timing)

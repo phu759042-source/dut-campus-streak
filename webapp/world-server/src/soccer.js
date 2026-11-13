@@ -217,6 +217,7 @@ export class Soccer {
       case 'ft': this.touch(a, msg, now); return;
       case 'fk': this.kick(a, msg, now); return;
       case 'fx': this.tackle(a, msg, now); return;
+      case 'fxh': this.tackleHit(a, msg, now); return;
       case 'fa': this.strike(a, msg, now); return;
       case 'fd': this.dribble(a, now); return;
       default:
@@ -320,22 +321,33 @@ export class Soccer {
     this.event({ e: 'dribble', id: a.id });
   }
 
-  /** Slide tackle: wins the ball from an opponent close enough to the tackler. */
+  /** Slide tackle starts (everyone sees the slide). It only wins the ball through tackleHit, during the slide. */
   tackle(a, msg, now) {
-    const t = this.teamOf(a.id), b = this.sim.b;
-    if (t < 0 || !this.canPlay() || this.cooling(a.id, 'tackle', now)) return;
+    const t = this.teamOf(a.id);
+    if (t < 0 || !this.canPlay() || this.cooling(a.id, 'tackle', now) || this.cooling(a.id, 'stun', now)) return;
     this.cooldown(a.id, 'tackle', now + 1000);
+    this.cooldown(a.id, 'slide', now + 950);
     this.event({ e: 'slide', id: a.id });
-    const h = b.h;
+  }
+
+  /**
+   * The sliding feet went through the middle of the ring under the opponent with the ball (the tackler's browser
+   * sees it; checked here against where the server last saw both). The ball is won and that player goes down
+   * (3 s on the ground + getting up, no touching the ball meanwhile).
+   */
+  tackleHit(a, msg, now) {
+    const t = this.teamOf(a.id), b = this.sim.b, h = b.h;
+    if (t < 0 || !this.canPlay() || !this.cooling(a.id, 'slide', now)) return;
     if (h == null || keeperHolds(this.sim) || this.teamOf(h) === t || this.teamOf(h) < 0) return;
-    if (this.cooling(h, 'dodge', now)) { this.event({ e: 'dodged', id: h, by: a.id }); return; } // dribbled past
-    const me = this.local(a), p = Array.isArray(msg.p) ? toLocal(num(msg.p[0]), num(msg.p[1])) : null;
-    if (!me || !p || !Number.isFinite(p[0]) || !Number.isFinite(p[1]) || dist(p, me) > 4 || dist(p, [b.u, b.v]) > 2.8) return;
+    if (this.cooling(h, 'dodge', now)) { this.cooldown(a.id, 'slide', 0); this.event({ e: 'dodged', id: h, by: a.id }); return; } // dribbled past
+    const me = this.local(a), them = this.local(this.info(h)), p = Array.isArray(msg.p) ? toLocal(num(msg.p[0]), num(msg.p[1])) : null;
+    if (!me || !them || !p || !Number.isFinite(p[0]) || !Number.isFinite(p[1]) || dist(p, me) > 5 || dist(p, them) > 1.8) return;
+    this.cooldown(a.id, 'slide', 0);
     let du = 0, dv = 0;
     if (Array.isArray(msg.d)) [du, dv] = dirLocal(num(msg.d[0]) || 0, num(msg.d[1]) || 0);
     const L = Math.sqrt(du * du + dv * dv) || 1;
     Object.assign(b, { h: null, vu: (du / L) * 4.5, vv: (dv / L) * 4.5, vy: 1.2 });
-    this.cooldown(h, 'stun', now + 900);
+    this.cooldown(h, 'stun', now + 4000);
     this.lt = a.id; this.ltName = a.name; this.lk = null;
     this.pushBall();
     this.event({ e: 'steal', id: a.id, from: h });

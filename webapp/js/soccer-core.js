@@ -36,7 +36,7 @@ export const MATCH_MS = 5 * 60 * 1000;
 export const TEAM_NAMES = ['Xanh', 'Cam'];
 export const STEP = 1 / 60;                     // fixed physics step (s)
 export const STEP_MS = 1000 / 60;
-export const MAX_KICK = 32, MAX_LIFT = 10;      // fastest shot (m/s) and its upward speed
+export const MAX_KICK = 32, MAX_LIFT = 13;      // fastest shot (m/s) and the most upward speed (a full lofted pass)
 const GRAVITY = 11;
 const ROLL_A = 1.5, ROLL_C = 0.06; // rolling on grass slows the ball by ROLL_A + ROLL_C * speed (m/s²)
 
