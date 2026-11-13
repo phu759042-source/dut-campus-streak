@@ -882,6 +882,8 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .map-pin.minor .map-pin-text::after { background: #5254ff; }
 .map-pin.poi-gate .map-pin-text, .map-pin.poi-parking .map-pin-text { background: linear-gradient(135deg, #12b76a, #0e9a59); }
 .map-pin.poi-gate .map-pin-text::after, .map-pin.poi-parking .map-pin-text::after { background: #0e9a59; }
+.map-pin.poi-bridge .map-pin-text { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.map-pin.poi-bridge .map-pin-text::after { background: #d97706; }
 
 .map-top { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: 10px; align-items: flex-start; padding: calc(12px + var(--safe-t)) 16px 0; pointer-events: none; }
 .map-top > * { pointer-events: auto; }

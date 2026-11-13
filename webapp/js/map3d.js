@@ -9,6 +9,7 @@ import { createPlayers } from './players.js';
 import { prepareInteriors, buildInteriors } from './interiors.js';
 import { buildStadium } from './stadium.js';
 import { buildBillboards } from './billboards.js';
+import { buildBridge } from './bridge.js';
 import { styleOf, wallMaterials, buildBuildingDetails, buildWalls, buildGates, buildCanopies, buildLamps, avenueTreeSpots } from './campus-details.js';
 
 export const FLOOR_H = 3.4;
@@ -18,11 +19,13 @@ const PALETTE = {
   light: {
     sky: 0xcfe2ff, ground: 0xe4e9e1, campus: 0xeef2e6, road: 0xb7bfcc, foot: 0xe3d6c3, grass: 0x9fd08a,
     park: 0x8cc77a, water: 0x6fb7e8, parking: 0xc9ced8, pitch: 0x7cc46b, track: 0xd2876a, wall: 0xffffff, dirt: 0xd8c39a,
+    ballast: 0xa69f95, plaza: 0xdad5ca,
     hemiSky: 0xffffff, hemiGround: 0xb7c4a8, hemi: 1.15, sun: 2.1, fogNear: 700, fogFar: 1900, glow: 0,
   },
   dark: {
     sky: 0x0b1428, ground: 0x1a2232, campus: 0x1f2a3b, road: 0x3a4558, foot: 0x4a4740, grass: 0x2f5a3a,
     park: 0x2b5535, water: 0x1f4f7a, parking: 0x343c4c, pitch: 0x2e5b33, track: 0x6e4136, wall: 0xb9bfcc, dirt: 0x6e5c40,
+    ballast: 0x4d4a47, plaza: 0x565b66,
     hemiSky: 0x8fa6d8, hemiGround: 0x1b2333, hemi: 0.75, sun: 0.55, fogNear: 600, fogFar: 1700, glow: 1,
   },
 };
@@ -165,31 +168,29 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   sun.shadow.normalBias = 0.6;
   scene.add(sun);
 
+  // Everything painted on the ground (campus, lawns, roads, paths, the pitch...) lies at y = 0, exactly where
+  // students and wheels stand. The layers cannot fight over depth: they are drawn first, in this order, and do
+  // not write depth (painter's algorithm); every other object is above the ground and draws over them.
   const mats = {};
-  const matOf = (key) => (mats[key] ??= new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+  const matOf = (key) => (mats[key] ??= new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthWrite: false }));
+  let groundOrder = -200;
+  const groundLayer = (mesh) => { mesh.renderOrder = groundOrder++; mesh.receiveShadow = true; scene.add(mesh); return mesh; };
 
   // ground + campus
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), matOf('ground'));
-  ground.rotation.x = -Math.PI / 2; ground.position.y = -0.2; ground.receiveShadow = true;
-  scene.add(ground);
-  const campusMesh = new THREE.Mesh(flatShapes([data.boundary], 0), matOf('campus'));
-  campusMesh.receiveShadow = true;
-  scene.add(campusMesh);
+  ground.rotation.x = -Math.PI / 2;
+  groundLayer(ground);
+  groundLayer(new THREE.Mesh(flatShapes([data.boundary], 0), matOf('campus')));
 
   // areas
   const byKind = (k) => data.areas.filter((a) => a.kind === k).map((a) => a.pts);
-  const layers = [['parking', 0.08], ['grass', 0.12], ['dirt', 0.14], ['track', 0.16], ['pitch', 0.2], ['water', 0.24]];
-  for (const [k, y] of layers) {
-    const g = flatShapes(byKind(k), y);
-    if (!g) continue;
-    const m = new THREE.Mesh(g, matOf(k));
-    m.receiveShadow = true;
-    scene.add(m);
+  for (const k of ['parking', 'grass', 'dirt', 'track', 'pitch', 'water']) {
+    const g = flatShapes(byKind(k), 0);
+    if (g) groundLayer(new THREE.Mesh(g, matOf(k)));
   }
-  const roads = new THREE.Mesh(ribbons(data.roads.filter((r) => !r.foot), 0.3), matOf('road'));
-  const foot = new THREE.Mesh(ribbons(data.roads.filter((r) => r.foot), 0.34), matOf('foot'));
-  roads.receiveShadow = foot.receiveShadow = true;
-  scene.add(roads, foot);
+  // roads and paths (the bridge deck stands in for the roads flagged `bridge`)
+  groundLayer(new THREE.Mesh(ribbons(data.roads.filter((r) => !r.foot && !r.bridge), 0), matOf('road')));
+  groundLayer(new THREE.Mesh(ribbons(data.roads.filter((r) => r.foot), 0), matOf('foot')));
 
   // buildings (facade style per zone, see campus-details.js)
   const walls = wallMaterials();
@@ -231,9 +232,19 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   scene.add(inter.group);
   for (const b of buildings) if (b.hollow) b.mesh = inter.meshFor.get(b.id) || null;
   pickables.push(...inter.occluders);
+  // Ngô Sĩ Liên railway overpass: ramps, 7 spans on piers, the railway under it, the rehearsal space under the deck
+  const bridge = data.bridge ? buildBridge(data, { mobile }) : null;
+  if (bridge) {
+    scene.add(bridge.group);
+    pickables.push(...bridge.occluders);
+    for (const g of bridge.ground) {
+      const geo = g.lines ? ribbons(g.lines, 0) : flatShapes(g.polys, 0);
+      if (geo) groundLayer(new THREE.Mesh(geo, matOf(g.key)));
+    }
+  }
   const clickables = [...pickables, details.mesh];
   // perimeter wall, gates, parking canopies
-  if (data.walls?.length) scene.add(buildWalls(data.walls, data.posts || []));
+  if (data.walls?.length) scene.add(buildWalls(data.walls, data.posts || [], data.wallH || []));
   const gates = buildGates(data.pois);
   // donate + Mì Quảng Bách Khoa billboards just inside the main gate
   const billboards = buildBillboards(data.pois);
@@ -241,6 +252,11 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   scene.add(gates.group);
   const canopies = buildCanopies(data.areas, data.boundary);
   if (canopies.group) scene.add(canopies.group);
+  for (const roof of canopies.roofs) { // see-through when in the way; a click selects the bike shed
+    const poi = data.pois.find((p) => p.kind === 'parking' && p.name === roof.userData.place);
+    roof.userData.building = poi ? { poi: poi.id } : null;
+    pickables.push(roof); clickables.push(roof);
+  }
   // stadium: running track around the big football pitch, lines and goals
   const bigPitch = byKind('pitch').filter((p) => polyArea(p) > 3000).sort((p, q) => polyArea(q) - polyArea(p))[0];
   const stadium = bigPitch ? buildStadium(bigPitch) : null;
@@ -286,9 +302,10 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) wallSegs.push([w[i], w[i + 1]]);
   const clearOfWalls = (x, z, m) => !wallSegs.some(([a, b]) => Math.abs(a[0] - x) < 40 && Math.abs(a[1] - z) < 40 && segDist(x, z, a, b) < m);
-  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear].map((p) => [p, bbox([p])]);
+  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear, ...(bridge ? bridge.clear : [])].map((p) => [p, bbox([p])]);
   const inArea = (x, z, m) => blockedAreas.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
-  const lamps = buildLamps(data.roads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
+  const groundRoads = data.roads.filter((r) => !r.bridge);
+  const lamps = buildLamps(groundRoads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
   scene.add(lamps.group);
   // keep the area in front of main doors clear of trees
   const doors = [];
@@ -342,7 +359,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
       }
     }
     // avenue trees along the campus roads (like the boulevard from the main gate)
-    for (const t of avenueTreeSpots(data.roads, data.boundary, (x, z) => !treeOk(x, z, 1.05), rand)) {
+    for (const t of avenueTreeSpots(groundRoads, data.boundary, (x, z) => !treeOk(x, z, 1.05), rand)) {
       if (!nearDoor(t[0], t[1]) && !spots.some((s) => Math.abs(s[0] - t[0]) + Math.abs(s[1] - t[1]) < 4)) spots.push(t);
     }
     // trunk 3.4 m, crown 5.2 m wide: the lowest leaves stay ~2 m up, above a 1.65 m student's head
@@ -394,7 +411,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     const P = PALETTE[isDark ? 'dark' : 'light'];
     scene.background = new THREE.Color(P.sky);
     scene.fog.color.set(P.sky); scene.fog.near = P.fogNear; scene.fog.far = P.fogFar;
-    for (const k of ['ground', 'campus', 'road', 'foot', 'grass', 'water', 'parking', 'pitch', 'track', 'dirt']) matOf(k).color.set(P[k]);
+    for (const k of ['ground', 'campus', 'road', 'foot', 'grass', 'water', 'parking', 'pitch', 'track', 'dirt', 'ballast', 'plaza']) matOf(k).color.set(P[k]);
+    bridge?.setTheme(isDark, P);
     walls.setNight(isDark, P.wall);
     lamps.setNight(isDark);
     details.setNight(isDark);
@@ -451,8 +469,9 @@ export function createCampus(container, data, { dark = false, mobile = false, on
 
   // ---------- walk mode ----------
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
-    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...billboards.posts, ...(stadium ? stadium.posts : [])], extraWalls: [...inter.walls, ...(stadium ? stadium.walls : [])],
-    surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : [])], indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear,
+    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...billboards.posts, ...(stadium ? stadium.posts : []), ...(bridge ? bridge.posts : [])],
+    extraWalls: [...inter.walls, ...(stadium ? stadium.walls : []), ...(bridge ? bridge.walls : [])],
+    surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : []), ...(bridge ? bridge.surfaces : [])], indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear,
     onInteract: (b) => { if (interact?.()) return; if (!toggleSit()) onInteract?.(b); }, onExit: onExitWalk, onView });
   let interact = null; // server mode: E gets on / off someone's bike first (setInteract)
   // stands: E (or the seat button) sits down on the seat you are standing at, again to stand up
@@ -541,14 +560,14 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   function seatPassengers() {
     const w = walker.state;
     if (w.mode !== 'scooter' && w.mode !== 'moto') return;
-    players.seatOnMe(w.x, w.y, w.z, w.heading, w.steer * 0.2 * Math.min(1, w.speed / 6), w.mode === 'scooter' ? 1 : 2);
+    players.seatOnMe(w.x, w.y, w.z, w.heading, w.steer * 0.2 * Math.min(1, w.speed / 6), w.mode === 'scooter' ? 1 : 2, w.tilt || 0);
   }
   /** Ride pillion on player `id`'s bike (null: get off beside it). */
   function ride(id) {
     if (!id) { walker.carry(null); requestRender(); return; }
     walker.carry(() => {
       const d = players.get(id);
-      return d && (d.mode === 1 || d.mode === 2) ? { x: d.x, z: d.z, y: d.y, h: d.h, speed: d.speed, mode: d.mode } : null;
+      return d && (d.mode === 1 || d.mode === 2) ? { x: d.x, z: d.z, y: d.y, h: d.h, speed: d.speed, mode: d.mode, tilt: d.tilt } : null;
     });
     requestRender();
   }
@@ -623,7 +642,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     startWalk, stopWalk, walking: () => walker.state.on,
     players,
     /** your own student: [x, z, y, heading, mode index, speed] for the world server */
-    self() { const w = walker.state; return w.on ? [w.x, w.z, w.y, w.heading, w.carry ? 4 : w.sit ? 3 : ['walk', 'scooter', 'moto'].indexOf(w.mode), w.speed] : null; },
+    self() { const w = walker.state; return w.on ? [w.x, w.z, w.y + (w.carry ? 0 : w.lift || 0), w.heading, w.carry ? 4 : w.sit ? 3 : ['walk', 'scooter', 'moto'].indexOf(w.mode), w.speed] : null; },
     /** server mode: ride pillion on someone's bike (null: get off); E handler that runs before sitting / building info */
     ride, riding: () => !!walker.state.carry, setInteract(f) { interact = f; },
     setLook: (look) => { walker.setLook(look); requestRender(); },
@@ -634,7 +653,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     /** stands: can sit here / sit or stand up / go and sit on a seat with a good view */
     canSit: () => !!seatHere(), toggleSit, sitting: () => !!walker.state.sit,
     watchMatch() { const s = stadium?.randomSeat(); if (!s || !walker.state.on) return false; walker.sitAt(s); requestRender(); return true; },
-    setJoy: (x, y) => walker.setJoy(x, y), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt) => walker.teleport(x, z, lookAt),
+    setJoy: (x, y) => walker.setJoy(x, y), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt, y) => walker.teleport(x, z, lookAt, y),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       disposed = true;

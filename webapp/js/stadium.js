@@ -40,19 +40,21 @@ export function buildStadium(pitchPts) {
     sh.lineTo(-S / 2, r); sh.absarc(-S / 2, 0, r, Math.PI / 2, Math.PI * 1.5, false);
     return sh;
   };
-  const flat = (shape, y, color) => {
-    const m = new THREE.Mesh(place(new THREE.ShapeGeometry(shape, 48), y), new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
-    m.receiveShadow = true; group.add(m); return m;
+  // Everything flat lies at y = 0 like the rest of the ground (see map3d.js): drawn in this order, no depth writes.
+  let order = -100;
+  const flat = (shape, color) => {
+    const m = new THREE.Mesh(place(new THREE.ShapeGeometry(shape, 48), 0), new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, depthWrite: false }));
+    m.receiveShadow = true; m.renderOrder = order++; group.add(m); return m;
   };
-  const ring = (r0, r1, y, color) => { const sh = capsule(r1); sh.holes.push(capsule(r0)); return flat(sh, y, color); };
-  flat(capsule(R), 0.17, 0xa9ae7c);                 // infield (worn grass / dirt)
-  ring(R, RO, 0.18, 0xb8643f);                       // track surface
-  for (let k = 0; k <= N; k++) ring(R + k * LANE - 0.03, R + k * LANE + 0.03, 0.19, 0xf4efe8); // lane lines
-  ring(RO, RO + 0.35, 0.2, 0xd9d4ca);                // kerb
+  const ring = (r0, r1, color) => { const sh = capsule(r1); sh.holes.push(capsule(r0)); return flat(sh, color); };
+  flat(capsule(R), 0xa9ae7c);                        // infield (worn grass / dirt)
+  ring(R, RO, 0xb8643f);                             // track surface
+  for (let k = 0; k <= N; k++) ring(R + k * LANE - 0.03, R + k * LANE + 0.03, 0xf4efe8); // lane lines
+  ring(RO, RO + 0.35, 0xd9d4ca);                     // kerb
   { // finish line across the lanes
     const sh = new THREE.Shape();
     sh.moveTo(S / 2 - 12, -RO); sh.lineTo(S / 2 - 11.9, -RO); sh.lineTo(S / 2 - 11.9, -R); sh.lineTo(S / 2 - 12, -R);
-    flat(sh, 0.195, 0xffffff);
+    flat(sh, 0xffffff);
   }
 
   // ---- turf with mowing stripes and FIFA-size lines ----
@@ -80,8 +82,8 @@ export function buildStadium(pitchPts) {
     }
   }
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-  const turf = new THREE.Mesh(place(new THREE.PlaneGeometry(PL, PW), 0.23), new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
-  turf.receiveShadow = true; group.add(turf);
+  const turf = new THREE.Mesh(place(new THREE.PlaneGeometry(PL, PW), 0), new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, depthWrite: false }));
+  turf.receiveShadow = true; turf.renderOrder = order++; group.add(turf);
 
   // ---- goals (posts, crossbar, back frame, nets) and corner flags ----
   const posts = [];

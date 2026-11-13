@@ -3,7 +3,7 @@
 // your own, football kits and the football moves (kick, volley, header, bicycle kick, slide tackle, dribble burst).
 // A player riding pillion (on the back seat of someone's scooter / motorbike) is drawn on that bike every frame.
 import * as THREE from 'three';
-import { makeStudent, disposeStudent, vehicleKit, limbPose, MOVE_T, SCALE, pillionPose } from './walk.js';
+import { makeStudent, disposeStudent, vehicleKit, limbPose, MOVE_T, SCALE, SOLE, pillionPose } from './walk.js';
 
 export const MODES = ['walk', 'scooter', 'moto']; // mode 3 = sitting on the stands, 4 = on someone's back seat
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -39,8 +39,9 @@ export function createPlayers(scene) {
 
   function add(id, look, pos) {
     if (list.has(id)) { setLook(id, look); if (pos) setPos(id, pos, true); return; }
-    const p = { id, rig: new THREE.Group(), s: null, kit: null, x: 0, z: 0, y: 0, h: 0, mode: 0, speed: 0, phase: Math.random() * 6,
+    const p = { id, rig: new THREE.Group(), s: null, kit: null, x: 0, z: 0, y: 0, h: 0, tilt: 0, mode: 0, speed: 0, phase: Math.random() * 6,
       tx: 0, tz: 0, ty: 0, th: 0, seen: false, ride: null, seated: false, wave: 0, kick: 0, volley: 0, slide: 0, bike: 0, head: 0, dash: 0, meshes: [], look: null, kit: null };
+    p.rig.rotation.order = 'YXZ'; // heading, then pitch (bikes on the bridge ramps), then lean
     root.add(p.rig);
     list.set(id, p);
     build(p, look);
@@ -81,21 +82,21 @@ export function createPlayers(scene) {
     p.ride = driver || null;
     if (!p.ride) { p.seated = false; p.s.blob.visible = p.rig.visible; p.x = p.tx; p.z = p.tz; p.y = p.ty; p.h = p.th; }
   }
-  /** Puts a passenger on a bike at (x, y, z), heading h, leaning roll; mode 1 scooter / 2 motorbike. */
-  function seat(p, x, y, z, h, roll, mode) {
+  /** Puts a passenger on a bike at (x, y, z), heading h, leaning roll, pitched tilt; mode 1 scooter / 2 motorbike. */
+  function seat(p, x, y, z, h, roll, mode, tilt = 0) {
     const s = p.s, P = pillionPose(mode);
     p.x = x; p.y = y; p.z = z; p.h = h; p.seated = true;
     p.rig.position.set(x, y, z);
-    p.rig.rotation.set(0, h, roll);
+    p.rig.rotation.set(tilt, h, roll);
     for (const [limb, a] of [[s.legL, P.legs], [s.legR, P.legs], [s.armL, P.arms], [s.armR, P.arms]]) { limb.rotation.x = a; limb.rotation.z = 0; }
     s.group.position.set(0, P.y, P.z);
     s.group.rotation.set(P.lean, 0, 0);
     s.blob.visible = false;
   }
   /** Passengers on your own bike, placed after your student moved this frame. Returns true if there were any. */
-  function seatOnMe(x, y, z, h, roll, mode) {
+  function seatOnMe(x, y, z, h, roll, mode, tilt = 0) {
     let any = false;
-    for (const p of list.values()) if (p.ride && p.ride === meId && p.seen) { seat(p, x, y, z, h, roll, mode); any = true; }
+    for (const p of list.values()) if (p.ride && p.ride === meId && p.seen) { seat(p, x, y, z, h, roll, mode, tilt); any = true; }
     return any;
   }
   function remove(id) {
@@ -152,7 +153,12 @@ export function createPlayers(scene) {
         s.group.position.set(0, V.seatY, -0.3);
         s.group.rotation.x = 0.12;
         for (const w of V.wheels) w.rotation.x += (p.speed * dt) / V.wheelR;
-        p.rig.rotation.set(0, p.h, 0);
+        // going up or down a slope (the bridge): pitch the bike along the way it climbs
+        const run = Math.hypot(dx, dz);
+        if (run > 0.12) p.tiltTo = THREE.MathUtils.clamp(-Math.atan2(dy, run), -0.3, 0.3);
+        else if (p.y < 0.3) p.tiltTo = 0;
+        p.tilt += ((p.tiltTo || 0) - p.tilt) * Math.min(1, dt * 6);
+        p.rig.rotation.set(p.tilt, p.h, 0);
         s.blob.scale.set(1.1, 1.9, 1);
       } else {
         const air = p.y > 0.05 && p.ty > 0.05 ? 0.6 : 0;
@@ -166,7 +172,7 @@ export function createPlayers(scene) {
         s.armL.rotation.x += (P.armL - s.armL.rotation.x) * ease;
         s.armR.rotation.x += ((waveArm ?? P.armR) - s.armR.rotation.x) * ease;
         s.armR.rotation.z += ((p.wave > 0 ? 0.35 : 0) - s.armR.rotation.z) * ease;
-        s.group.position.set(0, P.y ?? (p.speed > 0.2 ? Math.abs(Math.sin(p.phase)) * 0.045 : 0), P.z);
+        s.group.position.set(0, (P.y ?? (p.speed > 0.2 ? Math.abs(Math.sin(p.phase)) * 0.045 : 0)) - SOLE, P.z); // soles on the ground
         s.group.rotation.x = p.bike > 0 ? P.lean : s.group.rotation.x + (P.lean - s.group.rotation.x) * Math.min(1, dt * 18);
         s.group.rotation.z += (P.roll - s.group.rotation.z) * Math.min(1, dt * 18);
         // positions arrive only a few times a second: show the hop of a bicycle kick / header here
@@ -175,21 +181,21 @@ export function createPlayers(scene) {
         p.rig.rotation.set(0, p.h, 0);
         s.blob.scale.setScalar(0.8);
       }
-      s.blob.position.set(p.x, p.y > 0.1 ? p.y + 0.03 : 0.4, p.z);
+      s.blob.position.set(p.x, p.y + 0.03, p.z);
       s.blob.rotation.z = p.h;
     }
     // passengers go where their driver is drawn now (yours: seatOnMe, after your own student moved)
-    for (const [p, d] of passengers) if (d) seat(p, d.x, d.y, d.z, d.h, 0, d.mode);
+    for (const [p, d] of passengers) if (d) seat(p, d.x, d.y, d.z, d.h, 0, d.mode, d.tilt);
     return busy;
   }
 
   /** Head positions for name tags and chat bubbles. */
   function heads() {
     const out = [];
-    for (const p of list.values()) if (p.seen) out.push({ id: p.id, x: p.x, y: p.y + (p.seated ? 2.1 : p.mode === 3 ? 1.38 : p.mode === 1 || p.mode === 2 ? 2.05 : 1.85), z: p.z });
+    for (const p of list.values()) if (p.seen) out.push({ id: p.id, x: p.x, y: p.y + (p.seated ? 2.1 : p.mode === 3 ? 1.38 : p.mode === 1 || p.mode === 2 ? 2.05 : 1.74), z: p.z });
     return out;
   }
-  function get(id) { const p = list.get(id); return p && p.seen ? { x: p.x, z: p.z, y: p.y, h: p.h, speed: p.speed, phase: p.phase, mode: p.mode, ride: p.ride } : null; }
+  function get(id) { const p = list.get(id); return p && p.seen ? { x: p.x, z: p.z, y: p.y, h: p.h, tilt: p.tilt, speed: p.speed, phase: p.phase, mode: p.mode, ride: p.ride } : null; }
 
   return { add, setLook, setKit, setPos, setRide, seatOnMe, setMe(id) { meId = id; }, remove, clear, wave, move, update, heads, get, ids: () => [...list.keys()], pickables, dispose() { clear(); scene.remove(root); } };
 }

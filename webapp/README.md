@@ -123,6 +123,21 @@ Camera trên web cần HTTPS (hoặc `localhost`).
 - Chi tiết công trình (`js/campus-details.js`): mặt tường theo khu (trắng có hành lang, kem, gạch nâu khu F, kính Nhà S,
   Trung tâm Học liệu mái xanh), mái dốc ngói đỏ cho H/F/N/P/X/E1, tường chắn mái + cụm máy trên mái, chân tường,
   sảnh mái che, tường rào (`walls` trong campus.json, có va chạm), cổng có biển tên, mái che bãi xe, đèn đường, hàng cây ven đường.
+- Mặt đất: mọi lớp phẳng (nền trường, cỏ, sân, đường, lối đi, sân bóng, đường chạy) nằm ở đúng cao độ `y = 0`, nơi
+  nhân vật và bánh xe đứng. Các lớp không tranh độ sâu với nhau vì được vẽ trước, theo thứ tự (`renderOrder`), và
+  không ghi depth (`depthWrite: false`); mọi vật khác nằm trên mặt đất nên vẽ đè lên. Mô hình sinh viên có đế giày
+  cao hơn gốc toạ độ `SOLE` (`js/walk.js`), các tư thế đứng/chạy trừ đi khoảng đó để chân chạm đất.
+- Cầu vượt đường sắt Ngô Sĩ Liên (`js/bridge.js`, dữ liệu `bridge` / `rail` / `signs` trong campus.json): dựng theo
+  số liệu thật (Km 784+425 đường sắt Bắc – Nam, thông xe 27-10-2013; 7 nhịp dầm bản 20 m, mặt cầu rộng 11 m gồm
+  7 m xe chạy + 2 lề bộ hành 1,5 m + 2 dải lan can 0,5 m, tĩnh không 4,75 m, đường gom hai bên). Đường dẫn hai đầu
+  là tường chắn, 6 trụ thân tường + xà mũ, đỉnh cầu cao khoảng 7 m ngay trên đường sắt (nhịp 5). Đường gom bên phải
+  là lối vào, đi vòng dưới nhịp 5 rồi ra bằng đường gom bên trái (đầu đường có 2 biển cấm đi ngược chiều). Gầm cầu
+  (nhịp 1–4) lát nền, có ghế, loa kéo và đèn: chỗ tập văn nghệ; cổng sau khu E (cạnh nhà xe khu E) mở ra đây.
+  Đi bộ / đi xe lên cầu được (mặt cầu là các `surfaces` dốc, lan can và tường chắn là `walls` có khoảng cao độ, trụ
+  là `posts`); xe tự nghiêng theo dốc; đứng dưới gầm thì camera nằm dưới mặt cầu (`under` của surface).
+- Địa điểm (`pois` trong campus.json): `at` là chỗ đặt nhãn, `spot` là chỗ nhân vật xuất hiện khi "đi tới" và `look` là
+  hướng nhìn (nhà xe khu B, nhà xe khu E, cầu vượt). `wallH` cho chiều cao riêng của từng đoạn tường (tường sân vận
+  động cao 2,8 m để đứng ngoài đường gom không nhìn thấy sân).
 - Đi vào bên trong (`js/interiors.js`): Căn tin cạnh Khu E1 (cửa trước + cửa hông, 5 bàn ăn, tủ lạnh nước, quầy cà phê, bếp
   phía sau quầy phục vụ; mái tự ẩn khi đứng trong) và Khu E1 có hành lang tầng 1–2 + cầu thang ở đầu gần căn tin.
   Bộ đi bộ hỗ trợ sàn tầng 2, bậc thang (ramp) và tường/lan can chỉ chặn ở đúng độ cao.

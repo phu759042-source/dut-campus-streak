@@ -54,6 +54,7 @@ SPLIT = {968341211: [
 ]}
 # Parking: 'roof' = covered by a tin roof (nhà xe), 'open' = open-air motorbike lot (from students)
 PARKING = {1038801125: 'roof', 1038801147: 'open'}
+PARKING_NAMES = {1038801125: 'Nhà xe khu B', 1038998627: 'Nhà xe khu E'}
 A_BACK = [1043659297, 1043659298]
 A_FRONT = 1043659296
 BACK_DEPTH = 12.0
@@ -165,7 +166,7 @@ for e in ways.values():
         else:
             buildings.append(b)
     elif 'highway' in t and t['highway'] in ROAD_W:
-        roads.append({'w': ROAD_W[t['highway']], 'foot': t['highway'] in ('footway', 'path', 'cycleway'), 'name': t.get('name'), 'pts': pts})
+        roads.append({'w': ROAD_W[t['highway']], 'foot': t['highway'] in ('footway', 'path', 'cycleway'), 'name': t.get('name'), 'pts': pts, 'id': e['id']})
     else:
         kind = None
         if t.get('natural') == 'water': kind = 'water'
@@ -175,6 +176,7 @@ for e in ways.values():
         if kind and len(pts) >= 3:
             a = {'kind': kind, 'pts': pts, 'name': t.get('name'), 'id': e['id']}
             if kind == 'parking' and e['id'] in PARKING: a['cover'] = PARKING[e['id']]
+            if kind == 'parking' and e['id'] in PARKING_NAMES: a['name'] = PARKING_NAMES[e['id']]
             areas.append(a)
 
 def inset(poly, d):
@@ -222,7 +224,10 @@ nodes = {e['id']: e for e in els if e['type'] == 'node'}
 pois = [
     {'id': 'gate-main', 'name': 'Cổng chính', 'sub': 'Đường Nguyễn Lương Bằng', 'kind': 'gate', 'at': pt(nodes[6570393105])},
     {'id': 'gate-side', 'name': 'Cổng phụ', 'sub': 'Đường Ngô Sĩ Liên', 'kind': 'gate', 'at': pt(nodes[8958669214])},
-    {'id': 'parking-b', 'name': 'Nhà xe khu B', 'kind': 'parking', 'at': pt(nodes[1964068718])},
+    # Nhà xe khu B: the OSM node sits on the street outside the wall, so the label goes over the roof and you
+    # arrive on the path in front of Khu B, facing the bikes. Nhà xe khu E: behind Khu E1, next to the back gate.
+    {'id': 'parking-b', 'name': 'Nhà xe khu B', 'sub': 'Nhà xe có mái, trước khu B', 'kind': 'parking', 'at': [-5.6, 135.0], 'spot': [2.0, 122.4], 'look': [-5.6, 135.0]},
+    {'id': 'parking-e', 'name': 'Nhà xe khu E', 'sub': 'Sau khu E1, lối ra gầm cầu Ngô Sĩ Liên', 'kind': 'parking', 'at': [22.0, -230.0], 'spot': [55.6, -238.4], 'look': [30.0, -232.0]},
 ]
 
 # ---- perimeter wall + fences ----
@@ -411,14 +416,162 @@ areas.append({'kind': 'grass', 'name': 'Dải cỏ ven tường', 'id': 2,
               'pts': [[round(x, 2), round(z, 2)] for x, z in west] + offset_polyline(west, 11)[::-1],
               'row': offset_polyline(west, 5.5)})
 
+# ---- Ngô Sĩ Liên railway overpass (cầu vượt đường sắt Ngô Sĩ Liên) and everything around it ----------------
+# The real bridge (Km 784+425 of the North–South railway, opened 27-10-2013): 7 spans of 20 m prestressed slab
+# girders (145.35 m), 11 m wide = 7 m carriageway + 2 x 1.5 m footways + 2 x 0.5 m railings, clearance 4.75 m,
+# with a service lane (đường gom) on each side. OSM tags ways 372422252 + 968341217 (about 300 m) as the bridge
+# and draws the two lanes almost on top of it, so the lanes are re-laid beside the ramps here.
+# Frame used below: s = metres along the bridge from the southern junction, t = metres to the right (stadium side).
+road_by_id = {r['id']: r for r in roads}
+_p0 = road_by_id[372422252]['pts'][0]
+_p1 = road_by_id[968341217]['pts'][-1]
+_L = math.dist(_p0, _p1)
+_n = (-(_p1[1] - _p0[1]) / _L, (_p1[0] - _p0[0]) / _L)
+BA = [_p0[0] + _n[0] * 1.0, _p0[1] + _n[1] * 1.0]   # axis 1 m to the right: room for the lane between Khu E2 and the ramp
+BL = math.dist(BA, _p1)
+bu = ((_p1[0] - BA[0]) / BL, (_p1[1] - BA[1]) / BL)
+bn = (-bu[1], bu[0])
+
+
+def BW(s_, t_):
+    return [round(BA[0] + bu[0] * s_ + bn[0] * t_, 2), round(BA[1] + bu[1] * s_ + bn[1] * t_, 2)]
+
+
+def BF(p):
+    return ((p[0] - BA[0]) * bu[0] + (p[1] - BA[1]) * bu[1], (p[0] - BA[0]) * bn[0] + (p[1] - BA[1]) * bn[1])
+
+
+# deck profile: 5.5 % up from the junction, crest curve over the railway (about 7 m), 6.5 % down, sag curves at both feet
+G1, G2, SAG, CREST, S_UP, S_CREST = 0.055, 0.065, 20.0, 80.0, 4.0, 122.5
+_h0 = G1 * SAG / 2
+_h1 = _h0 + G1 * (S_CREST - S_UP - SAG)
+_h2 = _h1 + G1 * CREST - (G1 + G2) / 2 * CREST
+_s2 = S_CREST + CREST
+_s3 = _s2 + (_h2 - G2 * SAG / 2) / G2
+S_DOWN = _s3 + SAG
+
+
+def deck_h(s_):
+    if s_ <= S_UP or s_ >= S_DOWN: return 0.0
+    if s_ <= S_UP + SAG: return G1 * (s_ - S_UP) ** 2 / (2 * SAG)
+    if s_ <= S_CREST: return _h0 + G1 * (s_ - S_UP - SAG)
+    if s_ <= _s2:
+        d_ = s_ - S_CREST
+        return _h1 + G1 * d_ - (G1 + G2) / (2 * CREST) * d_ * d_
+    if s_ <= _s3: return _h2 - G2 * (s_ - _s2)
+    return G2 * (S_DOWN - s_) ** 2 / (2 * SAG)
+
+
+SPANS = [72.5 + 20 * k for k in range(8)]          # abutment, 6 piers, abutment (the railway runs under span 5)
+LANE_L, LANE_R, LINK_S, WALL_T = -7.9, 8.4, 157.5, 11.9
+_brk = sorted(set([S_UP + 4 * k for k in range(6)] + [S_CREST + 4 * k for k in range(21)] + [round(_s3 + 4 * k, 2) for k in range(6)]))
+bridge = {
+    'name': 'Cầu vượt Ngô Sĩ Liên',
+    'a': [round(BA[0], 2), round(BA[1], 2)], 'b': _p1,
+    'profile': [[round(v, 2), round(deck_h(v), 3)] for v in _brk],
+    'spans': SPANS, 'lanes': [LANE_L, LANE_R], 'link': LINK_S,
+}
+
+# roads: the deck replaces the two bridge ways; the lanes run beside the ramps and meet under span 5
+road_by_id[372422252].update(pts=[_p0, BW(S_UP, 0)], name='Đường Ngô Sĩ Liên')
+road_by_id[968341217].update(pts=[BW(S_UP, 0), BW(round(S_DOWN, 2), 0)], w=11, name='Cầu vượt Ngô Sĩ Liên', bridge=True)
+roads.append({'w': 8, 'foot': False, 'name': 'Đường Ngô Sĩ Liên', 'pts': [BW(round(S_DOWN, 2), 0), _p1]})
+road_by_id[968341207].update(pts=[_p0, BW(2.5, LANE_L), BW(LINK_S, LANE_L)], w=4)                    # left lane: one way, out only
+_right = road_by_id[694558703]
+roads.append({'w': 5, 'foot': False, 'name': None, 'pts': _right['pts'][:2] + [BW(LINK_S, LANE_R)]})      # along the railway, east
+_right.update(pts=[BW(0.2, LANE_R), BW(LINK_S, LANE_R)], w=5)                                          # right lane: the way in
+roads.append({'w': 5, 'foot': False, 'name': None, 'pts': [BW(LINK_S, LANE_L), BW(LINK_S, LANE_R)]})    # U-turn under the bridge
+road_by_id[896418615]['pts'][-1] = BW(LINK_S, LANE_L)                                                  # along the railway, west
+_far = road_by_id[699674199]                                                                           # lane beside the far ramp
+_far['pts'] = [_far['pts'][0], BW(173.5, 9.4), BW(180, LANE_R), BW(296, LANE_R)] + _far['pts'][6:]
+road_by_id[1551931321]['pts'][-1] = BW(180, LANE_R)                                                    # passage under span 6
+
+# railway (not a road: drawn as ballast, sleepers and rails); roads that hug it are pushed 5.2 m off the track
+rail_all = [pt(p) for p in ways[52582901]['geometry']]
+rail = [p for i, p in enumerate(rail_all) if -1000 <= p[0] <= 900 or (0 < i < len(rail_all) - 1 and (-1000 <= rail_all[i - 1][0] <= 900 or -1000 <= rail_all[i + 1][0] <= 900))]
+
+
+def rail_near(p):
+    best = (1e9, None)
+    for i in range(len(rail_all) - 1):
+        a_, b_ = rail_all[i], rail_all[i + 1]
+        dx, dz = b_[0] - a_[0], b_[1] - a_[1]
+        L = dx * dx + dz * dz or 1
+        t = max(0, min(1, ((p[0] - a_[0]) * dx + (p[1] - a_[1]) * dz) / L))
+        q = (a_[0] + dx * t, a_[1] + dz * t)
+        d_ = math.dist(p, q)
+        if d_ < best[0]: best = (d_, q)
+    return best
+
+
+RAIL_GAP = 5.2
+for r in roads:
+    if r['foot'] or r.get('bridge'): continue
+    for p in r['pts']:
+        d_, q = rail_near(p)
+        if 0.6 < d_ < RAIL_GAP:
+            p[0] = round(q[0] + (p[0] - q[0]) * RAIL_GAP / d_, 1)
+            p[1] = round(q[1] + (p[1] - q[1]) * RAIL_GAP / d_, 1)
+
+
+def run(a_, b_, step=3.0):
+    n = max(1, int(math.dist(a_, b_) // step))
+    return [[round(a_[0] + (b_[0] - a_[0]) * k / n, 2), round(a_[1] + (b_[1] - a_[1]) * k / n, 2)] for k in range(n + 1)]
+
+
+def in_zone(p):
+    s_, t_ = BF(p)
+    return 5 < s_ < 160 and -13.5 < t_ < 0
+
+
+# fences: the generated ones between the lane and the old flat road go; Khu E keeps one fence from Khu E2 to its
+# back gate (the gap to the boundary wall = lối ra gầm cầu); the stadium side gets a wall along the right lane.
+gate_e = [59.75, -240.72]
+walls = [w for w in walls if not all(in_zone(p) for p in w)]
+posts_all = [q for q in (openings + fence_posts) if not in_zone(q) or math.dist(q, [58.3, -245.3]) < 0.5]
+e2 = next(b for b in buildings if b['zone'] == 'E2')
+e2_corner = max((p for p in e2['pts'] if BF(p)[0] > 60), key=lambda p: BF(p)[0])   # north-east corner, lane side
+walls.append(run(e2_corner, gate_e))
+posts_all.append(gate_e)
+# dormitory boundary wall: it now starts where the right lane's wall meets it
+_end = BW(147.75, 8.98)
+corner = None
+for w in walls:
+    for rev in (False, True):
+        ww = w[::-1] if rev else w
+        if corner is None and math.dist(ww[0], _end) < 3:
+            k = next(i for i in range(len(ww) - 1) if BF(ww[i + 1])[1] >= WALL_T)
+            (s0, t0), (s1, t1) = BF(ww[k]), BF(ww[k + 1])
+            f = (WALL_T - t0) / (t1 - t0)
+            corner = [round(ww[k][0] + (ww[k + 1][0] - ww[k][0]) * f, 2), round(ww[k][1] + (ww[k + 1][1] - ww[k][1]) * f, 2)]
+            posts_all = [q for q in posts_all if math.dist(q, ww[0]) > 0.5]
+            w[:] = ([corner] + ww[k + 1:]) if not rev else (ww[k + 1:][::-1] + [corner])
+assert corner, 'dormitory wall end not found'
+gate_d = [BW(-2.8, WALL_T), BW(3.2, WALL_T)]            # dormitory gate on the service road, now east of the right lane
+walls.append(run(gate_d[1], corner))
+wall_h = {len(walls) - 1: 2.8}                            # the stadium wall is taller: the pitch is hidden from the lane
+_old = [130.29, -104.45]                                  # end of the street fence south of the junction
+_done = False
+for w in walls:
+    if math.dist(w[-1], _old) < 1: w.extend(run(w[-1], gate_d[0])[1:]); _done = True
+    elif math.dist(w[0], _old) < 1: w[:0] = run(gate_d[0], w[0])[:-1]; _done = True
+assert _done, 'street fence end not found'
+posts_all = [q for q in posts_all if math.dist(q, _old) > 1] + gate_d
+
+# no-entry signs at the mouth of the left lane (you go in on the right lane and come out here)
+signs = [{'kind': 'no-entry', 'at': BW(7.0, t_), 'dir': [round(-bu[0], 4), round(-bu[1], 4)]} for t_ in (-5.72, -10.18)]
+pois.append({'id': 'bridge', 'name': 'Cầu vượt Ngô Sĩ Liên', 'sub': 'Cầu vượt đường sắt · gầm cầu là chỗ tập văn nghệ', 'kind': 'bridge',
+             'at': BW(132, 0), 'h': 11, 'spot': BW(121, -1.5), 'look': BW(140, 1.5)})
+
 missing = [i for ids in ZONES.values() for i in ids if i not in ways]
 assert not missing, missing
 
 out = {
     'source': '© OpenStreetMap contributors (ODbL)',
     'boundary': cpts[:-1] if cpts[0] == cpts[-1] else cpts,
-    'buildings': buildings, 'roads': roads, 'areas': areas, 'pois': pois, 'walls': walls,
-    'posts': [[round(x, 2), round(z, 2)] for x, z in (openings + fence_posts)],
+    'buildings': buildings, 'roads': [{k: v for k, v in r.items() if k != 'id'} for r in roads], 'areas': areas, 'pois': pois, 'walls': walls,
+    'posts': [[round(x, 2), round(z, 2)] for x, z in posts_all],
+    'wallH': [wall_h.get(i) for i in range(len(walls))], 'bridge': bridge, 'rail': rail, 'signs': signs,
 }
 os.makedirs(os.path.join(ROOT, 'data'), exist_ok=True)
 with open(os.path.join(ROOT, 'data', 'campus.json'), 'w', encoding='utf-8') as f:

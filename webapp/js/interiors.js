@@ -91,7 +91,7 @@ function buildCanteen(b, out, B, BW) {
     g.fillStyle = '#d9d1c1'; g.fillRect(0, 0, 32, 32); g.fillRect(32, 32, 32, 32);
   });
   floorT.wrapS = floorT.wrapT = THREE.RepeatWrapping; floorT.repeat.set(1 / 1.2, 1 / 1.2);
-  const fl = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, z)))).rotateX(Math.PI / 2).translate(0, 0.14, 0),
+  const fl = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, z)))).rotateX(Math.PI / 2).translate(0, 0.02, 0),
     new THREE.MeshLambertMaterial({ map: floorT, side: THREE.DoubleSide }));
   fl.receiveShadow = true; out.group.add(fl);
 
@@ -214,7 +214,7 @@ function buildCorridor(b, out, B, slabB) {
   const d = b.corridor.depth, L = F.L, h = b.height;
   const out_ = (u, n) => F.at(u, -n); // n > 0 = outside the building
   // floor-1 corridor paving
-  B.color(0xd8d2c4); B.cap(F.rect(0, L, 0, d), 0.16);
+  B.color(0xd8d2c4); B.cap(F.rect(0, L, 0, d), 0.02);
   // floor-2 slab (walkable) — fades when it hides the student
   slabB.color(0xeeeae2); slabB.band(F.rect(0, L, -0.05, d), FLOOR2 - 0.25, FLOOR2); slabB.cap(F.rect(0, L, -0.05, d), FLOOR2); slabB.cap(F.rect(0, L, -0.05, d), FLOOR2 - 0.25);
   out.surfaces.push({ pts: F.rect(0, L, -0.05, d), y: FLOOR2 });
@@ -272,7 +272,7 @@ function buildCorridor(b, out, B, slabB) {
   out.walls.push({ a: out_(L - 0.3, 0), b: out_(L - 0.3, w + 0.1), y0: FLOOR2, y1: FLOOR2 + 1.0 });
   // walkable surfaces: the ramp and the landing
   const foot = out_(sU0, 0), dirU = [F.ux, F.uz];
-  out.surfaces.push({ pts: [out_(sU0, -0.05), out_(stairU0, -0.05), out_(stairU0, w + 0.05), out_(sU0, w + 0.05)], ramp: { o: foot, u: dirU, len: run, y0: 0, y1: FLOOR2 } });
+  out.surfaces.push({ pts: [out_(sU0, -0.05), out_(stairU0, -0.05), out_(stairU0, w + 0.05), out_(sU0, w + 0.05)], ramp: { o: foot, u: dirU, len: run, y0: 0, y1: FLOOR2, steps } });
   out.surfaces.push({ pts: [out_(stairU0, -0.1), out_(L - 0.3, -0.1), out_(L - 0.3, w + 0.05), out_(stairU0, w + 0.05)], y: FLOOR2 });
 }
 

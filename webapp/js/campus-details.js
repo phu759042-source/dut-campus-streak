@@ -453,11 +453,13 @@ export function buildBuildingDetails(buildings) {
   };
 }
 
-/** Perimeter wall (white wall with a darker coping) along data.walls polylines, with pillars at openings. */
-export function buildWalls(walls, posts = []) {
+/** Perimeter wall (white wall with a darker coping) along data.walls polylines, with pillars at openings.
+ *  heights[i] = height of wall i when it is not the usual 2.1 m (the stadium wall is taller). */
+export function buildWalls(walls, posts = [], heights = []) {
   const B = new Builder();
-  const T = 0.28, H = 2.1;
-  for (const w of walls) {
+  const T = 0.28;
+  for (const [wi, w] of walls.entries()) {
+    const H = heights[wi] || 2.1;
     for (let i = 0; i < w.length - 1; i++) {
       const [ax, az] = w[i], [bx, bz] = w[i + 1];
       const L = Math.hypot(bx - ax, bz - az);
@@ -793,6 +795,7 @@ export function buildCanopies(areas, boundary) {
   const tin = new THREE.MeshLambertMaterial({ color: 0xffffff, map: tinTexture(), side: THREE.DoubleSide });
   const rand = rng(4242);
   const posts = []; // [x, z, radius] for the walker: parked bikes and roof posts
+  const roofs = []; // tin roofs: fade when they stand between the camera and the student
   for (const a of areas.filter((x) => x.kind === 'parking')) {
     if (!a.pts.some(([x, z]) => insideP(boundary, x, z))) continue; // (centroid of an L-shaped lot can fall outside)
     const covered = a.cover !== 'open';
@@ -805,8 +808,11 @@ export function buildCanopies(areas, boundary) {
     const geo = new THREE.ShapeGeometry(shape);
     geo.rotateX(Math.PI / 2);
     geo.translate(0, H, 0);
-    const m = new THREE.Mesh(geo, tin);
+    geo.addGroup(0, Infinity, 0);
+    const m = new THREE.Mesh(geo, [tin]); // (material list: the roof fades when it hides the student, like buildings)
     m.castShadow = m.receiveShadow = true;
+    m.userData.place = a.name || null;
+    roofs.push(m);
     group.add(m);
     // fascia + steel posts every ~6 m along the edge
     B.color(0x6f8297); B.band(roof, H - 0.25, H);
@@ -819,7 +825,7 @@ export function buildCanopies(areas, boundary) {
     }
   }
   if (B.tris) group.add(B.mesh());
-  return { group: group.children.length ? group : null, posts };
+  return { group: group.children.length ? group : null, posts, roofs };
 }
 
 /** Street lamps along paths and service roads inside the campus. Returns an object with setNight(). */

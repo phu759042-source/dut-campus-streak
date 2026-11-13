@@ -11,7 +11,7 @@ import {
   F, HL, HW, GOAL_W, BALL_R, KEEPER_U, STEP, STEP_MS, MATCH_MS, TEAM_SIZE, TEAM_NAMES, MAX_KICK,
   toLocal, toWorld, dirLocal, dirWorld, ballAtFeet, newSim, step, passSpeed, keeperHolds,
 } from './soccer-core.js';
-import { makeStudent, disposeStudent, SCALE } from './walk.js';
+import { makeStudent, disposeStudent, SCALE, SOLE } from './walk.js';
 
 export { TEAM_NAMES, TEAM_SIZE, MATCH_MS };
 export const KITS = [
@@ -23,7 +23,7 @@ const KEEPER_KITS = [
   { shirt: 0x16a34a, pants: 0x14532d, socks: 0x16a34a, gloves: 0xfacc15 },
   { shirt: 0xfacc15, pants: 0x3f3f46, socks: 0xfacc15, gloves: 0x16a34a },
 ];
-const TURF = 0.23;            // the pitch is drawn this high above the ground
+const TURF = 0;               // the pitch lies flat on the ground (y = 0)
 const BALL_LOOK = 1.45;       // the ball is drawn bigger than its physics size so it reads on a phone
 const RUN = 6.6, SPRINT = 9.2; // m/s in a match
 const CHARGE_MS = 900;        // holding the shoot button this long = full power
@@ -553,8 +553,8 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       s.armL.rotation.x += (armT - s.armL.rotation.x) * e; s.armR.rotation.x += (armT - s.armR.rotation.x) * e;
       s.armL.rotation.z += ((hold ? 0.25 : -0.35) - s.armL.rotation.z) * e; s.armR.rotation.z += ((hold ? -0.25 : 0.35) - s.armR.rotation.z) * e;
       s.legL.rotation.x += (-legT + sw - s.legL.rotation.x) * e; s.legR.rotation.x += (-legT - sw - s.legR.rotation.x) * e;
-      s.group.position.y = dive ? 0 : -0.06; // ready stance: knees a little bent
-      s.blob.position.set(kx, 0.26, kz);
+      s.group.position.y = (dive ? 0 : -0.04) - SOLE; // soles on the turf; ready stance: knees a little bent
+      s.blob.position.set(kx, 0.03, kz);
       s.blob.scale.setScalar(0.8);
     }
 

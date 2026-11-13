@@ -66,7 +66,8 @@ function buildTargets(scene, data, A) {
   for (const p of data.pois) {
     const [x, z] = p.at;
     T.push({ key: p.id, title: p.name, sub: p.sub, kind: 'poi', buildings: [], box: { minX: x - 25, maxX: x + 25, minZ: z - 25, maxZ: z + 25 }, height: 4,
-      anchor: [x, 5, z], keywords: p.kind === 'gate' ? 'cong vao' : 'nha xe gui xe do xe parking', label: true, poi: p.kind });
+      anchor: [x, p.h || 5, z], label: true, poi: p.kind, spot: p.spot, look: p.look,
+      keywords: p.kind === 'gate' ? 'cong vao' : p.kind === 'bridge' ? 'cau vuot ngo si lien gam cau duong sat tap van nghe' : 'nha xe gui xe do xe parking' });
   }
   return T;
 }
@@ -105,8 +106,9 @@ function doorOf(t) {
   if ((mx + nx - c2[0]) ** 2 + (mz + nz - c2[1]) ** 2 < (mx - c2[0]) ** 2 + (mz - c2[1]) ** 2) { nx = -nx; nz = -nz; }
   return { spot: [mx + nx * 7, mz + nz * 7], door: [mx, mz] };
 }
-const frontOf = (t) => (t.kind === 'poi' ? centerOf(t) : doorOf(t)?.spot || [(t.box.minX + t.box.maxX) / 2, t.box.maxZ + 5]);
-const lookOf = (t) => doorOf(t)?.door || centerOf(t);
+// Places (gates, bike sheds, the bridge) can name the spot where you arrive and what you face there.
+const frontOf = (t) => (t.kind === 'poi' ? t.spot || centerOf(t) : doorOf(t)?.spot || [(t.box.minX + t.box.maxX) / 2, t.box.maxZ + 5]);
+const lookOf = (t) => (t.kind === 'poi' ? t.look || centerOf(t) : doorOf(t)?.door || centerOf(t));
 
 function roomLetter(room) {
   const m = String(room || '').trim().toUpperCase().match(/^([A-Z])\s*\d/);
@@ -158,6 +160,10 @@ function minimapImage(data, A, dark) {
     g.beginPath(); trace(rd.pts);
     g.strokeStyle = rd.foot ? (dark ? '#5a5548' : '#e8dcc8') : (dark ? '#46526a' : '#c2c9d4');
     g.lineWidth = rd.w * S; g.stroke();
+  }
+  if (data.rail?.length > 1) { // railway: track bed with a dashed centre line
+    g.beginPath(); trace(data.rail); g.strokeStyle = dark ? '#5a5650' : '#a9a297'; g.lineWidth = 3 * S; g.stroke();
+    g.beginPath(); trace(data.rail); g.setLineDash([4 * S, 3 * S]); g.strokeStyle = dark ? '#2a2826' : '#5f5a53'; g.lineWidth = 0.9 * S; g.stroke(); g.setLineDash([]);
   }
   for (const bd of data.buildings) poly(bd.pts, bd.zone ? (dark ? '#8d97ad' : '#7d8799') : (dark ? '#6b7385' : '#a3aab6'));
   return { canvas: c, S, minX, minZ };
@@ -337,6 +343,7 @@ export function MapPage() {
           dark, mobile: isMobile(),
           onPick: (b) => {
             if (!b) { if (!sceneRef.current?.walking()) select(null); return; }
+            if (b.poi) { const t = ts.find((x) => x.key === b.poi); if (t) select(t, { fly: false }); return; } // the bridge
             select(targetFor(b), { fly: false });
           },
           onNear: (b) => setNear(b ? targetFor(b) : null),

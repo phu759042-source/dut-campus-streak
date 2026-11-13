@@ -10,10 +10,11 @@ import * as THREE from 'three';
 import { inside, bbox } from './map3d.js';
 
 export const SCALE = 0.76;         // student is ~1.65 m tall
+export const SOLE = 0.16 * SCALE;  // the model's shoe soles are this far above its origin: standing poses drop by it
 let R = 0.34;                // collision radius (m); larger on a bike
 const WALK = 3.6, RUN = 7.2; // m/s
 const GRAVITY = 16, JUMP_V = 4.8;
-const EYE = 1.2;
+const EYE = 1.1;
 
 // Character looks (server mode lets each student pick one). Indexes into these lists are what gets saved
 // (Supabase user_metadata.campus_look) and sent to other players; the world server checks the ranges.
@@ -231,6 +232,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   let play = { ...PLAY0 };
   s.group.scale.setScalar(SCALE);
   const rig = new THREE.Group(); // position + heading; holds the student and the vehicles
+  rig.rotation.order = 'YXZ';    // heading, then pitch (bikes on the bridge ramps), then lean
   rig.add(s.group);
   const kit = vehicleKit();
   for (const v of Object.values(kit)) { v.group.visible = false; rig.add(v.group); }
@@ -264,23 +266,40 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   const STEP = 0.6, HEAD = 1.75;
   /** Ground height at (x, z) for someone standing at height y, and whether the spot is blocked (a step too high). */
   function groundAt(x, z, y) {
-    let g = 0, blocked = false;
+    let g = 0, blocked = false, lift = 0;
     for (const s of surf) {
       if (x < s.box.minX || x > s.box.maxX || z < s.box.minZ || z > s.box.maxZ || !inside(s.pts, x, z)) continue;
+      let h = s.y, up = 0;
+      if (s.ramp) {
+        const t = THREE.MathUtils.clamp(((x - s.ramp.o[0]) * s.ramp.u[0] + (z - s.ramp.o[1]) * s.ramp.u[1]) / s.ramp.len, 0, 1);
+        h = s.ramp.y0 + (s.ramp.y1 - s.ramp.y0) * t;
+        // a staircase moves you along its slope, but you stand on the tread: `up` = tread above the slope here
+        const n = s.ramp.steps;
+        if (n) up = s.ramp.y0 + ((s.ramp.y1 - s.ramp.y0) * Math.min(n, Math.floor(t * n) + 1)) / n - h;
+      }
+      if (h <= y + STEP) { if (h >= g) { g = h; lift = up; } }
+      else if (h < y + HEAD) blocked = true; // would walk into the stairs / slab edge
+    }
+    return { g, blocked, lift };
+  }
+  /** Underside of the lowest slab above the head at (x, z) for someone at height y (bridge deck), or Infinity. */
+  function ceilingAt(x, z, y) {
+    let c = Infinity;
+    for (const s of surf) {
+      if (s.under == null || x < s.box.minX || x > s.box.maxX || z < s.box.minZ || z > s.box.maxZ || !inside(s.pts, x, z)) continue;
       let h = s.y;
       if (s.ramp) {
         const t = THREE.MathUtils.clamp(((x - s.ramp.o[0]) * s.ramp.u[0] + (z - s.ramp.o[1]) * s.ramp.u[1]) / s.ramp.len, 0, 1);
         h = s.ramp.y0 + (s.ramp.y1 - s.ramp.y0) * t;
       }
-      if (h <= y + STEP) g = Math.max(g, h);
-      else if (h < y + HEAD) blocked = true; // would walk into the stairs / slab edge
+      if (h - s.under > y + 1.5) c = Math.min(c, h - s.under);
     }
-    return { g, blocked };
+    return c;
   }
   const st = {
     on: false, x: 0, z: 0, y: 0, vy: 0, heading: 0, yaw: 0, pitch: 0.3, dist: 8, phase: 0, speed: 0,
     keys: new Set(), joy: { x: 0, y: 0 }, jumpReq: false, t: 0, nearIdx: -1, nearTimer: 0, fp: false,
-    mode: 'walk', v: 0, steer: 0, lastTurn: -9, carry: null, // carry: () => the bike you sit on ({ x, z, y, h, speed, mode }) or null
+    mode: 'walk', v: 0, steer: 0, tilt: 0, lift: 0, lastTurn: -9, carry: null, // carry: () => the bike you sit on ({ x, z, y, h, speed, mode }) or null
     sit: false, kick: 0, volley: 0, slide: 0, slideX: 0, slideZ: 0, bike: 0, head: 0, dash: 0, dashX: 0, dashZ: 0, sprinting: false,
   };
   const FP_DIST = 2.2; // zooming closer than this switches to first person
@@ -403,7 +422,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     if (!st.on || st.carry || m === st.mode || !(m === 'walk' || RIDE[m]) || (m !== 'walk' && play.walkOnly)) return;
     st.sit = false;
     st.mode = m;
-    st.v = 0; st.speed = 0; st.steer = 0; st.y = 0; st.vy = 0; st.air = false;
+    st.v = 0; st.speed = 0; st.steer = 0; st.tilt = 0; st.vy = 0; st.air = false;
+    st.y = groundAt(st.x, st.z, st.y).g; // stay on the bridge deck / the stands when getting on or off a bike
     R = m === 'walk' ? 0.34 : 0.62;
     [st.x, st.z] = freeSpot(st.x, st.z);
     for (const [k, v] of Object.entries(kit)) v.group.visible = k === m;
@@ -479,11 +499,16 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     camDist += (wantDist - camDist) * Math.min(1, dt * 6);
     const cp = Math.cos(camPitch);
     dir.set(Math.sin(st.yaw) * cp, Math.sin(camPitch), Math.cos(st.yaw) * cp).normalize();
-    ray.set(look, dir); ray.far = camDist;
-    const hits = ray.intersectObjects(pickables, false);
-    setOccluders([...new Set(hits.map((h) => h.object))]);
     want.copy(look).addScaledVector(dir, camDist);
     if (want.y < 0.6) want.y = 0.6;
+    // under the bridge: the camera stays below the deck (you look around the space under it, not through it)
+    const ceil = Math.min(ceilingAt(st.x, st.z, st.y), ceilingAt(want.x, want.z, st.y));
+    if (want.y > ceil - 0.45) want.y = Math.max(look.y - 0.3, ceil - 0.45);
+    dir.copy(want).sub(look);
+    ray.far = dir.length();
+    ray.set(look, dir.normalize());
+    const hits = ray.intersectObjects(pickables, false);
+    setOccluders([...new Set(hits.map((h) => h.object))]);
   }
 
   // ---------- per-frame update ----------
@@ -571,7 +596,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       if (st.jumpReq) horn();
     }
     // floors / stairs under the feet, jump + gravity
-    const { g } = ride ? { g: ride.y } : groundAt(st.x, st.z, st.y);
+    const { g, lift = 0 } = ride ? { g: ride.y } : groundAt(st.x, st.z, st.y);
     st.ground = g;
     if (st.y < g) { st.y = g; st.vy = 0; st.air = false; } // stepped up (stairs)
     if (st.jumpReq && !st.air && st.y <= g + 0.001 && !riding && !play.frozen) { st.vy = JUMP_V; st.air = true; }
@@ -588,6 +613,9 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       }
     } else if (st.air) { st.y = g; st.vy = 0; st.air = false; } // came down within a millimetre of the ground
 
+    // on stairs the body stands on the tread (drawn a little above the slope it moves along)
+    st.lift += ((st.y <= g + 0.001 ? lift : 0) - st.lift) * Math.min(1, dt * 25);
+    const bodyY = st.y + st.lift;
     // animate limbs (or the riding pose)
     const moving = Math.min(1, st.speed / RUN);
     st.phase += dt * (3 + st.speed * 1.9);
@@ -600,7 +628,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       s.group.position.set(0, P.y, P.z);
       s.group.rotation.set(P.lean, 0, 0);
       rig.position.set(st.x, st.y, st.z);
-      rig.rotation.set(0, st.heading, 0);
+      rig.rotation.set(ride.tilt || 0, st.heading, 0);
     } else if (riding) {
       const V = kit[st.mode];
       for (const [limb, target] of [[s.legL, V.legs], [s.legR, V.legs], [s.armL, V.arms], [s.armR, V.arms]]) limb.rotation.x += (target - limb.rotation.x) * ease;
@@ -608,8 +636,12 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       s.group.rotation.x = 0.12;
       for (const w of V.wheels) w.rotation.x += (st.v * dt) / V.wheelR;
       V.fork.rotation.y = -st.steer * 0.38;
-      rig.position.set(st.x, st.y, st.z);
-      rig.rotation.set(0, st.heading, st.steer * 0.2 * Math.min(1, st.speed / 6)); // lean into turns
+      // on a slope (the bridge ramps) the bike pitches so both wheels stay on the road
+      const hx = Math.sin(st.heading) * 0.62, hz = Math.cos(st.heading) * 0.62;
+      const rise = st.air ? 0 : groundAt(st.x + hx, st.z + hz, st.y).g - groundAt(st.x - hx, st.z - hz, st.y).g;
+      st.tilt += ((Math.abs(rise) < 0.4 ? -Math.atan2(rise, 1.24) : 0) - st.tilt) * Math.min(1, dt * 10);
+      rig.position.set(st.x, bodyY, st.z);
+      rig.rotation.set(st.tilt, st.heading, st.steer * 0.2 * Math.min(1, st.speed / 6)); // lean into turns
       s.blob.scale.set(1.1, 1.9, 1);
     } else {
       const P = limbPose(st, swing, air);
@@ -620,14 +652,14 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       s.armR.rotation.x += (P.armR - s.armR.rotation.x) * ease;
       const bob = st.speed > 0.2 && st.y === (st.ground || 0) && !st.slide ? Math.abs(Math.sin(st.phase)) * 0.045 : Math.sin(st.t * 2) * 0.01;
       st.land = Math.max(0, (st.land || 0) - dt * 6);                       // small knee bend on landing
-      s.group.position.set(0, P.y ?? bob - Math.sin(st.land * Math.PI) * 0.07, P.z);
+      s.group.position.set(0, (P.y ?? bob - Math.sin(st.land * Math.PI) * 0.07) - (st.sit ? 0 : SOLE), P.z); // soles on the ground
       s.group.rotation.x = st.bike > 0 ? P.lean : s.group.rotation.x + (P.lean - s.group.rotation.x) * Math.min(1, dt * 18);
       s.group.rotation.z += (P.roll - s.group.rotation.z) * Math.min(1, dt * 18);
-      rig.position.set(st.x, st.y, st.z);
+      rig.position.set(st.x, bodyY, st.z);
       rig.rotation.set(0, st.heading, 0);
       s.blob.scale.setScalar(0.8 * (1 - Math.min(0.5, st.y * 0.25)));
     }
-    s.blob.position.set(st.x, st.ground > 0.1 ? st.ground + 0.03 : 0.4, st.z);
+    s.blob.position.set(st.x, (st.ground || 0) + st.lift + 0.03, st.z);
     s.blob.rotation.z = st.heading;
 
     const near = st.fp ? 0.12 : 1;
@@ -640,8 +672,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       camPitch += (st.pitch - camPitch) * Math.min(1, dt * 25);
       const cp = Math.cos(camPitch);
       dir.set(Math.sin(st.yaw) * cp, Math.sin(camPitch), Math.cos(st.yaw) * cp).normalize();
-      const head = ride ? pillionPose(ride.mode).y + 1.25 : riding ? kit[st.mode].seatY + 1.25 : 1.5;
-      look.set(st.x, st.y + head + (!riding && st.speed > 0.2 && st.y === 0 ? Math.sin(st.phase * 2) * 0.03 : 0), st.z);
+      const head = ride ? pillionPose(ride.mode).y + 1.25 : riding ? kit[st.mode].seatY + 1.25 : 1.5 - SOLE;
+      look.set(st.x, bodyY + head + (!riding && st.speed > 0.2 && st.y === (st.ground || 0) ? Math.sin(st.phase * 2) * 0.03 : 0), st.z);
       camera.position.copy(look);
       want.copy(look).sub(dir);
       camera.lookAt(want);
@@ -677,7 +709,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     st.yaw = st.heading + Math.PI; // camera behind the student
     st.pitch = 0.32; st.dist = 6.5; camPitch = 0.32; st.fp = false;
     st.keys.clear(); st.joy.x = st.joy.y = 0;
-    st.mode = 'walk'; st.v = 0; st.steer = 0; R = 0.34;
+    st.mode = 'walk'; st.v = 0; st.steer = 0; st.tilt = 0; R = 0.34;
     for (const v of Object.values(kit)) v.group.visible = false;
     rig.visible = s.blob.visible = true;
     st.on = true;
@@ -695,10 +727,11 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     onNear?.(null);
     st.nearIdx = -1;
   }
-  function teleport(x, z, lookAt) {
+  /** Appear at (x, z), on the surface at about height y there (0 = the ground; e.g. next to someone on the bridge). */
+  function teleport(x, z, lookAt, y = 0) {
     st.sit = false; st.slide = 0;
     [st.x, st.z] = freeSpot(x, z);
-    st.y = 0; st.vy = 0; st.air = false; st.v = 0; st.t = 0.6; // short glide
+    st.y = groundAt(st.x, st.z, y).g; st.vy = 0; st.air = false; st.v = 0; st.t = 0.6; // short glide
     if (lookAt) {
       st.heading = Math.atan2(lookAt[0] - st.x, lookAt[1] - st.z);
       st.yaw = st.heading + Math.PI; // camera behind, looking at the building

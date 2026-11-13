@@ -345,7 +345,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     const { me: self, players: ps, fp: firstPerson } = st.current;
     const heads = scene.players.heads();
     const mine = scene.self();
-    if (self && mine && !firstPerson) heads.push({ id: self.id, x: mine[0], y: mine[2] + (mine[4] === 3 ? 1.38 : mine[4] ? 2.05 : 1.85), z: mine[1], me: true });
+    if (self && mine && !firstPerson) heads.push({ id: self.id, x: mine[0], y: mine[2] + (mine[4] === 3 ? 1.38 : mine[4] ? 2.05 : 1.74), z: mine[1], me: true });
     const teams = soccer.current?.view().teams;
     const now = performance.now();
     const seen = new Set();
@@ -415,7 +415,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   function goTo(id) {
     const p = scene.players.get(id); if (!p) return;
     if (myRide) hopOff();
-    scene.teleport(p.x + 1.6 * Math.sin(p.h), p.z + 1.6 * Math.cos(p.h), [p.x, p.z]);
+    scene.teleport(p.x + 1.6 * Math.sin(p.h), p.z + 1.6 * Math.cos(p.h), [p.x, p.z], p.y); // on the same level (bridge, stands)
     setSelPlayer(null);
   }
   function inviteTo(id) {
