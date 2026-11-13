@@ -49,6 +49,11 @@ webapp/
 └── build.py              # (tùy chọn) xuất bản rút gọn vào dist/
 ```
 
+Thông báo trong app (`js/update.js`): khi có bản deploy mới, trang đang mở hiện thanh **Có bản cập nhật mới** kèm nút
+Tải lại. Muốn báo cho người dùng một thay đổi cụ thể (vd bản đồ có cầu mới) thì sửa `NEWS` trong file đó: mỗi `id` mới
+hiện một lần trên mỗi trình duyệt (nhớ bằng `localStorage` `cs-news`), tự ẩn sau 15 giây và thôi hiện sau ngày `until`.
+Nút trên thanh mở `path`; nếu đang ở `/map` thì bản đồ tự đi tới địa điểm `place` (sự kiện `cs-goto`).
+
 ## Chạy cục bộ
 
 Cần Python 3.

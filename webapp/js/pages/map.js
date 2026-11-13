@@ -320,7 +320,7 @@ export function MapPage() {
 
   useEffect(() => {
     document.title = 'Bản đồ DUT 3D · Campus Streak';
-    let disposed = false;
+    let disposed = false, onGoto = null;
     const labelEls = [];
     (async () => {
       try {
@@ -398,6 +398,9 @@ export function MapPage() {
         }
         scene.requestRender();
         setState('ready');
+        // links from outside the page while the map is open (the "what's new" note): go to a place by its key
+        onGoto = (e) => { const t = ts.find((x) => x.key === e.detail); if (t) select(t); };
+        window.addEventListener('cs-goto', onGoto);
         // deep link: /map?k=F or /map?room=F305
         const sp = new URLSearchParams(location.search);
         const want = sp.get('room') || sp.get('k');
@@ -419,6 +422,7 @@ export function MapPage() {
     const hintTimer = setTimeout(() => setHint(false), 6000);
     return () => {
       disposed = true; mo.disconnect(); clearTimeout(hintTimer);
+      if (onGoto) window.removeEventListener('cs-goto', onGoto);
       sceneRef.current?.dispose(); sceneRef.current = null;
       document.title = 'DUT Campus Streak';
     };
