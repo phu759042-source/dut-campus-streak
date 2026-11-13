@@ -1,5 +1,5 @@
 import { html, render, useState, useEffect } from 'preact';
-import { supabase, appStore, applyTheme, loadThemeFromServer, ensureCurrentUserData, loadMyProfile, readLocal } from './lib.js';
+import { supabase, appStore, applyTheme, loadThemeFromServer, ensureCurrentUserData, loadMyProfile, readLocal, writeLocal } from './lib.js';
 import { Icon, Spinner, mountHosts } from './ui.js';
 import { usePath, match, navigate } from './router.js';
 import { watchForUpdates } from './update.js';
@@ -13,6 +13,7 @@ import { DocumentsPage } from './pages/documents.js';
 import { ProfilePage } from './pages/profile.js';
 import { AchievementsPage, AboutPage } from './pages/misc.js';
 import { SharedLinkPage } from './pages/sharelink.js';
+import { AdminPage, useIsAdmin } from './pages/admin.js';
 import { syncPush } from './push.js';
 import { InstallButton } from './install.js';
 import { UploadIndicator } from './uploads.js';
@@ -40,6 +41,7 @@ const ROUTES = [
   ['/documents', DocumentsPage],
   ['/profile', ProfilePage],
   ['/about', AboutPage],
+  ['/admin', AdminPage],
 ];
 
 const NAV = [
@@ -60,11 +62,13 @@ function Shell({ path, children }) {
   const active = (href) => (href === '/' ? path === '/' || path.startsWith('/class') : path.startsWith(href));
   const navIndex = NAV.findIndex((n) => active(n.href)); // -1 on pages not in the bottom bar
   const go = (href) => (e) => { e.preventDefault(); navigate(href); };
+  const admin = useIsAdmin();
+  const side = admin ? [...NAV, ...SIDE_EXTRA, { href: '/admin', icon: 'chart', label: 'Quản trị' }] : [...NAV, ...SIDE_EXTRA];
   return html`<div class="shell">
     <aside class="sidebar">
       <a class="side-brand" href="/" onClick=${go('/')}><img class="brand-logo" src="/icon-96.png" alt="" width="36" height="36" /><span>Campus<b>Streak</b></span></a>
       <nav>
-        ${[...NAV, ...SIDE_EXTRA].map((n) => html`<a href=${n.href} class=${'side-link' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)}>
+        ${side.map((n) => html`<a href=${n.href} class=${'side-link' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)}>
           <${Icon} name=${n.icon} size=${20} /><span>${n.label}</span></a>`)}
       </nav>
       <${InstallButton} variant="side" />
@@ -123,6 +127,22 @@ function App() {
 applyTheme(readLocal('cs-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 mountHosts();
 
+// Usage statistics (admin page): one "active today" mark per account per day, one visit per tab.
+const vnDay = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+function trackActivity(uid) {
+  const key = 'cs-active-' + uid, today = vnDay();
+  try { if (readLocal(key) === today) return; } catch { /* storage off */ }
+  supabase.rpc('track_activity').then(({ error }) => { if (!error) try { writeLocal(key, today); } catch { /* storage off */ } }, () => {});
+}
+try {
+  if (!sessionStorage.getItem('cs-visit') && !/^\/(admin|map)/.test(location.pathname)) {
+    sessionStorage.setItem('cs-visit', '1');
+    supabase.rpc('hit_page_view', { p_page: 'app' }).then(() => {}, () => {});
+  }
+} catch { /* storage off */ }
+// a tab left open past midnight still counts for the new day
+document.addEventListener('visibilitychange', () => { const s = appStore.get().session; if (!document.hidden && s) trackActivity(s.user.id); });
+
 let bootstrappedFor = null;
 async function onSession(session) {
   appStore.set({ session });
@@ -132,6 +152,7 @@ async function onSession(session) {
     loadThemeFromServer();
     loadMyProfile().catch(() => {});
     syncPush();
+    trackActivity(session.user.id);
   }
   if (!session) bootstrappedFor = null;
 }

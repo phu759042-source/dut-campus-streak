@@ -1235,3 +1235,37 @@ button.world-ride { padding: 9px 10px 9px 14px; }
 /* ---------- 3D map: donate sheet (billboard at the main gate) ---------- */
 .donate-sheet { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
 .donate-qr { width: min(320px, 100%); border-radius: 16px; box-shadow: var(--shadow); }
+
+/* ---------- admin: usage statistics (/admin) ---------- */
+.adm-filters { margin-bottom: 14px; max-width: 420px; }
+.adm-filters .segmented { width: 100%; }
+.adm-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+@media (min-width: 720px) { .adm-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.adm-tile { padding: 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); min-width: 0; }
+.adm-tile-label { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.adm-tile-value { font-size: 28px; font-weight: 900; line-height: 1.15; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.adm-tile-sub { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+.adm-card { overflow: hidden; }
+.adm-note { margin: -4px 0 10px; line-height: 1.45; }
+.adm-note.adm-after { margin: 14px 0 0; }
+.adm-grid2 { display: grid; gap: 0 14px; }
+@media (min-width: 960px) { .adm-grid2 { grid-template-columns: 1fr 1fr; } }
+.adm-chart { position: relative; width: 100%; }
+.adm-chart svg { display: block; overflow: visible; }
+.adm-grid { stroke: var(--border); stroke-width: 1; }
+.adm-axis { stroke: var(--muted); stroke-width: 1; opacity: 0.6; }
+.adm-tick { fill: var(--muted); font-size: 10.5px; font-family: inherit; }
+.adm-tip { position: absolute; top: 0; width: 150px; padding: 8px 10px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; pointer-events: none;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg, var(--shadow)); }
+.adm-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+.adm-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--text); margin-bottom: 6px; }
+.adm-bars { display: flex; flex-direction: column; gap: 10px; }
+.adm-hbar { display: grid; grid-template-columns: minmax(110px, 38%) 1fr auto 40px; gap: 10px; align-items: center; font-size: 13.5px; }
+.adm-hbar-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adm-hbar-track { height: 12px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.adm-hbar-track span { display: block; height: 100%; border-radius: 999px; background: #2f6bff; }
+.adm-hbar .small { text-align: right; }
+.adm-table-wrap { overflow-x: auto; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.adm-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.adm-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
