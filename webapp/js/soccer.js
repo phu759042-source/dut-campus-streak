@@ -124,8 +124,8 @@ function makeMarkers(root) {
     path(r, lofted) {
       if (!r) { dots.count = 0; land.visible = false; return; }
       const n = Math.min(MAXD, r.pts.length);
-      dotMat.color.setHex(lofted ? 0xfde047 : 0xffffff);
-      dotMat.opacity = lofted ? 0.95 : 0.6;
+      dotMat.color.setHex(lofted === 'l' ? 0xfde047 : lofted === 's' ? 0xff5a4f : 0xffffff);
+      dotMat.opacity = lofted === 'p' ? 0.6 : 0.95;
       for (let i = 0; i < n; i++) {
         const [u, v, y] = r.pts[i], [x, z] = toWorld(u, v), s = 1 - (i / n) * 0.45;
         m4.compose(at.set(x, TURF + y, z), q, sc.set(s, s, s));
@@ -189,6 +189,7 @@ function sfx(kind, k = 1) {
   else if (kind === 'final') { tone(a, t, 2850, 0.3, 0.05, 140); tone(a, t + 0.4, 2850, 0.3, 0.05, 140); tone(a, t + 0.8, 2850, 0.8, 0.05, 140); }
   else if (kind === 'goal') { noise(a, t, 2.6, 'bandpass', 900, 0.22, 0.35); noise(a, t + 0.1, 2.2, 'bandpass', 1500, 0.1, 0.3); }
   else if (kind === 'cheer') noise(a, t, 1.2, 'bandpass', 1000, 0.08, 0.2);
+  else if (kind === 'deny') { tone(a, t, 220, 0.07, 0.06); tone(a, t + 0.09, 165, 0.1, 0.06); } // not ready yet
 }
 
 /**
@@ -209,7 +210,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   let sim = newSim(1), simAt = 0, have = false;
   let myTeam = -1, wantTeam = null;
   let stamina = 1, tired = false;
-  let pending = 0, touchWait = 0, tackleWait = 0;
+  let pending = 0, touchWait = 0, tackleWait = 0, kickedAt = -1e9;
   const off = { u: 0, v: 0, y: 0 };      // fades out the jump when a server update corrects the ball
   let shown = [0, 0, BALL_R];            // ball position drawn last frame (pitch coordinates)
   let banner = null, notice = null, lastN = null, uiAt = 0, flash = null, lastFb = 0, lastRejoin = 0;
@@ -261,6 +262,8 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   }
 
   function onBall(m) {
+    // sent before the server got our kick: it still has the ball at our feet; the next update has the kick
+    if (m.s?.b?.h === me() && performance.now() - kickedAt < 600) return;
     const before = have ? shown : null;
     sim = m.s; simAt = m.at; have = true; lastFb = performance.now();
     advance(serverNow());
@@ -333,6 +336,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   const HIGH_MS = 250; // holding pass longer than this = lofted pass
   const AIR_MS = 2000; // a volley / header pressed in the air waits this long for the ball
   const HIT = 0.65;    // a slide tackle wins the ball when your feet pass this close to the middle of the ring
+  const RECOVER_MS = 2000; // after a slide tackle or a dribble burst, 2 s before the next one
   let slideHit = null; // slide tackle in progress: { until, sent }
 
   function grabNear(r = 1.7) {
@@ -369,6 +373,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     return ballAtFeet(mu, mv, fu, fv);
   };
   function predict(u, v, y, vel) { // show the kick right away (the server sends the same thing back)
+    kickedAt = performance.now();
     Object.assign(sim.b, { u, v, y, vu: vel[0], vv: vel[1], vy: vel[2], h: null });
     simAt = serverNow();
     pending = 0; touchWait = performance.now() + 350;
@@ -428,15 +433,16 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   // What each kick does: { dir, sp (m/s along the grass), lift (m/s up), k }. The preview draws the same thing.
   const lowPlan = (aim) => {
     const dir = aimDir(aim), m = mate(dir);
-    return m ? { dir: [m[0], m[1]], sp: passSpeed(m[2], 4.5), lift: m[2] > 28 ? 2.5 : 0, k: 'p' } : { dir, sp: 13, lift: 0, k: 'p' };
+    return m ? { dir: [m[0], m[1]], sp: passSpeed(m[2], 7), lift: m[2] > 28 ? 2.5 : 0, k: 'p' } : { dir, sp: 16, lift: 0, k: 'p' };
   };
-  // Lofted pass: the power decides how far. Weakest about 14 m (2.9 m high), full power about 50 m, i.e. from
-  // your own goal line it comes down at the halfway line (7.7 m high at the top).
-  const highPlan = (aim, p) => ({ dir: aimDir(aim), sp: 10 + p * 12.5, lift: 8 + p * 5, k: 'l' });
+  // Lofted pass: the power decides how far. Weakest about 14 m (2.5 m high), full power about 50 m, i.e. from
+  // your own goal line it comes down at the halfway line (about 8.5 m high at the top, 2.6 s in the air).
+  const highPlan = (aim, p) => ({ dir: aimDir(aim), sp: 11.3 + p * 16.2, lift: 7.2 + p * 7.5, k: 'l' });
+  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: 14 + p * 18, lift: 0.6 + p * p * 5.2, k: 's' }; };
   function shoot(p, aim) {
     if (!holding() && !grabNear()) return;
-    const [bu, bv] = feet();
-    kick(onTarget(aimDir(aim), bu, bv), 12 + p * 20, 0.6 + p * p * 5.2, 's');
+    const P = shotPlan(aim, p);
+    kick(P.dir, P.sp, P.lift, 's');
   }
   function lowPass(aim) {
     if (!holding() && !grabNear()) return;
@@ -462,9 +468,9 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       const b = S.b, here = [b.u, b.v, b.y];
       if (Math.hypot(here[0] - last[0], here[1] - last[1], here[2] - last[2]) >= 1) { pts.push(here); last = here; }
       if (stop) break;
-      if (P.lift > 3 && t > 0.15 && b.y <= BALL_R + 0.001) { land = here; pts.push(here); break; } // lofted: where it lands
-      if (b.y <= BALL_R + 0.001 && b.vu * b.vu + b.vv * b.vv < 2.5) break;                      // rolled to a stop
-      if (P.lift <= 3 && t > 1.8) break;
+      if (P.k === 'l' && t > 0.15 && b.y <= BALL_R + 0.001) { land = here; pts.push(here); break; } // lofted: where it lands
+      if (b.y <= BALL_R + 0.001 && b.vu * b.vu + b.vv * b.vv < 2.5) break;                         // rolled to a stop
+      if (P.k !== 'l' && t > 1.8) break;
     }
     return { pts, land };
   }
@@ -508,8 +514,9 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     return myTeam >= 0 && canPlay() && !!(hold.shoot || hold.pass) && startBicycle(aim);
   }
   function tackle() {
-    if (myTeam < 0 || !canPlay() || holding() || performance.now() < tackleWait || walker.state.sit || walker.state.fall > 0) return;
-    tackleWait = performance.now() + 1000;
+    if (myTeam < 0 || !canPlay() || holding() || walker.state.sit || walker.state.fall > 0) return;
+    if (performance.now() < tackleWait) { sfx('deny'); return; } // still getting up from the last one
+    tackleWait = performance.now() + RECOVER_MS;
     const w = walker.state;
     let hx = Math.sin(w.heading), hz = Math.cos(w.heading);
     const h = have ? sim.b.h : null;
@@ -519,15 +526,16 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     }
     walker.lunge(hx, hz);
     send({ t: 'fx', p: [w.x + hx * 1.2, w.z + hz * 1.2], d: [hx, hz] }); // the slide (everyone sees it)
-    slideHit = { until: performance.now() + 800, sent: false };
+    slideHit = { until: performance.now() + 950, sent: false };
     sfx('slide');
   }
   /** Dribble burst (Q / Lừa): a quick dash; with the ball, tackles miss you for a moment. */
   function dribble() {
-    if (myTeam < 0 || !canPlay() || performance.now() < dribbleWait || walker.state.fall > 0) return;
+    if (myTeam < 0 || !canPlay() || walker.state.fall > 0) return;
+    if (performance.now() < dribbleWait) { sfx('deny'); return; }
     const w = walker.state;
     if (!walker.dash(Math.sin(w.heading), Math.cos(w.heading))) return;
-    dribbleWait = performance.now() + 1300;
+    dribbleWait = performance.now() + RECOVER_MS;
     stamina = Math.max(0, stamina - 0.12);
     if (holding()) send({ t: 'fd' });
     sfx('slide');
@@ -586,6 +594,11 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     if (myTeam >= 0 && have && w.on && canPlay() && sim.b.h == null && !pending && performance.now() > touchWait && !w.slide && !w.fall && (!air || sim.b.y < 0.3) && !bike && !w.bike) {
       const [mu, mv] = mine(), du = sim.b.u - mu, dv = sim.b.v - mv;
       if (du * du + dv * dv < 1.0 && sim.b.y < 1.4) { send({ t: 'ft', p: [w.x, w.z] }); pending = performance.now(); touchWait = pending + 300; air = null; }
+    }
+    // sliding into a free ball (or a ball flying into your feet): you take it
+    if (myTeam >= 0 && have && w.slide > 0 && canPlay() && sim.b.h == null && !pending && performance.now() > touchWait) {
+      const fx = w.x + w.slideX * 0.55, fz = w.z + w.slideZ * 0.55, [fu, fv] = toLocal(fx, fz);
+      if (Math.hypot(sim.b.u - fu, sim.b.v - fv) < 1.0 && sim.b.y < 0.7) { send({ t: 'ft', p: [fx, fz] }); pending = performance.now(); touchWait = pending + 300; }
     }
     // slide tackle: it only wins the ball if your feet go through the middle of the ring of the player who has it
     if (slideHit && !slideHit.sent) {
@@ -648,13 +661,16 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     // ring under the player with the ball (everyone), ball pointer over their head (spectators only)
     const hp = holder ? (holder === me() ? { x: w.x, z: w.z, y: w.y } : players.get(holder)) : null;
     marks.show(hp, holder ? teamOf(holder) : -1, myTeam < 0, dt);
-    // pass preview while you have the ball: low pass (faint), lofted pass growing with the power you hold
+    // preview while you have the ball: the low pass (white) until you press something; holding pass shows the
+    // lofted pass (yellow) and holding shoot the shot (red), both growing with the power you hold
     let plan = null;
-    if (myTeam >= 0 && holder === me() && !hold.shoot && !bike && canPlay()) {
-      const aim = hold.pass ? hold.pass.aim : touchFirst ? 'head' : 'cam', held = hold.pass && !hold.pass.moved ? performance.now() - hold.pass.t : 0;
-      plan = held > HIGH_MS ? highPlan(aim, Math.min(1, (held - HIGH_MS) / CHARGE_MS)) : lowPlan(aim);
+    if (myTeam >= 0 && holder === me() && !bike && canPlay() && performance.now() > kickedAt + 500) {
+      const now = performance.now(), aim = (hold.shoot || hold.pass)?.aim || (touchFirst ? 'head' : 'cam');
+      const passHeld = hold.pass && !hold.pass.moved ? now - hold.pass.t : 0;
+      if (hold.shoot) plan = shotPlan(aim, Math.min(1, (now - hold.shoot.t) / CHARGE_MS));
+      else plan = passHeld > HIGH_MS ? highPlan(aim, Math.min(1, (passHeld - HIGH_MS) / CHARGE_MS)) : lowPlan(aim);
     }
-    marks.path(plan ? passPath(plan) : null, plan?.k === 'l');
+    marks.path(plan ? passPath(plan) : null, plan?.k);
     ball.mesh.position.set(x, TURF + pos[2] + BALL_R * (BALL_LOOK - 1), z);
     ball.blob.position.set(x, TURF + 0.02, z);
     ball.blob.scale.setScalar(Math.max(0.4, 1 - pos[2] * 0.25));

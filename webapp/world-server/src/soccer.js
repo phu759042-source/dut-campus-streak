@@ -316,7 +316,7 @@ export class Soccer {
   /** Dribble burst: for a moment tackles on the dribbler miss. */
   dribble(a, now) {
     if (this.sim.b.h !== a.id || this.cooling(a.id, 'dribble', now)) return;
-    this.cooldown(a.id, 'dribble', now + 1300);
+    this.cooldown(a.id, 'dribble', now + 1900);
     this.cooldown(a.id, 'dodge', now + 650);
     this.event({ e: 'dribble', id: a.id });
   }
@@ -325,15 +325,15 @@ export class Soccer {
   tackle(a, msg, now) {
     const t = this.teamOf(a.id);
     if (t < 0 || !this.canPlay() || this.cooling(a.id, 'tackle', now) || this.cooling(a.id, 'stun', now)) return;
-    this.cooldown(a.id, 'tackle', now + 1000);
-    this.cooldown(a.id, 'slide', now + 950);
+    this.cooldown(a.id, 'tackle', now + 1900);
+    this.cooldown(a.id, 'slide', now + 1150);
     this.event({ e: 'slide', id: a.id });
   }
 
   /**
    * The sliding feet went through the middle of the ring under the opponent with the ball (the tackler's browser
    * sees it; checked here against where the server last saw both). The ball is won and that player goes down
-   * (3 s on the ground + getting up, no touching the ball meanwhile).
+   * (2 s face down + getting up, no touching the ball meanwhile).
    */
   tackleHit(a, msg, now) {
     const t = this.teamOf(a.id), b = this.sim.b, h = b.h;
@@ -347,7 +347,7 @@ export class Soccer {
     if (Array.isArray(msg.d)) [du, dv] = dirLocal(num(msg.d[0]) || 0, num(msg.d[1]) || 0);
     const L = Math.sqrt(du * du + dv * dv) || 1;
     Object.assign(b, { h: null, vu: (du / L) * 4.5, vv: (dv / L) * 4.5, vy: 1.2 });
-    this.cooldown(h, 'stun', now + 4000);
+    this.cooldown(h, 'stun', now + 2900);
     this.lt = a.id; this.ltName = a.name; this.lk = null;
     this.pushBall();
     this.event({ e: 'steal', id: a.id, from: h });

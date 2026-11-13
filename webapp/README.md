@@ -186,10 +186,14 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   - Điện thoại: nút Sút / Chuyền (chạm: thấp, giữ: cao) / Nhảy / Xoạc / Lừa; Nhảy rồi bấm Sút = vô lê, Nhảy rồi bấm
     Chuyền = đánh đầu, giữ Sút hoặc Chuyền rồi bấm Nhảy = xe đạp chổng ngược (bóng bay ra sau lưng).
 - Khi giữ bóng: đường chấm trắng là đường chuyền thấp; giữ chuyền thì hiện đường chấm vàng của chuyền cao và vòng chỗ
-  bóng rơi (giữ càng lâu càng xa: yếu nhất ~14 m, hết lực ~50 m, tức là từ vạch cầu môn rơi đúng giữa sân, cao ~7,7 m).
+  bóng rơi (giữ càng lâu càng xa: yếu nhất ~14 m, hết lực ~50 m, tức là từ vạch cầu môn rơi đúng giữa sân, cao ~8,5 m);
+  giữ sút thì hiện đường chấm đỏ của cú sút theo lực.
+- Vật lý bóng (`js/soccer-core.js`) theo bóng thật: trọng lực 9,81 m/s², cản không khí K·v² (K ≈ 0,012/m), lăn trên cỏ
+  chậm dần 1,1 m/s² + 0,1/s × vận tốc (bóng 16 m/s lăn ~60 m), nảy giữ ~60 % vận tốc đứng và ~70 % vận tốc ngang.
 - Người giữ bóng có vòng tròn màu đội dưới chân (ai cũng thấy); người không đá còn thấy trái banh chỉ xuống đầu họ.
-  Xoạc (trượt ~3,4 m) chỉ cướp được bóng khi chân đi qua giữa vòng tròn (`fxh`, server kiểm tra lại); người bị xoạc
-  ngã nằm 3 giây rồi có hoạt ảnh ngồi dậy, đứng lên (4 giây không chạm bóng được).
+  Xoạc (trượt ~4,8 m) chỉ cướp được bóng khi chân đi qua giữa vòng tròn (`fxh`, server kiểm tra lại); xoạc trúng bóng
+  tự do thì lấy luôn bóng. Người bị xoạc ngã sấp nằm 2 giây rồi chống tay, quỳ, đứng dậy (~2,9 giây không chạm bóng).
+  Xoạc và lừa bóng hồi 2 giây; bấm khi chưa hồi xong có tiếng báo.
 - Vô lê / đánh đầu bấm lúc đang trên không thì chờ bóng 2 giây, kể cả sau khi đã chạm đất.
 - Cầu thủ trên sân có dáng chạy riêng (sải bước dài, người đổ về trước, tay đánh mạnh), không còn là đi bộ nhanh.
 - Khán đài 7 bậc hai bên sân (đi lên được, nhấn **E** hoặc nút 🪑 để ngồi xuống ghế). Khi một trận bắt đầu, người

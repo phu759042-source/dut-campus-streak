@@ -36,9 +36,14 @@ export const MATCH_MS = 5 * 60 * 1000;
 export const TEAM_NAMES = ['Xanh', 'Cam'];
 export const STEP = 1 / 60;                     // fixed physics step (s)
 export const STEP_MS = 1000 / 60;
-export const MAX_KICK = 32, MAX_LIFT = 13;      // fastest shot (m/s) and the most upward speed (a full lofted pass)
-const GRAVITY = 11;
-const ROLL_A = 1.5, ROLL_C = 0.06; // rolling on grass slows the ball by ROLL_A + ROLL_C * speed (m/s²)
+export const MAX_KICK = 32, MAX_LIFT = 16;      // fastest shot (m/s) and the most upward speed (a full lofted pass)
+// Real ball (size 5: 0.43 kg, 22 cm): gravity 9.81 m/s², air drag K·v² (K = ρ·Cd·A / 2m ≈ 1.2·0.25·0.038 / 0.86
+// ≈ 0.012 per metre: a 30 m/s shot loses about 11 m/s² to the air, a slow pass almost nothing), rolling on
+// mown grass slows it by about 1.1 m/s² plus 0.1 per m/s of speed (a 16 m/s pass rolls ~60 m), and a bounce on grass keeps ~60 % of the
+// vertical speed and ~70 % of the speed along the ground.
+const GRAVITY = 9.81, AIR_K = 0.012;
+const BOUNCE_UP = 0.6, BOUNCE_GROUND = 0.7, BOUNCE_MIN = 1.2;
+const ROLL_A = 1.1, ROLL_C = 0.1;  // rolling on grass slows the ball by ROLL_A + ROLL_C * speed (m/s²)
 
 /** How far a ball rolls on the grass while slowing from v0 to v1 (m/s). Used to aim passes. */
 export function rollDistance(v0, v1) {
@@ -122,13 +127,13 @@ export function step(S, dt, ev) {
   }
   // flight, bounce, roll
   if (b.y > BALL_R + 0.001 || b.vy > 0) {
+    const sp = Math.sqrt(b.vu * b.vu + b.vv * b.vv + b.vy * b.vy), drag = 1 - AIR_K * sp * dt;
+    b.vu *= drag; b.vv *= drag; b.vy *= drag;
     b.vy -= GRAVITY * dt;
     b.y += b.vy * dt;
-    const drag = 1 - 0.05 * dt;
-    b.vu *= drag; b.vv *= drag;
     if (b.y <= BALL_R) {
       b.y = BALL_R;
-      if (b.vy < -1.8) { b.vy = -b.vy * 0.45; b.vu *= 0.85; b.vv *= 0.85; ev.push({ e: 'bounce' }); } else b.vy = 0;
+      if (b.vy < -BOUNCE_MIN) { b.vy = -b.vy * BOUNCE_UP; b.vu *= BOUNCE_GROUND; b.vv *= BOUNCE_GROUND; ev.push({ e: 'bounce' }); } else b.vy = 0;
     }
   } else {
     const sp = Math.sqrt(b.vu * b.vu + b.vv * b.vv);
@@ -175,9 +180,9 @@ function keeper(S, i, dt, ev) {
   if (b.h === 'k' + i) {
     k.hold -= dt;
     if (k.hold <= 0) { // long kick up the pitch, a little to one side
-      const tv = (rand(S) * 2 - 1) * 16, du = -side * 32, dv = tv - k.v, L = Math.sqrt(du * du + dv * dv), sp = 17 + rand(S) * 4;
+      const tv = (rand(S) * 2 - 1) * 16, du = -side * 32, dv = tv - k.v, L = Math.sqrt(du * du + dv * dv), sp = 19 + rand(S) * 4;
       b.h = null; b.u = ku - side * 1.1; b.v = k.v; b.y = 0.7;
-      b.vu = (du / L) * sp; b.vv = (dv / L) * sp; b.vy = 6.5;
+      b.vu = (du / L) * sp; b.vv = (dv / L) * sp; b.vy = 9;
       k.cd = 0.9;
       ev.push({ e: 'punt', k: i });
     }

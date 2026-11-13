@@ -189,10 +189,10 @@ function horn() {
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 // Football moves: how long each one lasts (s)
-// fall: knocked over by a slide tackle: going down, 3 s on the ground, then getting up (FALL_T in all)
-export const MOVE_T = { kick: 0.32, slide: 0.62, bike: 0.8, head: 0.35, dash: 0.35, fall: 4.0 };
+// fall: knocked over by a slide tackle: face down on the grass for 2 s, then getting up (FALL_T in all)
+export const MOVE_T = { kick: 0.32, slide: 0.78, bike: 0.8, head: 0.35, dash: 0.35, fall: 2.9 };
 const KICK_T = MOVE_T.kick, SLIDE_T = MOVE_T.slide, BIKE_T = MOVE_T.bike, HEAD_T = MOVE_T.head, DASH_T = MOVE_T.dash, FALL_T = MOVE_T.fall;
-const SLIDE_V = 11; // slide tackle: starts at this speed (m/s) and slows to 0, about 3.4 m in all
+const SLIDE_V = 12.5; // slide tackle: starts at this speed (m/s) and slows to 0, about 4.9 m in all
 
 /** Walk / run cycle speed (radians of the step cycle per second). Football running takes long strides. */
 export function gaitRate(speed, football) {
@@ -209,13 +209,15 @@ const HIP = 0.9 * SCALE; // a bicycle kick turns the body around the hips
  * Returns { legL, legR, armL, armR, lean (x), roll (z), y, z (body offset; y null = normal bob) }.
  */
 export function limbPose(t, swing, air, run = 0, s = 0) {
-  if (t.fall > 0) { // knocked over: down on the back, lying there, then sitting up and standing
+  if (t.fall > 0) { // knocked over: falls forward onto the chest, lies face down 2 s, pushes up onto the knees, stands
     const e = FALL_T - t.fall, mix = (a, b, k) => a + (b - a) * k;
-    if (e < 0.35) { const k = e / 0.35; return { legL: -0.5 * k, legR: -0.25 * k, armL: -2.3 * k, armR: -1.7 * k, lean: -1.5 * k * k, roll: 0, y: 0.22 * k, z: 0 }; }
-    if (e < 3.0) return { legL: -0.4, legR: -0.12, armL: -2.6, armR: -2.0, lean: -1.5, roll: 0, y: 0.22, z: 0 };
-    if (e < 3.5) { const k = (e - 3.0) / 0.5; return { legL: mix(-0.4, -1.4, k), legR: mix(-0.12, -1.3, k), armL: mix(-2.6, 0.7, k), armR: mix(-2.0, 0.7, k), lean: mix(-1.5, 0.2, k), roll: 0, y: mix(0.22, -0.62, k), z: 0 }; }
-    const k = (e - 3.5) / 0.5;
-    return { legL: mix(-1.4, 0, k), legR: mix(-1.3, 0, k), armL: mix(0.7, 0, k), armR: mix(0.7, 0, k), lean: mix(0.45, 0, k), roll: 0, y: mix(-0.62, 0, k), z: 0 };
+    if (e < 0.3) { const k = e / 0.3; return { legL: 0.3 * k, legR: 0.15 * k, armL: -2.4 * k, armR: -2.2 * k, lean: 1.5 * k * k, roll: 0, y: 0.2 * k, z: 0 }; }
+    if (e < 2.0) return { legL: 0.3, legR: 0.12, armL: -2.75, armR: -2.55, lean: 1.5, roll: 0, y: 0.2, z: 0 };
+    if (e < 2.45) { const k = (e - 2.0) / 0.45; // push up: hands under the shoulders, hips back onto the knees
+      return { legL: mix(0.3, 1.25, k), legR: mix(0.12, 1.15, k), armL: mix(-2.75, -0.9, k), armR: mix(-2.55, -0.9, k), lean: mix(1.5, 0.75, k), roll: 0, y: mix(0.2, -0.5, k), z: 0 };
+    }
+    const k = (e - 2.45) / 0.45; // one foot forward, then up
+    return { legL: mix(1.25, 0, k), legR: mix(1.15, -0.7 * (1 - k), Math.min(1, k * 2)), armL: mix(-0.9, 0, k), armR: mix(-0.9, 0, k), lean: mix(0.75, 0, k), roll: 0, y: mix(-0.5, 0, k), z: 0 };
   }
   if (t.bike > 0) {
     const k = 1 - t.bike / BIKE_T, lean = -2.7 * Math.sin(Math.PI * Math.min(1, k * 1.15));
