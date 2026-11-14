@@ -141,7 +141,7 @@ export function ResetPasswordPage() {
     setLoading(true); setError(null);
     const { error: err } = await supabase.auth.updateUser({ password: pw });
     if (err) { setLoading(false); return setError(errMsg(err)); }
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'global' }); // a new password logs every device out (on purpose)
     appStore.set({ recovery: false });
     toast('Đã đổi mật khẩu. Hãy đăng nhập lại.', 'success');
     navigate('/login', { replace: true });

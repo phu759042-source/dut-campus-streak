@@ -157,12 +157,32 @@ async function onSession(session) {
   if (!session) bootstrappedFor = null;
 }
 
+// Staying logged in across reloads (an update, a refresh): supabase-js keeps the session in localStorage and only
+// removes it when the user signs out or the server no longer knows it. Right after a reload it may have to refresh an
+// expired token first; if that request fails for a passing reason (no network yet, a timeout) it reports no session
+// but keeps it stored. Then this is not a log-out: keep the splash up and ask again shortly, instead of sending the
+// user to the login page.
+const AUTH_KEY = supabase.storageKey || 'sb-gmwurbvhhzgdikogxiqb-auth-token';
+const storedSession = () => { try { return !!localStorage.getItem(AUTH_KEY); } catch { return false; } };
+let retry = 0, retries = 0;
+function sessionChanged(event, session) {
+  clearTimeout(retry);
+  if (!session && event !== 'SIGNED_OUT' && storedSession() && appStore.get().session === undefined && retries < 40) {
+    retries++;
+    retry = setTimeout(() => supabase.auth.getSession().then(({ data }) => sessionChanged('RETRY', data.session), () => sessionChanged('RETRY', null)), Math.min(8000, 1000 * retries));
+    return;
+  }
+  retries = 0;
+  onSession(session);
+}
+window.addEventListener('online', () => { if (appStore.get().session === undefined && storedSession()) sessionChanged('RETRY', null); });
+
 supabase.auth.onAuthStateChange((event, session) => {
   if (event === 'PASSWORD_RECOVERY') appStore.set({ recovery: true });
   // Defer Supabase calls out of the auth callback (avoids a supabase-js deadlock).
-  setTimeout(() => onSession(session), 0);
+  setTimeout(() => sessionChanged(event, session), 0);
 });
-supabase.auth.getSession().then(({ data }) => onSession(data.session));
+supabase.auth.getSession().then(({ data }) => sessionChanged('INITIAL', data.session), () => sessionChanged('INITIAL', null));
 
 render(html`<${App} />`, document.getElementById('app'));
 watchForUpdates();

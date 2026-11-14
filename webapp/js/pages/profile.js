@@ -183,7 +183,9 @@ function PushSetting() {
 }
 
 export async function logout() {
-  await supabase.auth.signOut();
+  // only this browser: supabase-js signs out every device by default, and the other phones / tabs of the same
+  // account then found themselves logged out the next time they refreshed their token (e.g. reloading for an update)
+  await supabase.auth.signOut({ scope: 'local' });
   applyTheme('light');
   appStore.set({ profile: null });
   navigate('/login', { replace: true });
