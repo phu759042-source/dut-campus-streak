@@ -5,7 +5,7 @@
 //  - the ground floor is raised (brick plinth, steps up at every entrance), corridors run along the courtyard side
 //    behind ribbon windows with small red-tile awnings, classrooms are on the outer side
 //  - main entrance in the middle of the centre bar: curved steps under a curved glass bay (floors 2-4), a wide
-//    dog-leg staircase behind it; dog-leg stairs in both corner towers too
+//    staircase behind it (middle flight up, two side flights back), dog-leg stairs in both corner towers
 //  - rooms numbered as on the plan: 101-104 (long wing), 105/106 (centre), 107/108 (short wing), same upstairs,
 //    401/402 on the 4th floor; WC, Kho vật tư and Phòng nước GV next to the corner towers
 // Floors above the one you stand on are hidden while you are inside, so the follow camera sees your floor.
@@ -340,8 +340,10 @@ export function buildKhuH(b, out) {
     B.color(0xe2ddd3); B.quad([p0[0], yS - 0.2, p0[1]], [p1[0], yS - 0.2, p1[1]], [p2[0], yE - 0.25, p2[1]], [p3[0], yE - 0.25, p3[1]]);
     // handrail on the spine side
     B.color(C_RAIL);
-    for (let i = 0; i <= n; i += 2) { const bc = bS + d * i * tr, top = yS + ((yE - yS) * Math.max(1, i)) / n; boxF(B, F, rail - 0.03, rail + 0.03, bc - 0.03, bc + 0.03, top, 0.9); }
-    { const a = F.at(rail, bS), c = F.at(rail, bE); B.quad([a[0], yS + 0.92, a[1]], [c[0], yE + 0.92, c[1]], [c[0], yE + 0.98, c[1]], [a[0], yS + 0.98, a[1]]); }
+    for (const r of [rail].flat()) {
+      for (let i = 0; i <= n; i += 2) { const bc = bS + d * i * tr, top = yS + ((yE - yS) * Math.max(1, i)) / n; boxF(B, F, r - 0.03, r + 0.03, bc - 0.03, bc + 0.03, top, 0.9); }
+      const a = F.at(r, bS), c = F.at(r, bE); B.quad([a[0], yS + 0.92, a[1]], [c[0], yE + 0.92, c[1]], [c[0], yE + 0.98, c[1]], [a[0], yS + 0.98, a[1]]);
+    }
     out.surfaces.push({ pts: F.rect(a0, a1, Math.min(bS, bE), Math.max(bS, bE)), ramp: { o: F.at(a0, bS), u: d > 0 ? F.w : [-F.w[0], -F.w[1]], len: L, y0: yS, y1: yE, steps: n } });
   }
   function dogLeg(F, ua, ub, b0, R, b2, walls) {
@@ -364,7 +366,32 @@ export function buildKhuH(b, out) {
     for (let a = ua + 0.1; a < um; a += 0.5) boxF(B, F, a - 0.02, a + 0.02, b0 - 0.02, b0 + 0.02, Y(3), 0.95);
     wall(F.at(ua, b0), F.at(um, b0), Y(3), Y(3) + 1.0);
   }
-  dogLeg(C, hall0 + 0.1, hall1 - 0.1, 4.6, 4.0, C_D - 0.15, false); // main stairs behind the entrance
+  /**
+   * Main stairs (as in the hall on the 2nd floor): one wide flight in the middle goes up from the floor to the
+   * landing under the back windows, two narrower flights on both sides come back from the landing to the next floor.
+   * So on every floor you arrive on either side and carry on up the middle.
+   */
+  function splitStair(F, ua, ub, b0, R, b2) {
+    const half = FH / 2, sw = (ub - ua) * 0.28, s0 = ua + sw, s1 = ub - sw; // side flights [ua, s0] and [s1, ub]
+    for (let k = 0; k < 3; k++) {
+      const y = Y(k), B = lv[k].B;
+      flight(k, F, s0 + 0.08, s1 - 0.08, b0, b0 + R, y, y + half, [s0 + 0.12, s1 - 0.12]);
+      B.color(C_STAIR2); boxF(B, F, ua, ub, b0 + R, b2, y + half - 0.2, 0.2);
+      out.surfaces.push({ pts: F.rect(ua, ub, b0 + R, b2), y: y + half });
+      flight(k, F, ua, s0 - 0.08, b0 + R, b0, y + half, y + FH, s0 - 0.12);
+      flight(k, F, s1 + 0.08, ub, b0 + R, b0, y + half, y + FH, s1 + 0.12);
+    }
+    for (let k = 0; k <= 3; k++) for (const sp of [s0, s1]) { // low walls between the middle and the side flights
+      lv[k].B.color(0xe2ddd3); boxF(lv[k].B, F, sp - 0.08, sp + 0.08, b0, b0 + R, Y(k) - (k ? FH / 2 : 0), k ? FH / 2 + 0.3 : 0.3);
+    }
+    for (const sp of [s0, s1]) wall(F.at(sp, b0), F.at(sp, b0 + R), Y(0) - 1, Y(3) + 1.2);
+    // top floor: railing across the middle flight (nothing further up)
+    const B = lv[3].B; B.color(C_RAIL);
+    boxF(B, F, s0, s1, b0 - 0.03, b0 + 0.03, Y(3) + 0.92, 0.06);
+    for (let a = s0 + 0.1; a < s1; a += 0.5) boxF(B, F, a - 0.02, a + 0.02, b0 - 0.02, b0 + 0.02, Y(3), 0.95);
+    wall(F.at(s0, b0), F.at(s1, b0), Y(3), Y(3) + 1.0);
+  }
+  splitStair(C, hall0 + 0.1, hall1 - 0.1, 4.6, 4.0, C_D - 0.15);    // main stairs behind the entrance
   dogLeg(C, J1u[0], J1u[1], JW0, 3.6, JW1, true);                  // corner tower by 104/105
   dogLeg(C, J2u[0], J2u[1], JW0, 3.6, JW1, true);                  // corner tower by 106/107
 

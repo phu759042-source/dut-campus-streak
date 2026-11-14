@@ -102,8 +102,9 @@ function doorOf(t) {
   const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
   let nx = c[1] - a[1], nz = -(c[0] - a[0]);
   const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L;
-  const c2 = centerOf(t);
-  if ((mx + nx - c2[0]) ** 2 + (mz + nz - c2[1]) ** 2 < (mx - c2[0]) ** 2 + (mz - c2[1]) ** 2) { nx = -nx; nz = -nz; }
+  // outwards = away from the building itself (the middle of the box can lie outside, e.g. in Khu H's courtyard)
+  const inPoly = (x, z) => { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, zi] = p[i], [xj, zj] = p[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
+  if (inPoly(mx + nx * 0.5, mz + nz * 0.5)) { nx = -nx; nz = -nz; }
   return { spot: [mx + nx * 7, mz + nz * 7], door: [mx, mz] };
 }
 // Places (gates, bike sheds, the bridge) can name the spot where you arrive and what you face there.
