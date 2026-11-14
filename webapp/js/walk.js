@@ -251,7 +251,7 @@ export function limbPose(t, swing, air, run = 0, s = 0) {
 // that can take keys over (it returns true for keys it used).
 const PLAY0 = { frozen: false, run: 0, sprint: 0, factor: 1, bounds: null, canSprint: true, walkOnly: false, onKey: null };
 
-export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], extraWalls = [], surfaces = [], indoor = [], posts = [], limits, onNear, onInteract, onExit, onView }) {
+export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], extraWalls = [], surfaces = [], indoor = [], posts = [], water = [], limits, onNear, onInteract, onExit, onView }) {
   let s = makeStudent();
   let curLook = null, curKit = null;
   let play = { ...PLAY0 };
@@ -289,6 +289,17 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   // walkable surfaces above the ground: 2nd-floor slabs and stairs (ramps)
   const surf = surfaces.map((s) => ({ ...s, box: bbox([s.pts]) }));
   const STEP = 0.6, HEAD = 1.75;
+  // deep water (ponds): you cannot walk or ride into it from the bank, only over a bridge / pier / kerb above it.
+  // Someone standing in it (an old spot, a teleport) can still move, but only towards the bank.
+  const ponds = water.map((pts) => ({ pts, box: bbox([pts]) }));
+  /** How far into a pond (x, z) is (distance to its bank), 0 when on dry land. */
+  function wetDepth(x, z) {
+    for (const p of ponds) {
+      if (x < p.box.minX || x > p.box.maxX || z < p.box.minZ || z > p.box.maxZ || !inside(p.pts, x, z)) continue;
+      return nearestEdge(p.pts, x, z).d;
+    }
+    return 0;
+  }
   /** Ground height at (x, z) for someone standing at height y, and whether the spot is blocked (a step too high). */
   function groundAt(x, z, y) {
     let g = 0, blocked = false, lift = 0;
@@ -305,7 +316,28 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       if (h <= y + STEP) { if (h >= g) { g = h; lift = up; } }
       else if (h < y + HEAD) blocked = true; // would walk into the stairs / slab edge
     }
+    if (!blocked && g < 0.05 && ponds.length) {
+      const d = wetDepth(x, z), here = d > 0 && st.y < 0.05 ? wetDepth(st.x, st.z) : 0;
+      if (d > 0 && !(here > 0 && d <= here + 1e-3)) blocked = true;
+    }
     return { g, blocked, lift };
+  }
+  /** Step to (qx, qz). Against an edge you cannot cross (a slab or stair edge, the water) slide along it instead
+   *  of stopping dead: keep whichever part of the move is free. */
+  function moveTo(qx, qz) {
+    const free = (x, z) => {
+      if (groundAt(x, z, st.y).blocked) return false;
+      // keep the body (not just its centre) off the water: look a little ahead
+      const dx = x - st.x, dz = z - st.z, L = Math.hypot(dx, dz);
+      if (!ponds.length || L < 1e-6 || (st.y < 0.05 && wetDepth(st.x, st.z) > 0)) return true;
+      const ax = x + (dx / L) * 0.22, az = z + (dz / L) * 0.22;
+      return !(groundAt(ax, az, st.y).g < 0.05 && wetDepth(ax, az) > 0);
+    };
+    if (free(qx, qz)) { st.x = qx; st.z = qz; return; }
+    const xFirst = Math.abs(qx - st.x) > Math.abs(qz - st.z);
+    for (const [x, z] of xFirst ? [[qx, st.z], [st.x, qz]] : [[st.x, qz], [qx, st.z]]) {
+      if (free(x, z)) { st.x = x; st.z = z; return; }
+    }
   }
   /** Underside of the lowest slab above the head at (x, z) for someone at height y (bridge deck), or Infinity. */
   function ceilingAt(x, z, y) {
@@ -375,7 +407,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     z = THREE.MathUtils.clamp(z, limits.minZ, limits.maxZ);
     return [x, z];
   }
-  const blocked = (x, z) => postsNear(x, z).some(([px, pz, pr]) => Math.hypot(x - px, z - pz) < R + pr + 0.2) || solids.some((b) => !b.hollow && x > b.box.minX - R && x < b.box.maxX + R && z > b.box.minZ - R && z < b.box.maxZ + R
+  const blocked = (x, z) => (wetDepth(x, z) > 0 && groundAt(x, z, 99).g < 0.05) || postsNear(x, z).some(([px, pz, pr]) => Math.hypot(x - px, z - pz) < R + pr + 0.2) || solids.some((b) => !b.hollow && x > b.box.minX - R && x < b.box.maxX + R && z > b.box.minZ - R && z < b.box.maxZ + R
     && (inside(b.pts, x, z) || nearestEdge(b.pts, x, z).d < R + 0.3));
   /** Closest free spot to (x, z), searching outwards in rings. */
   function freeSpot(x, z) {
@@ -596,7 +628,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
         const nx = st.x + (mx / mag) * st.speed * dt, nz = st.z + (mz / mag) * st.speed * dt;
         let [qx, qz] = resolve(nx, nz);
         if (play.bounds) [qx, qz] = play.bounds(qx, qz);
-        if (!groundAt(qx, qz, st.y).blocked) { st.x = qx; st.z = qz; }
+        moveTo(qx, qz);
       }
     } else if (st.sit) {
       st.speed = 0;
@@ -614,7 +646,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       const sx = Math.sin(st.heading), sz = Math.cos(st.heading);
       const ox = st.x, oz = st.z;
       const [qx, qz] = resolve(st.x + sx * st.v * dt, st.z + sz * st.v * dt);
-      if (!groundAt(qx, qz, st.y).blocked) { st.x = qx; st.z = qz; }
+      moveTo(qx, qz);
       const moved = Math.hypot(st.x - ox, st.z - oz), want = Math.abs(st.v * dt);
       if (want > 0.02 && moved < want * 0.55) st.v *= 0.55; // bumped into something
       st.speed = Math.abs(st.v);
@@ -623,7 +655,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       if (st.jumpReq) horn();
     }
     // floors / stairs under the feet, jump + gravity
-    const { g, lift = 0 } = ride ? { g: ride.y } : groundAt(st.x, st.z, st.y);
+    const { g, lift = 0 } = ride ? { g: ride.y } : st.sit ? { g: st.y } : groundAt(st.x, st.z, st.y); // a seat holds you up
     st.ground = g;
     if (st.y < g) { st.y = g; st.vy = 0; st.air = false; } // stepped up (stairs)
     if (st.jumpReq && !st.air && st.y <= g + 0.001 && !riding && !play.frozen) { st.vy = JUMP_V; st.air = true; }

@@ -157,6 +157,14 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   không lấy theo OSM (ở đó OSM lệch vào sân, hẹp hơn và tháp góc lồi ra) mà dựng đối xứng với cánh dài như sơ đồ,
   dài tới đầu cánh của OSM; đường viền mới (`khuHOutline`) thay cho đường viền OSM trên cả bản đồ.
   Bộ đi bộ hỗ trợ sàn tầng 2, bậc thang (ramp) và tường/lan can chỉ chặn ở đúng độ cao.
+- Hồ đài phun nước phía đông Khu F (`js/fountain.js`), dựng theo ảnh thật: hồ OSM gồm hồ tròn và hồ cong phía tây
+  nối nhau qua một eo. Quanh mép nước có thành gờ bê tông 0,55 m (đi trên được, ngồi được, mặt nước thấp hơn mép);
+  trong hồ tròn có vòng đi bộ 20 cạnh trên cột, nối với bờ đông bằng cầu tàu (3 bậc lên ở bờ, 3 bậc lên vòng);
+  giữa vòng là đài phun nước: trống + 2 bậc ốp đá nâu, chân trắng, 3 tầng đĩa trắng viền đá nâu, ống phun trên bậc.
+  Cầu vòm xanh lan can chữ X bắc qua eo, đúng tuyến lối đi bộ OSM ở đó (lối đi đó được đánh dấu `footbridge` nên
+  không vẽ trên mặt nước). Nhấn E / nút ghế để ngồi trên thành hồ (quay ra nước) hoặc mép trong vòng đi bộ (quay
+  vào đài). Không đi / chạy xe xuống nước được (`water` trong `js/walk.js`, mọi vùng nước OSM): chỉ qua cầu, cầu tàu,
+  thành hồ; đứng sát mép thì trượt dọc theo mép.
 
 ### Chế độ server (nhiều người chơi)
 

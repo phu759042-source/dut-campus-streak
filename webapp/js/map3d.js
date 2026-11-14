@@ -10,6 +10,7 @@ import { prepareInteriors, buildInteriors } from './interiors.js';
 import { buildStadium } from './stadium.js';
 import { buildBillboards } from './billboards.js';
 import { buildBridge } from './bridge.js';
+import { buildFountain } from './fountain.js';
 import { styleOf, wallMaterials, buildBuildingDetails, buildWalls, buildGates, buildCanopies, buildLamps, avenueTreeSpots } from './campus-details.js';
 
 export const FLOOR_H = 3.4;
@@ -189,9 +190,12 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     const g = flatShapes(byKind(k), 0);
     if (g) groundLayer(new THREE.Mesh(g, matOf(k)));
   }
+  // fountain pond: kerb, ring walkway, pier, fountain, and the footbridge over the neck (it marks that footpath)
+  const fountain = buildFountain(data);
+  if (fountain) scene.add(fountain.group);
   // roads and paths (the bridge deck stands in for the roads flagged `bridge`)
   groundLayer(new THREE.Mesh(ribbons(data.roads.filter((r) => !r.foot && !r.bridge), 0), matOf('road')));
-  groundLayer(new THREE.Mesh(ribbons(data.roads.filter((r) => r.foot), 0), matOf('foot')));
+  groundLayer(new THREE.Mesh(ribbons(data.roads.filter((r) => r.foot && !r.footbridge), 0), matOf('foot')));
 
   // buildings (facade style per zone, see campus-details.js)
   const walls = wallMaterials();
@@ -303,9 +307,9 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) wallSegs.push([w[i], w[i + 1]]);
   const clearOfWalls = (x, z, m) => !wallSegs.some(([a, b]) => Math.abs(a[0] - x) < 40 && Math.abs(a[1] - z) < 40 && segDist(x, z, a, b) < m);
-  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear, ...(bridge ? bridge.clear : [])].map((p) => [p, bbox([p])]);
+  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear, ...(bridge ? bridge.clear : []), ...(fountain ? fountain.clear : [])].map((p) => [p, bbox([p])]);
   const inArea = (x, z, m) => blockedAreas.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
-  const groundRoads = data.roads.filter((r) => !r.bridge);
+  const groundRoads = data.roads.filter((r) => !r.bridge && !r.footbridge);
   const lamps = buildLamps(groundRoads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
   scene.add(lamps.group);
   // keep the area in front of main doors clear of trees
@@ -414,6 +418,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     scene.fog.color.set(P.sky); scene.fog.near = P.fogNear; scene.fog.far = P.fogFar;
     for (const k of ['ground', 'campus', 'road', 'foot', 'grass', 'water', 'parking', 'pitch', 'track', 'dirt', 'ballast', 'plaza']) matOf(k).color.set(P[k]);
     bridge?.setTheme(isDark, P);
+    fountain?.setTheme(isDark, P);
     walls.setNight(isDark, P.wall);
     lamps.setNight(isDark);
     details.setNight(isDark);
@@ -471,12 +476,22 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   // ---------- walk mode ----------
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
     posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...billboards.posts, ...(stadium ? stadium.posts : []), ...(bridge ? bridge.posts : [])],
-    extraWalls: [...inter.walls, ...(stadium ? stadium.walls : []), ...(bridge ? bridge.walls : [])],
-    surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : []), ...(bridge ? bridge.surfaces : [])], indoor: [...inter.hideWhenInside.map((r) => r.pts), ...inter.indoor], limits: LIM, onNear,
+    extraWalls: [...inter.walls, ...(stadium ? stadium.walls : []), ...(bridge ? bridge.walls : []), ...(fountain ? fountain.walls : [])], water: byKind('water'),
+    surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : []), ...(bridge ? bridge.surfaces : []), ...(fountain ? fountain.surfaces : [])], indoor: [...inter.hideWhenInside.map((r) => r.pts), ...inter.indoor], limits: LIM, onNear,
     onInteract: (b) => { if (interact?.()) return; if (!toggleSit()) onInteract?.(b); }, onExit: onExitWalk, onView });
   let interact = null; // server mode: E gets on / off someone's bike first (setInteract)
-  // stands: E (or the seat button) sits down on the seat you are standing at, again to stand up
-  const seatHere = () => { const w = walker.state; const s = stadium && w.on && w.mode === 'walk' && !w.carry ? stadium.seatAt(w.x, w.z) : null; return s && Math.abs(s.y - w.y) < 0.3 ? s : null; };
+  // E (or the seat button) sits down where you stand: a seat on the stands, the kerb of the fountain pond or the
+  // inner edge of its ring walkway; again to stand up
+  const seatSpots = [
+    stadium && ((x, z, y) => { const s = stadium.seatAt(x, z); return s && Math.abs(s.y - y) < 0.3 ? s : null; }),
+    fountain?.seatAt,
+  ].filter(Boolean);
+  const seatHere = () => {
+    const w = walker.state;
+    if (!w.on || w.mode !== 'walk' || w.carry) return null;
+    for (const f of seatSpots) { const s = f(w.x, w.z, w.y); if (s) return s; }
+    return null;
+  };
   function toggleSit() {
     if (walker.state.sit) { walker.standUp(); return true; }
     const s = seatHere();
