@@ -471,7 +471,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
     posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...billboards.posts, ...(stadium ? stadium.posts : []), ...(bridge ? bridge.posts : [])],
     extraWalls: [...inter.walls, ...(stadium ? stadium.walls : []), ...(bridge ? bridge.walls : [])],
-    surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : []), ...(bridge ? bridge.surfaces : [])], indoor: inter.hideWhenInside.map((r) => r.pts), limits: LIM, onNear,
+    surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : []), ...(bridge ? bridge.surfaces : [])], indoor: [...inter.hideWhenInside.map((r) => r.pts), ...inter.indoor], limits: LIM, onNear,
     onInteract: (b) => { if (interact?.()) return; if (!toggleSit()) onInteract?.(b); }, onExit: onExitWalk, onView });
   let interact = null; // server mode: E gets on / off someone's bike first (setInteract)
   // stands: E (or the seat button) sits down on the seat you are standing at, again to stand up

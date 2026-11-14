@@ -2,10 +2,12 @@
 //  - Căn tin (canteen) next to Khu E1: doors, dining tables with stools, drinks fridges, a coffee bar,
 //    and a kitchen behind a serving counter. Room for a dozen or more students.
 //  - Khu E1: open corridors along the front on both floors and a staircase at the end next to the canteen.
+//  - Khu H: the whole 4-storey block from its floor plan (see khu-h.js).
 // Produces geometry plus what the walker needs: solids (footprints), walls with a height range,
 // walkable surfaces (2nd-floor slab, stairs) and meshes that fade/hide when they block the view.
 import * as THREE from 'three';
 import { Builder, offsetPoly, insideP, FLOOR_H } from './campus-details.js';
+import { isKhuH, buildKhuH } from './khu-h.js';
 
 const FLOOR2 = FLOOR_H; // top of the 2nd-floor slab
 
@@ -28,6 +30,7 @@ const depthOf = (pts, F) => Math.max(...pts.map(([x, z]) => (x - F.a[0]) * F.wx 
 export function prepareInteriors(data) {
   for (const b of data.buildings) {
     if (b.interior === 'canteen') b.hollow = true;
+    if (isKhuH(b)) { b.interior = 'khuH'; b.hollow = true; b.entrance_edge ??= 3; } // main entrance under the glass bay
     if (b.corridor && !b.roofPts) {
       const F = frame(b.pts, b.corridor.edge);
       const d = b.corridor.depth;
@@ -278,7 +281,7 @@ function buildCorridor(b, out, B, slabB) {
 
 /** Build all interiors. `buildings` are the scene building infos (with height). */
 export function buildInteriors(buildings) {
-  const out = { group: new THREE.Group(), solids: [], walls: [], surfaces: [], hideWhenInside: [], glow: [], occluders: [], meshFor: new Map(), glassB: new Builder() };
+  const out = { group: new THREE.Group(), solids: [], walls: [], surfaces: [], hideWhenInside: [], indoor: [], updaters: [], glow: [], occluders: [], meshFor: new Map(), glassB: new Builder() };
   for (const b of buildings) {
     if (b.interior === 'canteen') {
       const B = new Builder(), BW = new Builder();
@@ -289,6 +292,14 @@ export function buildInteriors(buildings) {
       out.group.add(wallsMesh);
       out.occluders.push(wallsMesh);
       out.meshFor.set(b.id, wallsMesh);
+    }
+    if (b.interior === 'khuH') {
+      const h = buildKhuH(b, out);
+      out.group.add(h.group);
+      out.occluders.push(...h.meshes);
+      out.meshFor.set(b.id, h.meshes[0]);
+      out.indoor.push(h.indoor);
+      out.updaters.push(h);
     }
     if (b.corridor) {
       const B = new Builder(), slabB = new Builder();
@@ -310,6 +321,7 @@ export function buildInteriors(buildings) {
     /** Hide the canteen roof while the student is inside it. */
     update(st) {
       for (const r of out.hideWhenInside) r.mesh.visible = !(st && st.on && !st.fp && insideP(r.pts, st.x, st.z)); // first person keeps the roof + ceiling
+      for (const h of out.updaters) h.update(st);
     },
     setNight(on) { for (const m of out.glow) m.emissiveIntensity = on ? 0.9 : (m.userData.dayGlow || 0); },
   };
