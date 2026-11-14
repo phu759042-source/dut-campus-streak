@@ -237,6 +237,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   scene.add(inter.group);
   for (const b of buildings) if (b.hollow) b.mesh = inter.meshFor.get(b.id) || null;
   pickables.push(...inter.occluders);
+  for (const m of inter.ground) groundLayer(m); // sân F, painted over the paths it covers
   // Ngô Sĩ Liên railway overpass: ramps, 7 spans on piers, the railway under it, the rehearsal space under the deck
   const bridge = data.bridge ? buildBridge(data, { mobile }) : null;
   if (bridge) {
@@ -307,7 +308,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) wallSegs.push([w[i], w[i + 1]]);
   const clearOfWalls = (x, z, m) => !wallSegs.some(([a, b]) => Math.abs(a[0] - x) < 40 && Math.abs(a[1] - z) < 40 && segDist(x, z, a, b) < m);
-  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear, ...(bridge ? bridge.clear : []), ...(fountain ? fountain.clear : [])].map((p) => [p, bbox([p])]);
+  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear, ...(bridge ? bridge.clear : []), ...(fountain ? fountain.clear : []), ...inter.clear].map((p) => [p, bbox([p])]);
   const inArea = (x, z, m) => blockedAreas.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
   const groundRoads = data.roads.filter((r) => !r.bridge && !r.footbridge);
   const lamps = buildLamps(groundRoads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
@@ -669,7 +670,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     /** stands: can sit here / sit or stand up / go and sit on a seat with a good view */
     canSit: () => !!seatHere(), toggleSit, sitting: () => !!walker.state.sit,
     watchMatch() { const s = stadium?.randomSeat(); if (!s || !walker.state.on) return false; walker.sitAt(s); requestRender(); return true; },
-    setJoy: (x, y) => walker.setJoy(x, y), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt, y) => walker.teleport(x, z, lookAt, y),
+    setJoy: (x, y, held) => walker.setJoy(x, y, held), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt, y) => walker.teleport(x, z, lookAt, y),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       removeEventListener('cs-redraw', requestRender);

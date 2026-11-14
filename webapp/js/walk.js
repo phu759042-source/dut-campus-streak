@@ -506,27 +506,50 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   }
 
   // drag to turn the camera (when the mouse is not locked), wheel to zoom
+  // On a phone a second finger landing on the view does not take the camera from the finger already turning it, and
+  // when that finger lifts, a finger still down on the view takes over (no need to lift and press again).
   let drag = null;
-  el.addEventListener('pointerdown', (e) => { if (st.on && !locked()) { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; } });
+  const downs = new Set(); // pointers pressed on the 3D view and not released yet
+  el.addEventListener('pointerdown', (e) => { downs.add(e.pointerId); if (st.on && !locked() && (!drag || drag.id === e.pointerId || e.pointerType !== 'touch')) drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
   const pointermove = (e) => {
+    if (st.on && !drag && downs.has(e.pointerId) && !pinch?.on && !locked()) { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; return; }
     if (!st.on || !drag || drag.id !== e.pointerId || locked()) return;
     turn((e.clientX - drag.x) * 0.0062, (e.clientY - drag.y) * 0.0042);
     drag.x = e.clientX; drag.y = e.clientY;
   };
   window.addEventListener('pointermove', pointermove);
-  const endDrag = (e) => { if (drag && drag.id === e.pointerId) drag = null; };
+  const endDrag = (e) => { downs.delete(e.pointerId); if (drag && drag.id === e.pointerId) drag = null; };
   window.addEventListener('pointerup', endDrag);
   window.addEventListener('pointercancel', endDrag);
   el.addEventListener('wheel', (e) => { if (!st.on) return; e.preventDefault(); zoomBy(1 + THREE.MathUtils.clamp(e.deltaY, -120, 120) * 0.0012); }, { passive: false });
-  // two-finger pinch zoom on phones
-  const touches = new Map();
+  // two-finger pinch zoom on phones. Only the fingers on the 3D view itself count (targetTouches: never the joystick
+  // or a button, and no finger left over from a lost touchend), never while the joystick is held, and only once both
+  // fingers have moved: a resting finger next to one that turns the camera is not a pinch. Leaving first person
+  // needs a clear pinch out, not a wobble.
   let pinch = null;
-  el.addEventListener('touchstart', (e) => { for (const t of e.changedTouches) touches.set(t.identifier, t); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) }; drag = null; } }, { passive: true });
-  el.addEventListener('touchmove', (e) => {
-    for (const t of e.changedTouches) touches.set(t.identifier, t);
-    if (st.on && pinch && touches.size === 2) { const [a, b] = [...touches.values()]; const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); if (d > 0) { zoomBy(pinch.d / d); pinch.d = d; } }
+  const pair = (e) => (e.targetTouches.length === 2 ? [e.targetTouches[0], e.targetTouches[1]] : null);
+  const gap = ([a, b]) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  el.addEventListener('touchstart', (e) => {
+    const p = pair(e);
+    pinch = p && !st.joyHeld ? { d: gap(p), at: p.map((t) => [t.identifier, t.clientX, t.clientY]), on: false, out: 1 } : null;
   }, { passive: true });
-  const touchEnd = (e) => { for (const t of e.changedTouches) touches.delete(t.identifier); if (touches.size < 2) pinch = null; };
+  el.addEventListener('touchmove', (e) => {
+    const p = pair(e);
+    if (!st.on || !pinch || !p || st.joyHeld) return;
+    if (!pinch.on) {
+      const moved = (t) => { const a = pinch.at.find((q) => q[0] === t.identifier); return a && Math.hypot(t.clientX - a[1], t.clientY - a[2]) > 14; };
+      if (!p.every(moved)) return;
+      pinch.on = true; drag = null; pinch.d = gap(p); // both fingers travelled: it is a pinch from here on
+      return;
+    }
+    const d = gap(p);
+    if (d <= 0) return;
+    const f = pinch.d / d;
+    pinch.d = d;
+    if (st.fp) { pinch.out *= f; if (pinch.out > 1.3) { zoomBy(pinch.out); pinch.out = 1; } }
+    else zoomBy(f);
+  }, { passive: true });
+  const touchEnd = (e) => { if (e.targetTouches.length < 2) pinch = null; };
   el.addEventListener('touchend', touchEnd, { passive: true });
   el.addEventListener('touchcancel', touchEnd, { passive: true });
 
@@ -867,7 +890,8 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     },
     /** camera distance / pitch (e.g. a wider view of the pitch in a match) */
     setView({ dist, pitch }) { if (st.fp) return; if (dist) st.dist = dist; if (pitch) st.pitch = pitch; },
-    setJoy(x, y) { st.joy.x = x; st.joy.y = y; },
+    /** held: a finger is on the joystick (no pinch zoom meanwhile, even with the knob in the middle) */
+    setJoy(x, y, held = x !== 0 || y !== 0) { st.joy.x = x; st.joy.y = y; st.joyHeld = held; },
     jump() { st.jumpReq = true; },
     setMode,
     toggleLock, setFirstPerson, isLocked: locked,

@@ -96,6 +96,8 @@ function search(targets, q) {
 // "Front" of a place = its side towards the bottom of the map (main road / entrances, like the blue circle at Khu A).
 const centerOf = (t) => [(t.box.minX + t.box.maxX) / 2, (t.box.minZ + t.box.maxZ) / 2];
 function doorOf(t) {
+  const f = (t.buildings || []).find((x) => x.front); // set by the 3D scene (Khu F: in front of the hall)
+  if (f) return f.front;
   const b = (t.buildings || []).find((x) => x.entrance_edge != null);
   if (!b) return null;
   const p = b.pts, i = b.entrance_edge, a = p[i], c = p[(i + 1) % p.length];
@@ -126,13 +128,13 @@ function Joystick({ onMove }) {
     const d = Math.hypot(dx, dy);
     if (d > R) { dx *= R / d; dy *= R / d; }
     knob.current.style.transform = `translate(${dx}px, ${dy}px)`;
-    onMove(dx / R, -dy / R);
+    onMove(dx / R, -dy / R, true);
   };
   const end = (e) => {
     if (id.current !== e.pointerId) return;
     id.current = null;
     knob.current.style.transform = '';
-    onMove(0, 0);
+    onMove(0, 0, false);
   };
   return html`<div class="joy" ref=${ref} aria-label="Cần điều khiển"
     onPointerDown=${(e) => { e.preventDefault(); id.current = e.pointerId; try { ref.current.setPointerCapture(e.pointerId); } catch { /* synthetic */ } upd(e); }}
@@ -166,7 +168,7 @@ function minimapImage(data, A, dark) {
     g.beginPath(); trace(data.rail); g.strokeStyle = dark ? '#5a5650' : '#a9a297'; g.lineWidth = 3 * S; g.stroke();
     g.beginPath(); trace(data.rail); g.setLineDash([4 * S, 3 * S]); g.strokeStyle = dark ? '#2a2826' : '#5f5a53'; g.lineWidth = 0.9 * S; g.stroke(); g.setLineDash([]);
   }
-  for (const bd of data.buildings) poly(bd.pts, bd.zone ? (dark ? '#8d97ad' : '#7d8799') : (dark ? '#6b7385' : '#a3aab6'));
+  for (const bd of data.buildings) poly(bd.fullPts || bd.pts, bd.zone ? (dark ? '#8d97ad' : '#7d8799') : (dark ? '#6b7385' : '#a3aab6'));
   return { canvas: c, S, minX, minZ };
 }
 
@@ -568,7 +570,7 @@ export function MapPage() {
       ? html`<b>Đang khóa chuột</b> · di chuột để nhìn · nhấn <b>O</b> hoặc <b>Esc</b> để mở`
       : html`Nhấn <b>O</b> để khóa chuột và nhìn quanh${view.fp ? '' : html` · lăn chuột để zoom`}`}${view.fp ? html` · <b>Góc nhìn thứ nhất</b>` : ''}</div>`}
     ${state === 'ready' && walking && walkHint && mobile && html`<div class="map-hint pop-in walk-hint-m">Kéo cần bên trái để đi (đẩy hết cỡ để chạy) · vuốt màn hình để xoay · 2 ngón để zoom</div>`}
-    ${state === 'ready' && walking && mobile && html`<${Joystick} onMove=${(x, y) => sceneRef.current?.setJoy(x, y)} />
+    ${state === 'ready' && walking && mobile && html`<${Joystick} onMove=${(x, y, held) => sceneRef.current?.setJoy(x, y, held)} />
       <button class=${'joy-eye' + (view.fp ? ' on' : '')} aria-label="Đổi góc nhìn" onClick=${() => sceneRef.current?.setFirstPerson(!view.fp)}><${Icon} name="eye" size=${22} /></button>
       <button class="joy-jump" aria-label=${view.mode === 'walk' ? 'Nhảy' : 'Bóp còi'} onPointerDown=${(e) => { e.preventDefault(); sceneRef.current?.jump(); }}>${view.mode === 'walk' ? html`<span class="joy-jump-arrow"></span>` : html`<${Icon} name="bell" size=${26} />`}</button>`}
     ${state === 'ready' && !walking && !sel && html`<div class="map-walk-btns pop-in">

@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { Builder, offsetPoly, insideP, FLOOR_H } from './campus-details.js';
 import { isKhuH, buildKhuH, khuHOutline } from './khu-h.js';
+import { isKhuF, buildKhuF, khuFSplit, khuFFront } from './khu-f.js';
 
 const FLOOR2 = FLOOR_H; // top of the 2nd-floor slab
 
@@ -30,6 +31,11 @@ const depthOf = (pts, F) => Math.max(...pts.map(([x, z]) => (x - F.a[0]) * F.wx 
 export function prepareInteriors(data) {
   for (const b of data.buildings) {
     if (b.interior === 'canteen') b.hollow = true;
+    if (isKhuF(b) && !b.fullPts) { // the long block stays a normal building; the hall wing and the square: khu-f.js
+      b.fullPts = b.pts; b.pts = khuFSplit(b.pts).spine;
+      b.style = { wall: 'corridor', roof: 'hip', roofColor: 0xc5ccd2 }; // open corridors, light grey metal roof
+      b.khuF = true; b.front = khuFFront(b.fullPts);
+    }
     if (isKhuH(b) && !b.osmPts) { // walk-in from its floor plan; the short wing is rebuilt (see khu-h.js layout())
       b.osmPts = b.pts; b.pts = khuHOutline(b.pts);
       b.interior = 'khuH'; b.hollow = true; b.entrance_edge ??= 3; // main entrance under the glass bay
@@ -284,7 +290,7 @@ function buildCorridor(b, out, B, slabB) {
 
 /** Build all interiors. `buildings` are the scene building infos (with height). */
 export function buildInteriors(buildings) {
-  const out = { group: new THREE.Group(), solids: [], walls: [], surfaces: [], hideWhenInside: [], indoor: [], updaters: [], glow: [], occluders: [], meshFor: new Map(), glassB: new Builder() };
+  const out = { group: new THREE.Group(), solids: [], walls: [], surfaces: [], hideWhenInside: [], indoor: [], updaters: [], glow: [], occluders: [], meshFor: new Map(), glassB: new Builder(), ground: [], clear: [], night: [] };
   for (const b of buildings) {
     if (b.interior === 'canteen') {
       const B = new Builder(), BW = new Builder();
@@ -303,6 +309,13 @@ export function buildInteriors(buildings) {
       out.meshFor.set(b.id, h.meshes[0]);
       out.indoor.push(h.indoor);
       out.updaters.push(h);
+    }
+    if (b.khuF) {
+      const f = buildKhuF(b);
+      out.group.add(f.group);
+      for (const m of f.meshes) { m.userData.building = b; out.occluders.push(m); }
+      out.solids.push(...f.solids); out.surfaces.push(...f.surfaces);
+      out.ground.push(...f.ground); out.clear.push(...f.clear); out.night.push(f.setNight);
     }
     if (b.corridor) {
       const B = new Builder(), slabB = new Builder();
@@ -326,6 +339,6 @@ export function buildInteriors(buildings) {
       for (const r of out.hideWhenInside) r.mesh.visible = !(st && st.on && !st.fp && insideP(r.pts, st.x, st.z)); // first person keeps the roof + ceiling
       for (const h of out.updaters) h.update(st);
     },
-    setNight(on) { for (const m of out.glow) m.emissiveIntensity = on ? 0.9 : (m.userData.dayGlow || 0); },
+    setNight(on) { for (const m of out.glow) m.emissiveIntensity = on ? 0.9 : (m.userData.dayGlow || 0); for (const f of out.night) f(on); },
   };
 }

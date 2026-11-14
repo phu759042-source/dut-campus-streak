@@ -522,7 +522,8 @@ function canvasTexWithLogo(w, h, draw) {
 }
 let emblemShared = null;
 /** The emblem image as a texture (shared). */
-function emblemTex() {
+/** The school logo (img/dut-logo.jpg) as one shared texture; the map redraws once it has loaded. */
+export function emblemTex() {
   if (!emblemShared) {
     emblemShared = new THREE.TextureLoader().load(LOGO_SRC, () => window.dispatchEvent(new Event('cs-redraw')));
     emblemShared.colorSpace = THREE.SRGBColorSpace; emblemShared.anisotropy = 8;

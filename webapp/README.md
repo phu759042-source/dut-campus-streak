@@ -157,6 +157,14 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   không lấy theo OSM (ở đó OSM lệch vào sân, hẹp hơn và tháp góc lồi ra) mà dựng đối xứng với cánh dài như sơ đồ,
   dài tới đầu cánh của OSM; đường viền mới (`khuHOutline`) thay cho đường viền OSM trên cả bản đồ.
   Bộ đi bộ hỗ trợ sàn tầng 2, bậc thang (ramp) và tường/lan can chỉ chặn ở đúng độ cao.
+- Khu F (`js/khu-f.js`), theo ảnh drone 8/2024: dãy nhà dài 4 tầng (mặt tiền hành lang mở, mái tôn xám nhạt) dựng
+  như toà bình thường trên đường viền OSM đã bỏ cánh phía đông (`khuFSplit`); cánh đó là Hội trường F, dựng riêng:
+  sảnh chính cao, mái tôn xanh nhạt hai mái, hai dãy phụ thấp có vây trắng dọc, sảnh trước có mái che và vây hai bên
+  cửa (đi vào tới cửa được), tháp cầu thang cao hơn dãy nhà với mái ngói đỏ, ô kính gạch và **logo khối lập phương**:
+  khối lập phương xoay 45° nhô nửa ra khỏi tường, mặt trên xanh ngọc, hai mặt bên là ô vuông xanh chữ P vàng cắt đúng
+  từ `img/dut-logo.jpg` (không vẽ lại). Trước hội trường là bệ thấp có bậc bo tròn và 3 ô vuông đỏ lồng nhau; sân F
+  (vẽ bằng canvas, nằm trong lớp mặt đất) lát đá ô 3,25 m, 3 hàng ô sáng tâm hồng (mỗi hàng 3 ô) và ô la bàn 16 m
+  (góc hồng, vòng sao 16 cánh vàng/hồng). "Đi tới khu F" đưa tới sân trước bệ (`b.front`).
 - Hồ đài phun nước phía đông Khu F (`js/fountain.js`), dựng theo ảnh thật: hồ OSM gồm hồ tròn và hồ cong phía tây
   nối nhau qua một eo. Quanh mép nước có thành gờ bê tông 0,55 m (đi trên được, ngồi được, mặt nước thấp hơn mép);
   trong hồ tròn có vòng đi bộ 20 cạnh trên cột, nối với bờ đông bằng cầu tàu (3 bậc lên ở bờ, 3 bậc lên vòng);
@@ -172,6 +180,9 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   lựa chọn lưu trong `user_metadata.campus_look` của tài khoản Supabase. Tên trên đầu là `profiles.display_name`.
 - Thấy các bạn khác đi bộ / đi xe theo thời gian thực, chat chung (phím / để gõ, Enter để gửi, bong bóng chữ trên đầu), biểu cảm,
   danh sách người online (bấm vào tên/nhân vật để Đi tới, Vẫy tay, Mời họp).
+- Điện thoại: cần điều khiển nhận cả khi ngón cái chạm lệch ra ngoài vòng ~30 px; chụm 2 ngón chỉ tính các ngón
+  đặt trên khung 3D, không tính khi đang giữ cần điều khiển và chỉ khi cả hai ngón cùng di chuyển; muốn thoát góc nhìn
+  thứ nhất phải chụm vào rõ ràng. Ngón thứ hai chạm vào màn hình không cướp việc xoay camera của ngón đang xoay.
 - **Đèo nhau**: đứng gần một bạn đang đi xe tay ga / xe máy, nhấn **E** (hoặc nút "Ngồi sau xe…") để ngồi lên yên sau;
   nhấn E lần nữa để xuống. Mỗi xe chở thêm một người; người lái có nút "Cho xuống", và khi người lái xuống xe
   thì người ngồi sau cũng xuống. Server chỉ ghi ai ngồi sau xe ai (`ride` / `unride`, trường `r`); mỗi máy tự vẽ
