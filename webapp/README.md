@@ -150,7 +150,7 @@ Camera trên web cần HTTPS (hoặc `localhost`).
 - Khu H đi vào được hết (`js/khu-h.js`), dựng theo sơ đồ phòng chức năng treo trong khu H: khối giữa 4 tầng, hai cánh
   3 tầng, sàn tầng 1 nâng cao 0,75 m (chân tường gạch, bậc lên ở mọi cửa), hành lang phía sân trong có cửa kính + mái
   ngói nhỏ, phòng học đánh số như sơ đồ (101–108, 201–208, 301–308, 401–402, có bảng, bàn giáo viên, dãy bàn ghế),
-  WC / Kho vật tư / Phòng nước GV, cầu thang chữ U ở sảnh chính (bậc tròn, sảnh kính cong tầng 2–4) và ở hai tháp góc
+  WC / Kho vật tư / Phòng nước GV, sảnh chính tầng 1 đi xuyên ra cửa sau (dưới chiếu nghỉ, bậc xuống phía ngoài), cầu thang ở sảnh chính (bậc tròn, sảnh kính cong tầng 2–4) và ở hai tháp góc
   (lam ngang trắng). Khi đứng bên trong, các tầng phía trên tự ẩn để camera nhìn thấy tầng đang đứng. Layout đo theo 16
   góc của đường viền OSM; nếu đường viền đổi thì khu H quay về khối đặc như cũ (`isKhuH`). Riêng cánh ngắn (107/108)
   không lấy theo OSM (ở đó OSM lệch vào sân, hẹp hơn và tháp góc lồi ra) mà dựng đối xứng với cánh dài như sơ đồ,

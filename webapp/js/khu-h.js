@@ -150,6 +150,14 @@ export function buildKhuH(b, out) {
   entry(LW.at(22.4, 0), LW.at(25.1, 0), [-LW.w[0], -LW.w[1]]);
   entry(LW.at(1.2, 0), LW.at(3.6, 0), [-LW.w[0], -LW.w[1]]);           // courtyard doors near the corner towers
   entry(SW.at(1.2, 0), SW.at(3.6, 0), [-SW.w[0], -SW.w[1]]);
+  // back door of the entrance hall (ground floor, as on the plan): through the hall under the stair landing, two
+  // doors either side of the middle flight, a porch with steps down to the outer side
+  {
+    const ua = hall0 + 0.1, ub = hall1 - 0.1, sw = (ub - ua) * 0.28;
+    entry(C.at(hall0 - 0.2, C_D), C.at(hall1 + 0.2, C_D), C.w, 2.2, 6);
+    doors.pop();
+    doors.push([C.at(ua + 0.2, C_D), C.at(ua + sw - 0.2, C_D)], [C.at(ub - sw + 0.2, C_D), C.at(ub - 0.2, C_D)]);
+  }
   // main entrance: curved steps (half discs, the top one level with the floor) under the bay
   {
     const M = lerp(P[3], P[4], 0.5), U = unit(sub(P[4], P[3]));
@@ -399,12 +407,14 @@ export function buildKhuH(b, out) {
   function splitStair(F, ua, ub, b0, R, b2) {
     const half = FH / 2, sw = (ub - ua) * 0.28, s0 = ua + sw, s1 = ub - sw; // side flights [ua, s0] and [s1, ub]
     for (let k = 0; k < 3; k++) {
-      const y = Y(k), B = lv[k].B;
-      flight(k, F, s0 + 0.08, s1 - 0.08, b0, b0 + R, y, y + half, [s0 + 0.12, s1 - 0.12]);
-      B.color(C_STAIR2); boxF(B, F, ua, ub, b0 + R, b2, y + half - 0.2, 0.2);
-      out.surfaces.push({ pts: F.rect(ua, ub, b0 + R, b2), y: y + half });
-      flight(k, F, ua, s0 - 0.08, b0 + R, b0, y + half, y + FH, s0 - 0.12);
-      flight(k, F, s1 + 0.08, ub, b0 + R, b0, y + half, y + FH, s1 + 0.12);
+      // ground floor: the landing sits higher (2.3 m) so you can walk under it and the side flights, through the
+      // hall to the back door
+      const y = Y(k), B = lv[k].B, hA = k === 0 ? 2.3 : half;
+      flight(k, F, s0 + 0.08, s1 - 0.08, b0, b0 + R, y, y + hA, [s0 + 0.12, s1 - 0.12]);
+      B.color(C_STAIR2); boxF(B, F, ua, ub, b0 + R, b2, y + hA - 0.2, 0.2);
+      out.surfaces.push({ pts: F.rect(ua, ub, b0 + R, b2), y: y + hA });
+      flight(k, F, ua, s0 - 0.08, b0 + R, b0, y + hA, y + FH, s0 - 0.12);
+      flight(k, F, s1 + 0.08, ub, b0 + R, b0, y + hA, y + FH, s1 + 0.12);
     }
     for (let k = 0; k <= 3; k++) for (const sp of [s0, s1]) { // low walls between the middle and the side flights
       lv[k].B.color(0xe2ddd3); boxF(lv[k].B, F, sp - 0.08, sp + 0.08, b0, b0 + R, Y(k) - (k ? FH / 2 : 0), k ? FH / 2 + 0.3 : 0.3);
