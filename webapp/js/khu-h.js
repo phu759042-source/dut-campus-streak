@@ -66,14 +66,39 @@ const spans = (L, gaps) => { // [0, L] minus the gaps
 };
 
 /** Can this building be built from the plan? (OSM outline with the 16 corners the layout below is measured on) */
-export const isKhuH = (b) => b.zone === 'H' && b.pts?.length === 16;
+export const isKhuH = (b) => b.zone === 'H' && (b.osmPts || b.pts)?.length === 16;
+
+/**
+ * Bars measured on the OSM outline. OSM corners: 0-1 long wing (courtyard side), 1..6 centre bar (2-5 = entrance
+ * bump), 6-13 short wing + its corner tower, 13-14 centre outer side, 14-15 long wing outer side.
+ * The short wing is NOT taken from OSM: there the outline is offset (the wing sits 2 m towards the courtyard, is
+ * narrower and its tower juts out), unlike the floor plan where both ends of the centre bar are alike. It is built
+ * as the mirror image of the long wing's junction (same angle, width and corner tower), reaching as far as OSM's end.
+ */
+function layout(P) {
+  const LW = mkFrame(P[1], P[0], P[15]), LW_L = len(sub(P[0], P[1])), LW_D = dot(sub(P[15], P[0]), LW.w);
+  const C = mkFrame(P[1], P[6], P[14]), C_L = len(sub(P[6], P[1])), C_D = dot(sub(P[14], P[1]), C.w);
+  const uC = (p) => C.loc(p)[0], wC = (p) => C.loc(p)[1];
+  const mir = (p) => C.at(C_L - uC(p), wC(p));                                // mirror across the middle of the centre bar
+  const vC = (v) => [dot(v, C.u), dot(v, C.w)], cV = (a) => [C.u[0] * a[0] + C.w[0] * a[1], C.u[1] * a[0] + C.w[1] * a[1]];
+  const mv = (v) => { const a = vC(v); return cV([-a[0], a[1]]); };
+  const SW = frame(P[6], mv(LW.u), mv(LW.w)), SW_D = LW_D, SW_L = dot(sub(P[9], P[6]), SW.u);
+  const C0o = C.at(0, C_D), C2o = C.at(C_L, C_D);                            // centre bar ends on its outer side
+  const LWo = LW.at(0, LW_D), SWo0 = SW.at(0, SW_D);                        // wing starts on their outer sides
+  const M14 = mir(P[14]);                                                   // outer corner of the second tower
+  const SWe0 = SW.at(SW_L, 0), SWe1 = SW.at(SW_L, SW_D);
+  const outline = [P[0], P[1], P[2], P[3], P[4], P[5], P[6], SWe0, SWe1, SWo0, M14, P[14], P[15]];
+  return { LW, LW_L, LW_D, C, C_L, C_D, SW, SW_L, SW_D, C0o, C2o, LWo, M14, SWo0, SWe0, SWe1, uC, wC, outline };
+}
+/** The outline the map uses for Khu H (minimap, trees, selection): OSM with the short wing as built here. */
+export const khuHOutline = (pts) => layout(pts).outline;
 
 /**
  * Build Khu H. `out` collects what the walker needs (walls with a height range, solids, surfaces) and the meshes.
  * Returns { group, meshes, update(state) }.
  */
 export function buildKhuH(b, out) {
-  const P = b.pts;
+  const P = b.osmPts || b.pts;
   const group = new THREE.Group();
   const lv = [0, 1, 2, 3, 4].map(() => ({ B: new Builder(), G: new Builder(), group: new THREE.Group() }));
   const wall = (a, c, y0, y1) => out.walls.push({ a, b: c, y0, y1 });
@@ -89,30 +114,18 @@ export function buildKhuH(b, out) {
     for (const [s, e] of spans(a1 - a0, gaps.map(([g0, g1]) => [g0 - a0, g1 - a0]))) seg(k, F.at(a0 + s, bb), F.at(a0 + e, bb), y0, h, color, 0.2, collide);
   };
 
-  // ---------- the three bars, measured on the outline ----------
-  // corners: 0-1 long wing (courtyard side), 1..6 centre bar (2-5 = entrance bump), 6-8 notch, 8-9 short wing,
-  // 9-10 its end, 10-11 its outer side, 11-13 corner tower, 13-14 centre outer side, 14-15 long wing outer side
-  const LW = mkFrame(P[1], P[0], P[15]), LW_L = len(sub(P[0], P[1])), LW_D = dot(sub(P[15], P[0]), LW.w);
-  const C = mkFrame(P[1], P[6], P[14]), C_L = len(sub(P[6], P[1])), C_D = dot(sub(P[14], P[1]), C.w);
-  const SW = mkFrame(P[8], P[9], P[10]), SW_L = len(sub(P[9], P[8])), SW_D = dot(sub(P[10], P[9]), SW.w);
-  const onLine = (p, q, F, a) => { const pa = F.loc(p)[0], qa = F.loc(q)[0]; return lerp(p, q, (a - pa) / (qa - pa)); };
-  const C0o = onLine(P[14], P[13], C, 0), C2o = onLine(P[14], P[13], C, C_L); // centre bar ends on its outer side
-  const LWo = onLine(P[14], P[15], LW, 0);                                    // long wing start on its outer side
-  const hall0 = C.loc(P[2])[0], hall1 = C.loc(P[5])[0];                        // entrance hall between 105 and 106
-  const uC = (p) => C.loc(p)[0], wC = (p) => C.loc(p)[1];
-  // corner towers (outside the bars) and the 4th floor outline (centre + towers)
+  // ---------- the three bars (see layout()) ----------
+  const { LW, LW_L, LW_D, C, C_L, C_D, SW, SW_L, SW_D, C0o, C2o, LWo, M14, SWo0, SWe0, SWe1, uC, wC, outline: Pm } = layout(P);
+  const hall0 = uC(P[2]), hall1 = uC(P[5]);                                   // entrance hall between 105 and 106
+  // corner towers (outside the bars, mirror images of each other) and the 4th floor outline (centre + towers)
   const J1 = [P[1], LWo, P[14], C0o];
-  // Corner 7 of the OSM outline is a small notch: it lies on the short wing's end line, so the wall 7-8 would close
-  // the wing's corridor off from the corner tower. The notch triangle (6, 7, 8) is built in as corridor instead:
-  // Pm is the outline without it, used for the ground floor, the plinth and the outside walls of floors 1-3.
-  const Pm = P.filter((_, i) => i !== 7), T = [P[6], P[7], P[8]];
-  const J2 = [P[6], C2o, P[13], P[12], P[11], P[7]];
-  const F4 = [P[1], LWo, P[14], P[13], P[12], P[11], P[7], P[6], P[5], P[4], P[3], P[2]];
+  const J2 = [P[6], C2o, M14, SWo0];
+  const F4 = [P[1], LWo, P[14], M14, SWo0, P[6], P[5], P[4], P[3], P[2]];
   const JW0 = 6.8, JW1 = C_D - 0.1;                    // corner stairs: from the landing (w = JW0) to the back wall
-  const J1u = [-5.5, 0], J2u = [C_L + 0.25, C_L + 5.85];
+  const J1u = [-5.5, 0], J2u = [C_L, C_L + 5.5];
   const J1floor = clip(J1, (p) => JW0 - wC(p)), J2floor = clip(J2, (p) => JW0 - wC(p));
   const WC1 = clip(clip(J1, (p) => wC(p) - JW0), (p) => J1u[0] - uC(p));
-  const WC2 = clip(clip(J2, (p) => uC(p) - (J2u[1] + 0.2)), (p) => wC(p) - 2.0);
+  const WC2 = clip(clip(J2, (p) => wC(p) - JW0), (p) => uC(p) - J2u[1]);
   const WCs = [WC1, WC2].filter((p) => p.length >= 3);
   // curved glass bay over the main entrance
   const bayOut = [-C.w[0], -C.w[1]];
@@ -159,7 +172,7 @@ export function buildKhuH(b, out) {
   const floorPieces = (k) => {
     if (k === 0) return [Pm];
     const ps = [];
-    if (k <= 2) ps.push(LW.rect(0, LW_L, 0, LW_D), SW.rect(0, SW_L, 0, SW_D), T);
+    if (k <= 2) ps.push(LW.rect(0, LW_L, 0, LW_D), SW.rect(0, SW_L, 0, SW_D));
     ps.push(C.rect(0, hall0, 0, C_D), C.rect(hall0, hall1, -0.3, 4.6), C.rect(hall1, C_L, 0, C_D), bay, J1floor, J2floor);
     return ps;
   };
@@ -183,10 +196,10 @@ export function buildKhuH(b, out) {
   const N3 = [0, 1, 2], N4 = [0, 1, 2, 3];
   const edges = [
     [P[0], P[1], 'corr', N3], [P[1], P[2], 'corr', N4], [P[2], P[3], 'plain', N4], [P[4], P[5], 'plain', N4],
-    [P[5], P[6], 'corr', N4], [P[6], P[8], 'corr', N3], [P[8], P[9], 'corr', N3],
-    [P[9], P[10], 'end', N3], [P[10], P[11], 'room', N3], [P[11], P[12], 'tower', N4], [P[12], P[13], 'tower', N4],
-    [P[13], C2o, 'tower', N4], [C2o, C0o, 'room', N4], [C0o, P[14], 'tower', N4], [P[14], LWo, 'tower', N4],
-    [LWo, P[15], 'room', N3], [P[15], P[0], 'end', N3], [P[1], LWo, 'plain', [3]], [P[11], P[7], 'plain', [3]], [P[7], P[6], 'plain', [3]],
+    [P[5], P[6], 'corr', N4], [P[6], SWe0, 'corr', N3],
+    [SWe0, SWe1, 'end', N3], [SWe1, SWo0, 'room', N3], [SWo0, M14, 'tower', N4],
+    [M14, C2o, 'tower', N4], [C2o, C0o, 'room', N4], [C0o, P[14], 'tower', N4], [P[14], LWo, 'tower', N4],
+    [LWo, P[15], 'room', N3], [P[15], P[0], 'end', N3], [P[1], LWo, 'plain', [3]], [P[6], SWo0, 'plain', [3]],
   ];
   function awning(B, E, s, e, y, depth = 0.75, drop = 0.32) {
     const a = E.at(s, 0), c = E.at(e, 0), d = E.at(e, -depth), f = E.at(s, -depth);
@@ -327,7 +340,8 @@ export function buildKhuH(b, out) {
     for (const [a0, a1, n] of lw) classroom(k, LW, a0, a1, LW_D, NUM(k, n));
     closed(k, LW, 47.5, LW_L - 0.05, LW_D, ['Kho']);
     // short wing: 107 108
-    classroom(k, SW, 0.05, SW_L / 2, SW_D, NUM(k, 7)); classroom(k, SW, SW_L / 2, SW_L - 0.05, SW_D, NUM(k, 8));
+    classroom(k, SW, 0, 11.85, SW_D, NUM(k, 7)); classroom(k, SW, 11.85, 23.7, SW_D, NUM(k, 8));
+    closed(k, SW, 23.7, SW_L - 0.05, SW_D, ['Kho']);
   }
   const RIGHT = ['Phòng nước GV', 'Kho vật tư', 'Kho vật tư', 'Kho vật tư'], LEFT = ['Kho vật tư', 'Kho vật tư', 'Phòng nước GV', 'Phòng nước GV'];
   for (let k = 0; k <= 3; k++) {
@@ -337,7 +351,7 @@ export function buildKhuH(b, out) {
     closed(k, C, C_L - 6.16, C_L - 0.02, C_D, [LEFT[k], 'WC']);
     for (const poly of WCs) { const B = lv[k].B; B.color(C_INNER); B.band(poly, Y(k), Y(k) + FH); }
   }
-  out.solids.push(C.rect(0.02, 6.0, CD, C_D), C.rect(C_L - 6.16, C_L - 0.02, CD, C_D), LW.rect(47.5, LW_L, CD, LW_D), ...WCs);
+  out.solids.push(C.rect(0.02, 6.0, CD, C_D), C.rect(C_L - 6.16, C_L - 0.02, CD, C_D), LW.rect(47.5, LW_L, CD, LW_D), SW.rect(23.7, SW_L, CD, SW_D), ...WCs);
 
   // ---------- stairs: dog-leg, flight A up along +b, landing, flight B back to the next floor ----------
   function flight(k, F, a0, a1, bS, bE, yS, yE, rail) {
@@ -425,7 +439,6 @@ export function buildKhuH(b, out) {
   roof(lv[3].B, LW.rect(0, LW_L, 0, LW_D), Y(3), C_ROOF_W, [LW_D / 2 - 0.05, 5, 4]);
   roof(lv[3].B, SW.rect(0, SW_L, 0, SW_D), Y(3), C_ROOF_W, [SW_D / 2 - 0.05, 5, 4]);
   roof(lv[4].B, F4, Y(4), C_TILE, [3.2, 2.6, 2.0, 1.5, 1.0, 0.6]);
-  lv[3].B.color(C_TILE); lv[3].B.cap(T, Y(3) + 0.02); lv[3].B.color(C_CEIL); lv[3].B.cap(T, Y(3) - 0.2);
 
   // ---------- meshes ----------
   const meshes = [];

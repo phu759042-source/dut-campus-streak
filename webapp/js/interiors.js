@@ -7,7 +7,7 @@
 // walkable surfaces (2nd-floor slab, stairs) and meshes that fade/hide when they block the view.
 import * as THREE from 'three';
 import { Builder, offsetPoly, insideP, FLOOR_H } from './campus-details.js';
-import { isKhuH, buildKhuH } from './khu-h.js';
+import { isKhuH, buildKhuH, khuHOutline } from './khu-h.js';
 
 const FLOOR2 = FLOOR_H; // top of the 2nd-floor slab
 
@@ -30,7 +30,10 @@ const depthOf = (pts, F) => Math.max(...pts.map(([x, z]) => (x - F.a[0]) * F.wx 
 export function prepareInteriors(data) {
   for (const b of data.buildings) {
     if (b.interior === 'canteen') b.hollow = true;
-    if (isKhuH(b)) { b.interior = 'khuH'; b.hollow = true; b.entrance_edge ??= 3; } // main entrance under the glass bay
+    if (isKhuH(b) && !b.osmPts) { // walk-in from its floor plan; the short wing is rebuilt (see khu-h.js layout())
+      b.osmPts = b.pts; b.pts = khuHOutline(b.pts);
+      b.interior = 'khuH'; b.hollow = true; b.entrance_edge ??= 3; // main entrance under the glass bay
+    }
     if (b.corridor && !b.roofPts) {
       const F = frame(b.pts, b.corridor.edge);
       const d = b.corridor.depth;

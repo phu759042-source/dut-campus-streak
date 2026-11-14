@@ -152,7 +152,9 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   ngói nhỏ, phòng học đánh số như sơ đồ (101–108, 201–208, 301–308, 401–402, có bảng, bàn giáo viên, dãy bàn ghế),
   WC / Kho vật tư / Phòng nước GV, cầu thang chữ U ở sảnh chính (bậc tròn, sảnh kính cong tầng 2–4) và ở hai tháp góc
   (lam ngang trắng). Khi đứng bên trong, các tầng phía trên tự ẩn để camera nhìn thấy tầng đang đứng. Layout đo theo 16
-  góc của đường viền OSM; nếu đường viền đổi thì khu H quay về khối đặc như cũ (`isKhuH`).
+  góc của đường viền OSM; nếu đường viền đổi thì khu H quay về khối đặc như cũ (`isKhuH`). Riêng cánh ngắn (107/108)
+  không lấy theo OSM (ở đó OSM lệch vào sân, hẹp hơn và tháp góc lồi ra) mà dựng đối xứng với cánh dài như sơ đồ,
+  dài tới đầu cánh của OSM; đường viền mới (`khuHOutline`) thay cho đường viền OSM trên cả bản đồ.
   Bộ đi bộ hỗ trợ sàn tầng 2, bậc thang (ramp) và tường/lan can chỉ chặn ở đúng độ cao.
 
 ### Chế độ server (nhiều người chơi)
