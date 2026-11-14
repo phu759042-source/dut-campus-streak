@@ -102,8 +102,12 @@ export function buildKhuH(b, out) {
   const uC = (p) => C.loc(p)[0], wC = (p) => C.loc(p)[1];
   // corner towers (outside the bars) and the 4th floor outline (centre + towers)
   const J1 = [P[1], LWo, P[14], C0o];
-  const J2 = [P[6], C2o, P[13], P[12], P[11], P[8], P[7]];
-  const F4 = [P[1], LWo, P[14], P[13], P[12], P[11], P[8], P[7], P[6], P[5], P[4], P[3], P[2]];
+  // Corner 7 of the OSM outline is a small notch: it lies on the short wing's end line, so the wall 7-8 would close
+  // the wing's corridor off from the corner tower. The notch triangle (6, 7, 8) is built in as corridor instead:
+  // Pm is the outline without it, used for the ground floor, the plinth and the outside walls of floors 1-3.
+  const Pm = P.filter((_, i) => i !== 7), T = [P[6], P[7], P[8]];
+  const J2 = [P[6], C2o, P[13], P[12], P[11], P[7]];
+  const F4 = [P[1], LWo, P[14], P[13], P[12], P[11], P[7], P[6], P[5], P[4], P[3], P[2]];
   const JW0 = 6.8, JW1 = C_D - 0.1;                    // corner stairs: from the landing (w = JW0) to the back wall
   const J1u = [-5.5, 0], J2u = [C_L + 0.25, C_L + 5.85];
   const J1floor = clip(J1, (p) => JW0 - wC(p)), J2floor = clip(J2, (p) => JW0 - wC(p));
@@ -153,13 +157,13 @@ export function buildKhuH(b, out) {
 
   // ---------- floor slabs (holes over the stairs) ----------
   const floorPieces = (k) => {
-    if (k === 0) return [P];
+    if (k === 0) return [Pm];
     const ps = [];
-    if (k <= 2) ps.push(LW.rect(0, LW_L, 0, LW_D), SW.rect(0, SW_L, 0, SW_D));
+    if (k <= 2) ps.push(LW.rect(0, LW_L, 0, LW_D), SW.rect(0, SW_L, 0, SW_D), T);
     ps.push(C.rect(0, hall0, 0, C_D), C.rect(hall0, hall1, -0.3, 4.6), C.rect(hall1, C_L, 0, C_D), bay, J1floor, J2floor);
     return ps;
   };
-  lv[0].B.color(C_BRICK); lv[0].B.band(P, 0, PL); // brick plinth of the raised ground floor
+  lv[0].B.color(C_BRICK); lv[0].B.band(Pm, 0, PL); // brick plinth of the raised ground floor
   for (let k = 0; k <= 3; k++) {
     const B = lv[k].B;
     for (const pts of floorPieces(k)) {
@@ -179,10 +183,10 @@ export function buildKhuH(b, out) {
   const N3 = [0, 1, 2], N4 = [0, 1, 2, 3];
   const edges = [
     [P[0], P[1], 'corr', N3], [P[1], P[2], 'corr', N4], [P[2], P[3], 'plain', N4], [P[4], P[5], 'plain', N4],
-    [P[5], P[6], 'corr', N4], [P[6], P[7], 'plain', N4], [P[7], P[8], 'plain', N4], [P[8], P[9], 'corr', N3],
+    [P[5], P[6], 'corr', N4], [P[6], P[8], 'corr', N3], [P[8], P[9], 'corr', N3],
     [P[9], P[10], 'end', N3], [P[10], P[11], 'room', N3], [P[11], P[12], 'tower', N4], [P[12], P[13], 'tower', N4],
     [P[13], C2o, 'tower', N4], [C2o, C0o, 'room', N4], [C0o, P[14], 'tower', N4], [P[14], LWo, 'tower', N4],
-    [LWo, P[15], 'room', N3], [P[15], P[0], 'end', N3], [P[1], LWo, 'plain', [3]], [P[11], P[8], 'plain', [3]],
+    [LWo, P[15], 'room', N3], [P[15], P[0], 'end', N3], [P[1], LWo, 'plain', [3]], [P[11], P[7], 'plain', [3]], [P[7], P[6], 'plain', [3]],
   ];
   function awning(B, E, s, e, y, depth = 0.75, drop = 0.32) {
     const a = E.at(s, 0), c = E.at(e, 0), d = E.at(e, -depth), f = E.at(s, -depth);
@@ -190,7 +194,7 @@ export function buildKhuH(b, out) {
     B.color(C_TILE_D); boxF(B, E, s, e, -depth - 0.03, -depth + 0.03, y - drop - 0.08, 0.1);
   }
   for (const [a, c, style, floors] of edges) {
-    const poly = floors.length === 1 ? F4 : P;
+    const poly = floors.length === 1 ? F4 : Pm;
     const u = unit(sub(c, a)), m = lerp(a, c, 0.5);
     let w = [-u[1], u[0]];
     if (!insideP(poly, m[0] + w[0] * 0.4, m[1] + w[1] * 0.4)) w = [-w[0], -w[1]];
@@ -209,13 +213,11 @@ export function buildKhuH(b, out) {
       for (const [s, e] of spans(L, gaps)) {
         wall(E.at(s, 0.12), E.at(e, 0.12), ground ? 0 : y0, y0 + FH);
         const W = e - s;
-        if (style === 'corr') { // ribbon windows of the corridor
+        if (style === 'corr') { // open corridor: parapet, wide openings between white piers (no glass), rail on top
           B.color(C_WALL); boxF(B, E, s, e, 0, 0.24, y0, 1.0); boxF(B, E, s, e, 0, 0.24, y0 + 2.65, FH - 2.65);
-          const n = Math.max(1, Math.round(W / 1.5));
-          B.color(C_FRAME);
-          for (let i = 0; i <= n; i++) { const x = s + (W * i) / n; boxF(B, E, x - 0.04, x + 0.04, 0.06, 0.18, y0 + 1.0, 1.65); }
-          boxF(B, E, s, e, 0.06, 0.18, y0 + 1.0, 0.05); boxF(B, E, s, e, 0.06, 0.18, y0 + 2.6, 0.05);
-          G.color(0xbfdcef); boxF(G, E, s, e, 0.11, 0.13, y0 + 1.0, 1.65);
+          const n = Math.max(1, Math.round(W / 3.2));
+          for (let i = 0; i <= n; i++) { const x = s + (W * i) / n; boxF(B, E, Math.max(s, x - 0.18), Math.min(e, x + 0.18), 0, 0.26, y0 + 1.0, 1.65); }
+          B.color(C_RAIL); boxF(B, E, s, e, 0.08, 0.16, y0 + 1.0, 0.06);
           if (k > 0) awning(B, E, s, e, y0 + 0.25);
         } else if (style === 'room') { // classroom windows with small tile awnings
           const n = Math.max(1, Math.round(W / 3.6)), bay = W / n, ww = Math.min(2.2, bay - 0.9);
@@ -230,7 +232,6 @@ export function buildKhuH(b, out) {
         } else if (style === 'tower') { // stair tower: white horizontal louvers in a frame
           B.color(C_WALL); boxF(B, E, s, Math.min(e, s + 0.5), 0, 0.24, y0, FH); boxF(B, E, Math.max(s, e - 0.5), e, 0, 0.24, y0, FH);
           if (W > 1.3) {
-            G.color(0x9fb4c4); boxF(G, E, s + 0.5, e - 0.5, 0.12, 0.14, y0, FH);
             B.color(0xffffff);
             for (let y = y0 + 0.15; y < y0 + FH; y += 0.3) boxF(B, E, s + 0.5, e - 0.5, -0.2, 0.0, y, 0.06);
             for (const t of [1 / 3, 2 / 3]) { const x = s + 0.5 + (W - 1) * t; boxF(B, E, x - 0.04, x + 0.04, -0.22, 0.02, y0, FH); }
@@ -241,7 +242,6 @@ export function buildKhuH(b, out) {
             const c0 = s + W / 2 - 0.7, c1 = c0 + 1.4;
             boxF(B, E, s, c0, 0, 0.24, y0, FH); boxF(B, E, c1, e, 0, 0.24, y0, FH);
             boxF(B, E, c0, c1, 0, 0.24, y0, 1.0); boxF(B, E, c0, c1, 0, 0.24, y0 + 2.4, FH - 2.4);
-            G.color(0xbfdcef); boxF(G, E, c0, c1, 0.11, 0.13, y0 + 1.0, 1.4);
           } else boxF(B, E, s, e, 0, 0.24, y0, FH);
         }
       }
@@ -281,7 +281,18 @@ export function buildKhuH(b, out) {
     const B = lv[k].B, y0 = Y(k), mid = (CD + D) / 2;
     B.color(C_ROOMFL); B.cap(F.rect(a0 + 0.1, a1 - 0.1, CD + 0.1, D - 0.12), y0 + 0.012);
     const g1 = [a0 + 0.7, a0 + 1.7], g2 = [a1 - 1.7, a1 - 0.7];
-    run(k, F, a0, a1, CD, [g1, g2], y0, FH, C_INNER);
+    // wall to the corridor with windows between the doors: you can look into the class from the corridor
+    for (const [s0, s1] of spans(a1 - a0, [[g1[0] - a0, g1[1] - a0], [g2[0] - a0, g2[1] - a0]])) {
+      const u0 = a0 + s0, u1 = a0 + s1;
+      wall(F.at(u0, CD), F.at(u1, CD), y0, y0 + FH);
+      B.color(C_INNER); boxF(B, F, u0, u1, CD - 0.1, CD + 0.1, y0, 1.0); boxF(B, F, u0, u1, CD - 0.1, CD + 0.1, y0 + 2.2, FH - 2.2);
+      if (u1 - u0 < 1.2) { boxF(B, F, u0, u1, CD - 0.1, CD + 0.1, y0 + 1.0, 1.2); continue; }
+      const n = Math.max(1, Math.round((u1 - u0 - 0.6) / 1.4));
+      B.color(C_FRAME);
+      for (let i = 0; i <= n; i++) { const x = u0 + 0.3 + ((u1 - u0 - 0.6) * i) / n; boxF(B, F, x - 0.03, x + 0.03, CD - 0.06, CD + 0.06, y0 + 1.0, 1.2); }
+      B.color(C_INNER); boxF(B, F, u0, u0 + 0.3, CD - 0.1, CD + 0.1, y0 + 1.0, 1.2); boxF(B, F, u1 - 0.3, u1, CD - 0.1, CD + 0.1, y0 + 1.0, 1.2);
+      lv[k].G.color(0xbfdcef); boxF(lv[k].G, F, u0 + 0.3, u1 - 0.3, CD - 0.01, CD + 0.01, y0 + 1.0, 1.2);
+    }
     for (const g of [g1, g2]) { B.color(C_INNER); boxF(B, F, g[0], g[1], CD - 0.1, CD + 0.1, y0 + 2.2, FH - 2.2); doorLeaf(k, F, g[0], true); }
     seg(k, F.at(a0, CD), F.at(a0, D), y0, FH, C_INNER); seg(k, F.at(a1, CD), F.at(a1, D), y0, FH, C_INNER);
     // board on the end wall, teacher's desk in front of it
@@ -414,6 +425,7 @@ export function buildKhuH(b, out) {
   roof(lv[3].B, LW.rect(0, LW_L, 0, LW_D), Y(3), C_ROOF_W, [LW_D / 2 - 0.05, 5, 4]);
   roof(lv[3].B, SW.rect(0, SW_L, 0, SW_D), Y(3), C_ROOF_W, [SW_D / 2 - 0.05, 5, 4]);
   roof(lv[4].B, F4, Y(4), C_TILE, [3.2, 2.6, 2.0, 1.5, 1.0, 0.6]);
+  lv[3].B.color(C_TILE); lv[3].B.cap(T, Y(3) + 0.02); lv[3].B.color(C_CEIL); lv[3].B.cap(T, Y(3) - 0.2);
 
   // ---------- meshes ----------
   const meshes = [];
@@ -430,10 +442,10 @@ export function buildKhuH(b, out) {
   });
   let shown = -1;
   return {
-    group, meshes, indoor: P,
+    group, meshes, indoor: Pm,
     /** While inside (third person), hide the floors above the one you stand on and the roofs over them. */
     update(st) {
-      const inside = st && st.on && !st.fp && insideP(P, st.x, st.z);
+      const inside = st && st.on && !st.fp && insideP(Pm, st.x, st.z);
       const lev = inside ? THREE.MathUtils.clamp(Math.floor((st.y - PL + 0.8) / FH), 0, 3) : 9;
       if (lev === shown) return;
       shown = lev;
