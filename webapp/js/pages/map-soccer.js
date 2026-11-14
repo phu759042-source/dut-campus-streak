@@ -83,14 +83,14 @@ export function SoccerHud({ v, soccer, mobile, onOpen }) {
       <div class=${'soc-meter stamina' + (v.tired ? ' tired' : '')}><span style=${`width:${Math.round(v.stamina * 100)}%`}></span><b>${v.tired ? 'Mệt, chờ hồi sức' : 'Thể lực'}</b></div>
     </div>`}
     ${inTeam && !mobile && html`<div class="soc-keys">
-      <span><b>Chuột phải</b> giữ rồi thả: sút · <b>Chuột trái</b> bấm: chuyền thấp, giữ: chuyền cao · <b>E</b> xoạc (trúng giữa vòng tròn mới cướp được) · <b>Q</b> lừa bóng · <b>Shift</b> chạy nhanh</span>
+      <span><b>Chuột phải</b> giữ rồi thả: sút · <b>Chuột trái</b> bấm nhanh: đẩy bóng lên để chạy theo, giữ: chuyền cao · <b>E</b> xoạc (trúng giữa vòng tròn mới cướp được) · <b>Q</b> lừa bóng · <b>Shift</b> chạy nhanh</span>
       <span><b>Space</b> nhảy, trên không: <b>chuột phải</b> vô lê, <b>chuột trái</b> đánh đầu (chờ bóng 2 giây) · giữ chuột rồi bấm <b>Space</b>: xe đạp chổng ngược</span>
     </div>`}
     ${inTeam && mobile && html`<div class="soc-pad">
       <button class="soc-btn tackle" aria-label="Xoạc bóng" onPointerDown=${(e) => { e.preventDefault(); soccer.tackle(); }}>Xoạc</button>
       <button class="soc-btn dribble" aria-label="Lừa bóng" onPointerDown=${(e) => { e.preventDefault(); soccer.dribble(); }}>Lừa</button>
       <button class="soc-btn jump" aria-label="Nhảy (giữ Sút hoặc Chuyền rồi bấm: xe đạp chổng ngược)" onPointerDown=${(e) => { e.preventDefault(); soccer.jump(); }}>Nhảy</button>
-      ${[['pass', 'Chuyền', 'Chuyền (chạm: thấp, giữ: cao; trên không: đánh đầu)'], ['shoot', 'Sút', 'Sút (giữ lâu sút mạnh; trên không: vô lê)']].map(([k, label, aria]) => html`
+      ${[['pass', 'Chuyền', 'Chuyền (chạm: đẩy bóng, giữ: chuyền cao; trên không: đánh đầu)'], ['shoot', 'Sút', 'Sút (giữ lâu sút mạnh; trên không: vô lê)']].map(([k, label, aria]) => html`
         <button class=${'soc-btn ' + k} aria-label=${aria}
           onPointerDown=${(e) => { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* old browser */ } soccer.press(k); }}
           onPointerUp=${() => soccer.release(k)} onPointerCancel=${() => soccer.release(k)}>${label}</button>`)}
@@ -138,12 +138,12 @@ export function SoccerPanel({ v, soccer, me, nameOf, mobile, onClose }) {
     ${v.goals.length > 0 && html`<div class="soc-goals">${v.goals.map((g) => html`<div class="small"><span class="soc-dot" style=${`--c:${TEAM_CSS[g.team]}`}></span> ${g.name}${g.own ? ' (phản lưới)' : ''} · phút ${Math.floor(g.ms / 60000) + 1}</div>`)}</div>`}
     <div class="soc-help small">
       <b>Cách chơi.</b> Chạy vào bóng để dắt bóng. ${mobile
-        ? html`Nút <b>Sút</b> (giữ lâu sút càng mạnh), <b>Chuyền</b> (chạm: chuyền thấp, giữ: chuyền cao), <b>Xoạc</b> cướp bóng (trượt xuyên qua giữa vòng tròn dưới chân người giữ bóng mới cướp được, người đó bị ngã 3 giây), <b>Lừa</b> lừa bóng.
-          Khi giữ bóng, đường chấm trắng là đường chuyền thấp, giữ Chuyền thì hiện đường chấm vàng của chuyền cao và chỗ bóng rơi.
+        ? html`Nút <b>Sút</b> (giữ lâu sút càng mạnh), <b>Chuyền</b> (chạm: đẩy bóng lên trước, giữ: chuyền cao), <b>Xoạc</b> cướp bóng (trượt xuyên qua giữa vòng tròn dưới chân người giữ bóng mới cướp được, người đó bị ngã 3 giây), <b>Lừa</b> lừa bóng.
+          Khi giữ bóng, đường chấm trắng là chỗ bóng tới khi bấm nhanh (đẩy bóng), giữ Chuyền thì hiện đường chấm vàng của chuyền cao và chỗ bóng rơi.
           Bấm <b>Nhảy</b> rồi bấm <b>Sút</b> để vô lê, bấm <b>Chuyền</b> để đánh đầu (bấm trên không là chờ bóng 2 giây, kể cả khi đã chạm đất); giữ Sút hoặc Chuyền rồi bấm Nhảy: xe đạp chổng ngược. Đẩy cần điều khiển hết cỡ để chạy nhanh.`
-        : html`<b>Chuột phải</b> giữ để lấy lực rồi thả để sút (bóng bay theo hướng camera), <b>chuột trái</b> bấm để chuyền thấp, giữ để chuyền cao,
+        : html`<b>Chuột phải</b> giữ để lấy lực rồi thả để sút (bóng bay theo hướng camera), <b>chuột trái</b> bấm nhanh để đẩy bóng lên trước rồi chạy theo, giữ để chuyền cao (giữ nút trước khi bóng tới thì chạm bóng là sút / chuyền luôn với lực đã tích),
           <b>E</b> xoạc cướp bóng (trượt xuyên qua giữa vòng tròn dưới chân người giữ bóng mới cướp được, người đó bị ngã 3 giây), <b>Q</b> lừa bóng (lướt nhanh, người khác xoạc hụt), <b>Shift</b> chạy nhanh (tốn thể lực).
-          Khi giữ bóng, đường chấm trắng là đường chuyền thấp; giữ chuột trái thì hiện đường chấm vàng của chuyền cao và chỗ bóng rơi (giữ càng lâu càng xa, hết lực thì rơi khoảng nửa sân).
+          Khi giữ bóng, đường chấm trắng là chỗ bóng tới khi bấm nhanh (đẩy bóng); giữ chuột trái thì hiện đường chấm vàng của chuyền cao và chỗ bóng rơi (giữ càng lâu càng xa, hết lực thì rơi khoảng nửa sân).
           <b>Space</b> để nhảy; trên không bấm <b>chuột phải</b> để vô lê, <b>chuột trái</b> để đánh đầu (sẵn sàng 2 giây, kể cả khi đã chạm đất). Giữ chuột rồi bấm <b>Space</b>: xe đạp chổng ngược.`}${' '}
       Mỗi trận 5 phút, mỗi đội tối đa ${TEAM_SIZE} người, thủ môn do máy bắt. Người không đá có thể lên khán đài hai bên sân ngồi xem.
     </div>

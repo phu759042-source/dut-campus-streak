@@ -194,7 +194,11 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   Xoạc (trượt ~4,8 m) chỉ cướp được bóng khi chân đi qua giữa vòng tròn (`fxh`, server kiểm tra lại); xoạc trúng bóng
   tự do thì lấy luôn bóng. Người bị xoạc ngã sấp nằm 2 giây rồi chống tay, quỳ, đứng dậy (~2,9 giây không chạm bóng).
   Xoạc và lừa bóng hồi 2 giây; bấm khi chưa hồi xong có tiếng báo.
-- Vô lê / đánh đầu bấm lúc đang trên không thì chờ bóng 2 giây, kể cả sau khi đã chạm đất.
+- Vô lê / đánh đầu bấm lúc đang trên không thì chờ bóng 2 giây, kể cả sau khi đã chạm đất: trong 2 giây đó chạm bóng
+  (bóng bay, lăn hay đứng yên) là đánh.
+- Chuột trái bấm nhanh (nút Chuyền chạm nhanh): đẩy bóng lên trước vừa đủ để chạy theo bắt lại (đứng yên ~4 m, đang chạy
+  bóng đi trước vài mét); giữ là chuyền cao. Không còn tự chuyền thấp cho đồng đội.
+- Giữ nút sút / chuyền trước khi có bóng: trong 2 giây, vừa chạm bóng là sút / chuyền luôn với lực đã tích tới lúc đó.
 - Cầu thủ trên sân có dáng chạy riêng (sải bước dài, người đổ về trước, tay đánh mạnh), không còn là đi bộ nhanh.
 - Khán đài 7 bậc hai bên sân (đi lên được, nhấn **E** hoặc nút 🪑 để ngồi xuống ghế). Khi một trận bắt đầu, người
   đang ở chỗ khác trong trường thấy thông báo **Đến xem** (đưa lên ghế khán đài) hoặc **Vào đá**.
