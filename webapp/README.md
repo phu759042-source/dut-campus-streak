@@ -127,7 +127,7 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   Phím 1/2/3 (hoặc nút bên phải): đi bộ, xe tay ga, xe máy — W/S ga/phanh, A/D lái, Space bóp còi. H ẩn/hiện nhãn.
 - Chi tiết công trình (`js/campus-details.js`): mặt tường theo khu (trắng có hành lang, kem, gạch nâu khu F, kính Nhà S,
   Trung tâm Học liệu mái xanh), mái dốc ngói đỏ cho H/F/N/P/X/E1, tường chắn mái + cụm máy trên mái, chân tường,
-  sảnh mái che, tường rào (`walls` trong campus.json, có va chạm), cổng có biển tên, mái che bãi xe, đèn đường, hàng cây ven đường.
+  sảnh mái che, tường rào (`walls` trong campus.json, có va chạm; hai biển quảng cáo / ủng hộ gắn cạnh nhau trên tường rào bên phải lối vào cổng chính), cổng có biển tên, mái che bãi xe, đèn đường, hàng cây ven đường.
 - Mặt đất: mọi lớp phẳng (nền trường, cỏ, sân, đường, lối đi, sân bóng, đường chạy) nằm ở đúng cao độ `y = 0`, nơi
   nhân vật và bánh xe đứng. Các lớp không tranh độ sâu với nhau vì được vẽ trước, theo thứ tự (`renderOrder`), và
   không ghi depth (`depthWrite: false`); mọi vật khác nằm trên mặt đất nên vẽ đè lên. Mô hình sinh viên có đế giày
@@ -237,3 +237,20 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   và chạy bóng + thủ môn bằng `js/soccer-core.js`. Trình duyệt chạy đúng file đó để đoán trước đường bóng giữa các lần
   server gửi (`js/soccer.js`), nên bóng chạy mượt. Giao diện: `js/pages/map-soccer.js`; khán đài: `js/stadium.js`.
 - Thử ở máy: chạy `world-server` như trên rồi mở 2 tab `/map?dev=A`, `/map?dev=B`, mỗi tab vào một đội.
+
+### Sự kiện “Đồ thất lạc” (trong chế độ server)
+
+- 18 món đồ (7 món có thật từ các bài confession: iPhone 11 đỏ nứt lưng, thẻ gửi xe 4536 và 3908, bìa kẹp A4, lược gấu
+  trúc, túi bút Merry Christmas, chùm chìa khoá móc len; và mũ bảo hiểm, thẻ sinh viên, ví, tai nghe, Casio, sạc laptop,
+  kính, bình nước, ô, áo mưa, giáo trình) nằm trên yên xe / sàn **nhà xe khu E**, **nhà xe khu B** và bàn học các phòng
+  **khu H** (cả tầng trên), mỗi món có dấu ✨ lấp lánh. Lại gần (≤ 1,8 m) bấm **E** hoặc nút 📸 để nhặt.
+- Ai tới trước thì được: ảnh chụp cận món đồ (render riêng), bài đăng “Campus Confession” tìm chủ (thường kèm câu
+  “Nam 1 lốc Sting, nữ 1 hôn lốc xoáy kiểu Pháp”), bình luận, và **điểm công đức** (4 đến 30 tùy món). Món đó lại bị
+  “làm rơi” ở chỗ ngẫu nhiên khác sau 45 đến 100 giây; cả server thấy dòng thông báo trong chat.
+- Chip 🙏 trên thanh server mở bảng sự kiện: món nào đang ở khu nào, nút **Tới đó**, và **bảng công đức**. Trang
+  `/leaderboard` có thêm tab **🙏 Công đức** (lấy từ `GET /merit` của world server, ghép ảnh đại diện / lớp từ Supabase).
+- Server là trọng tài: `world-server/src/lost.js` giữ món nào nằm ở đâu (bộ nhớ của Durable Object), kiểm tra người nhặt
+  có đứng gần không (≤ 3 m, cùng tầng), mỗi người 2,5 giây một lần, và cộng điểm vào bảng `merit` (SQLite của Durable
+  Object, theo id tài khoản). Dữ liệu dùng chung: `js/lost-core.js` (danh sách món, 195 vị trí tạo một lần từ bản đồ bằng
+  `__map._lostRaw()`). Vẽ và chụp ảnh: `js/lost.js`; giao diện: `js/pages/map-lost.js`.
+- Thử ở máy như bóng đá; nếu cổng 8787 đang bận thì chạy `wrangler dev --port 8788` và mở `/map?dev=A&wsport=8788`.

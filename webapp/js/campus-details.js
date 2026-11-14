@@ -766,7 +766,7 @@ function tinTexture() {
 }
 
 /** Parked motorbikes in rows, filling a parking polygon (keeps the lots from looking empty). */
-function parkBikes(B, pts, rand, fill, posts) {
+function parkBikes(B, pts, rand, fill, posts, bikes, place) {
   let best = 0, ang = 0;
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i], q = pts[(i + 1) % pts.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]);
@@ -787,6 +787,7 @@ function parkBikes(B, pts, rand, fill, posts) {
       if (!insideP(inner, x, z)) continue;
       const jitter = (rand() - 0.5) * 0.25;
       posts.push([x, z, 0.38]);
+      bikes.push({ x, z, ang: ang + jitter, vx, vz, place }); // (where lost things can be left: js/lost-core.js)
       B.color(0x1b1b1b); B.box(x, z, 0.12, 1.75, 0, 0.55, ang + jitter);                     // wheels
       B.color(COLORS[Math.floor(rand() * COLORS.length)]); B.box(x, z, 0.42, 1.25, 0.32, 0.45, ang + jitter); // body
       B.color(0x2b2b2b); B.box(x - vx * 0.15, z - vz * 0.15, 0.32, 0.6, 0.77, 0.1, ang + jitter);        // seat
@@ -806,10 +807,11 @@ export function buildCanopies(areas, boundary) {
   const rand = rng(4242);
   const posts = []; // [x, z, radius] for the walker: parked bikes and roof posts
   const roofs = []; // tin roofs: fade when they stand between the camera and the student
+  const bikes = []; // every parked bike: { x, z, ang, vx, vz (across the row), place }
   for (const a of areas.filter((x) => x.kind === 'parking')) {
     if (!a.pts.some(([x, z]) => insideP(boundary, x, z))) continue; // (centroid of an L-shaped lot can fall outside)
     const covered = a.cover !== 'open';
-    parkBikes(B, a.pts, rand, covered ? 0.72 : 0.6, posts);
+    parkBikes(B, a.pts, rand, covered ? 0.72 : 0.6, posts, bikes, a.name || null);
     if (!covered) continue;
     const roof = offsetPoly(a.pts, -0.6) || a.pts; // irregular lots: roof follows the lot outline
     const H = 3.3;
@@ -835,7 +837,7 @@ export function buildCanopies(areas, boundary) {
     }
   }
   if (B.tris) group.add(B.mesh());
-  return { group: group.children.length ? group : null, posts, roofs };
+  return { group: group.children.length ? group : null, posts, roofs, bikes };
 }
 
 /** Street lamps along paths and service roads inside the campus. Returns an object with setNight(). */

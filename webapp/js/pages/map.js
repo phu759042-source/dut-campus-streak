@@ -302,6 +302,7 @@ export function MapPage() {
   const [server, setServer] = useState(false);
   const serverRef = useRef(false);
   serverRef.current = server;
+  const startServerRef = useRef(null);
   // F1 (like Minecraft): hide every button and panel to watch the scene (a match, the campus) full screen
   const [hudOff, setHudOff] = useState(false);
   useEffect(() => {
@@ -402,7 +403,10 @@ export function MapPage() {
         scene.requestRender();
         setState('ready');
         // links from outside the page while the map is open (the "what's new" note): go to a place by its key
-        onGoto = (e) => { const t = ts.find((x) => x.key === e.detail); if (t) select(t); };
+        onGoto = (e) => {
+          if (e.detail === 'server') { if (!serverRef.current) startServerRef.current?.(); return; } // the event note: into the server
+          const t = ts.find((x) => x.key === e.detail); if (t) select(t);
+        };
         window.addEventListener('cs-goto', onGoto);
         // deep link: /map?k=F or /map?room=F305
         const sp = new URLSearchParams(location.search);
@@ -464,6 +468,7 @@ export function MapPage() {
     setTimeout(() => setWalkHint(false), 9000);
     history.replaceState(history.state, '', location.pathname);
   }
+  startServerRef.current = startServer;
   async function startServer() {
     if (!appStore.get().session && !devName()) {
       try { sessionStorage.setItem('cs-after-login', '/map?server=1'); } catch { /* storage off */ }
@@ -577,7 +582,7 @@ export function MapPage() {
       <button class="map-walk-btn" onClick=${() => startWalk(null)}>
         <span class="map-walk-ico">🚶</span><span class="grow"><b>Đi dạo một mình</b><span class="small">Nhập vai sinh viên, xuất phát từ cổng chính</span></span></button>
       <button class="map-walk-btn server" onClick=${startServer}>
-        <span class="map-walk-ico">🌐</span><span class="grow"><b>Vào server</b><span class="small">${loggedIn ? 'Gặp, chat và họp voice với các bạn khác' : 'Cần đăng nhập · gặp và chat với các bạn khác'}</span></span></button>
+        <span class="map-walk-ico">🌐</span><span class="grow"><b>Vào server</b><span class="small">${loggedIn ? '🔍 Sự kiện mới: nhặt đồ thất lạc, đua top công đức' : 'Cần đăng nhập · sự kiện mới: nhặt đồ thất lạc'}</span></span></button>
     </div>`}
 
     ${state === 'ready' && !walking && html`<div class="map-tools">

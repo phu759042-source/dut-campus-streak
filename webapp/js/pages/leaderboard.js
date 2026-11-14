@@ -2,11 +2,30 @@ import { html, useState, useEffect, useRef } from 'preact';
 import { supabase, currentUser, errMsg, hideStorageUrl } from '../lib.js';
 import { Icon, Avatar, Skeleton, ErrorBox, Empty, Segmented, openSheet } from '../ui.js';
 import { PageHeader } from './shared.js';
+import { WORLD_HTTP } from '../world.js';
+import { navigate } from '../router.js';
 
 const PAGE_SIZE = 50;
 const name = (r) => String(r.display_name || '').trim() || 'Sinh viên';
 const cls = (r) => String(r.class_name || '').trim() || 'Chưa có lớp';
 const num = (v) => Number(v) || 0;
+// what each board ranks by: streak days, streak weeks, or merit points of the lost-and-found event on the 3D map
+const SCORE = {
+  daily: (r) => html`<b>${num(r.current_streak)}</b><small>ngày</small>`,
+  weekly: (r) => html`<b>${num(r.weekly_streak)}</b><small>tuần</small>`,
+  merit: (r) => html`<b>${num(r.pts)}</b><small>công đức</small>`,
+};
+const RANK_LABEL = { daily: 'Hạng ngày', weekly: 'Hạng tuần', merit: 'Hạng công đức' };
+
+/** Merit leaderboard (from the world server), with the profile details of each student from Supabase. */
+async function loadMerit() {
+  const r = await fetch(`${WORLD_HTTP}/merit`, { cache: 'no-store' });
+  if (!r.ok) throw new Error('máy chủ bản đồ chưa trả lời');
+  const top = (await r.json()).top || [];
+  const { data } = await supabase.rpc('get_leaderboard', { p_scope: 'all', p_class_name: null, p_metric: 'daily' });
+  const byId = Object.fromEntries((data || []).map((p) => [p.user_id, p]));
+  return top.map((t) => ({ ...(byId[t.id] || {}), user_id: t.id, display_name: byId[t.id]?.display_name || t.name, pts: t.pts, n: t.n, rank: null }));
+}
 
 function ProfileSheet({ row, rank, metric }) {
   const me = row.user_id === currentUser()?.id;
@@ -17,7 +36,8 @@ function ProfileSheet({ row, rank, metric }) {
       <div class="pcard-name">${name(row)} ${me && html`<span class="chip chip-blue">Bạn</span>`}</div>
       <div class="muted">${cls(row)}</div>
       <div class="pcard-stats">
-        <div><b>#${rank}</b><span>Hạng ${metric === 'weekly' ? 'tuần' : 'ngày'}</span></div>
+        <div><b>#${rank}</b><span>${RANK_LABEL[metric]}</span></div>
+        ${metric === 'merit' && html`<div><b>🙏 ${num(row.pts)}</b><span>Công đức</span></div>`}
         <div><b>🔥 ${num(row.current_streak)}</b><span>Streak ngày</span></div>
         <div><b>📅 ${num(row.weekly_streak)}</b><span>Streak tuần</span></div>
         <div><b>${num(row.total_check_ins)}</b><span>Check-in</span></div>
@@ -35,7 +55,7 @@ function Podium({ rows, metric, onOpen }) {
       <div class="podium-avatar"><${Avatar} url=${r.avatar_url} name=${name(r)} size=${place[i] === 1 ? 76 : 60} ring />
         <span class="podium-medal">${medal[i]}</span></div>
       <div class="podium-name">${name(r)}</div>
-      <div class="podium-score">${metric === 'weekly' ? `📅 ${num(r.weekly_streak)} tuần` : `🔥 ${num(r.current_streak)} ngày`}</div>
+      <div class="podium-score">${metric === 'merit' ? `🙏 ${num(r.pts)} công đức` : metric === 'weekly' ? `📅 ${num(r.weekly_streak)} tuần` : `🔥 ${num(r.current_streak)} ngày`}</div>
       <div class="podium-block" style=${r.banner_url ? `background-image:linear-gradient(180deg,transparent,rgba(0,0,0,.45)),url('${r.banner_url}')` : ''}>
         <span>${r.rank ?? place[i]}</span></div>
     </button>` : html`<div class="podium-col empty-col"></div>`)}
@@ -72,6 +92,15 @@ export function LeaderboardPage() {
 
   async function load() {
     setRows(null); setError(null); setHighlight(null);
+    if (metric === 'merit') {
+      let list;
+      try { list = await loadMerit(); } catch (e) { return setError(errMsg(e)); }
+      if (scope === 'class') list = list.filter((r) => cls(r) === klass);
+      list.sort((a, b) => num(b.pts) - num(a.pts));
+      list.forEach((r, i) => { r.rank = i && num(list[i - 1].pts) === num(r.pts) ? list[i - 1].rank : i + 1; });
+      setRows(list); setPage(1);
+      return;
+    }
     const { data, error: err } = await supabase.rpc('get_leaderboard', {
       p_scope: scope, p_class_name: scope === 'class' ? klass : null, p_metric: metric,
     });
@@ -108,10 +137,10 @@ export function LeaderboardPage() {
   const listRows = page === 1 ? pageRows.slice(3) : pageRows;
 
   return html`<div class="page narrow">
-    <${PageHeader} title="Xếp hạng" subtitle=${rows ? `${scope === 'class' ? klass || '' : 'Toàn trường'} · ${metric === 'weekly' ? 'streak tuần' : 'streak ngày'} · ${rows.length} sinh viên` : ' '}
+    <${PageHeader} title="Xếp hạng" subtitle=${rows ? `${scope === 'class' ? klass || '' : 'Toàn trường'} · ${metric === 'merit' ? 'công đức (sự kiện Đồ thất lạc)' : metric === 'weekly' ? 'streak tuần' : 'streak ngày'} · ${rows.length} sinh viên` : ' '}
       actions=${rows && myRow && html`<button class="icon-btn" aria-label="Định vị tôi" title="Định vị tôi trên bảng xếp hạng" onClick=${locateMe}><${Icon} name="crosshair" /></button>`} />
     <div class="lb-filters">
-      <${Segmented} value=${metric} onChange=${setMetric} options=${[{ value: 'daily', label: '🔥 Ngày' }, { value: 'weekly', label: '📅 Tuần' }]} />
+      <${Segmented} value=${metric} onChange=${setMetric} options=${[{ value: 'daily', label: '🔥 Ngày' }, { value: 'weekly', label: '📅 Tuần' }, { value: 'merit', label: '🙏 Công đức' }]} />
       <${Segmented} value=${scope} onChange=${setScope} options=${[{ value: 'all', label: 'Chung' }, { value: 'class', label: 'Theo lớp' }]} />
       ${scope === 'class' && html`<select class="input fade-in" value=${klass || ''} onChange=${(e) => setKlass(e.target.value)}>
         ${classes.length ? classes.map((k) => html`<option value=${k}>${k}</option>`) : html`<option value="">Chưa có dữ liệu lớp</option>`}
@@ -120,14 +149,16 @@ export function LeaderboardPage() {
 
     ${myRow && html`<button class="me-card slide-up" onClick=${locateMe}>
       <${Avatar} url=${myRow.avatar_url} name=${name(myRow)} size=${46} />
-      <span class="grow"><b>Hạng #${myRow.rank}</b><br /><span class="small">${num(myRow.total_check_ins)} check-in · 🔥 ${num(myRow.current_streak)} ngày · 📅 ${num(myRow.weekly_streak)} tuần</span></span>
+      <span class="grow"><b>Hạng #${myRow.rank}</b><br /><span class="small">${metric === 'merit' ? `🙏 ${num(myRow.pts)} công đức · nhặt được ${num(myRow.n)} món đồ thất lạc` : `${num(myRow.total_check_ins)} check-in · 🔥 ${num(myRow.current_streak)} ngày · 📅 ${num(myRow.weekly_streak)} tuần`}</span></span>
       <${Icon} name="crosshair" />
     </button>`}
     ${rows && !myRow && scope === 'class' && html`<div class="note">Bạn không thuộc lớp đang xem.</div>`}
+    ${metric === 'merit' && rows && !myRow && scope === 'all' && html`<div class="note"><span>🔍 Sự kiện <b>Đồ thất lạc</b>: vào server bản đồ 3D, tìm đồ các bạn để quên ở nhà xe khu E, nhà xe khu B, các phòng học khu H và đăng confession tìm chủ để nhận điểm công đức.<br />
+      <button class="btn btn-primary btn-sm" style="margin-top:8px" onClick=${() => navigate('/map?server=1')}>Vào server tìm đồ</button></span></div>`}
 
     ${error ? html`<${ErrorBox} message=${'Không thể tải bảng xếp hạng. ' + error} onRetry=${load} />`
       : !rows ? html`<${Skeleton} h=${200} r=${24} /><${Skeleton} h=${64} count=${4} />`
-      : !rows.length ? html`<${Empty} icon="chart" title="Chưa có dữ liệu xếp hạng." />`
+      : !rows.length ? html`<${Empty} icon="chart" title=${metric === 'merit' ? 'Chưa ai nhặt được đồ thất lạc nào.' : 'Chưa có dữ liệu xếp hạng.'} />`
       : html`
         ${page === 1 && html`<${Podium} rows=${pageRows} metric=${metric} onOpen=${open} />`}
         <div class="lb-list" ref=${listRef}>
@@ -137,7 +168,7 @@ export function LeaderboardPage() {
             <span class="lb-rank">${r.rank}</span>
             <${Avatar} url=${r.avatar_url} name=${name(r)} size=${42} />
             <span class="grow lb-who"><b>${name(r)}</b><span class="small muted">${cls(r)}</span></span>
-            <span class="lb-score">${metric === 'weekly' ? html`<b>${num(r.weekly_streak)}</b><small>tuần</small>` : html`<b>${num(r.current_streak)}</b><small>ngày</small>`}</span>
+            <span class="lb-score">${SCORE[metric](r)}</span>
           </button>`)}
         </div>
         ${totalPages > 1 && html`<div class="pager">

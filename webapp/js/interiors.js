@@ -290,7 +290,7 @@ function buildCorridor(b, out, B, slabB) {
 
 /** Build all interiors. `buildings` are the scene building infos (with height). */
 export function buildInteriors(buildings) {
-  const out = { group: new THREE.Group(), solids: [], walls: [], surfaces: [], hideWhenInside: [], indoor: [], updaters: [], glow: [], occluders: [], meshFor: new Map(), glassB: new Builder(), ground: [], clear: [], night: [] };
+  const out = { group: new THREE.Group(), solids: [], walls: [], surfaces: [], hideWhenInside: [], indoor: [], updaters: [], glow: [], occluders: [], meshFor: new Map(), glassB: new Builder(), ground: [], clear: [], night: [], lostSpots: [] };
   for (const b of buildings) {
     if (b.interior === 'canteen') {
       const B = new Builder(), BW = new Builder();
@@ -339,6 +339,8 @@ export function buildInteriors(buildings) {
       for (const r of out.hideWhenInside) r.mesh.visible = !(st && st.on && !st.fp && insideP(r.pts, st.x, st.z)); // first person keeps the roof + ceiling
       for (const h of out.updaters) h.update(st);
     },
+    /** Is this point on a floor of Khu H that is hidden right now? */
+    hides: (x, z, y) => out.updaters.some((h) => h.hides?.(x, z, y)),
     setNight(on) { for (const m of out.glow) m.emissiveIntensity = on ? 0.9 : (m.userData.dayGlow || 0); for (const f of out.night) f(on); },
   };
 }

@@ -3,7 +3,11 @@
 import { supabase } from './lib.js';
 
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-export const WORLD_URL = LOCAL ? 'ws://127.0.0.1:8787/world' : 'wss://dut-campus-world.dut-campus-world.workers.dev/world';
+// localhost: the test server from `wrangler dev` (another port with /map?wsport=8788, remembered for the tab)
+const localPort = () => { try { const q = new URLSearchParams(location.search).get('wsport'); if (q) sessionStorage.setItem('cs-ws-port', q); return sessionStorage.getItem('cs-ws-port') || '8787'; } catch { return '8787'; } };
+export const WORLD_URL = LOCAL ? `ws://127.0.0.1:${localPort()}/world` : 'wss://dut-campus-world.dut-campus-world.workers.dev/world';
+/** Plain HTTP address of the world server (the merit leaderboard). */
+export const WORLD_HTTP = WORLD_URL.replace(/^ws/, 'http').replace(/\/world$/, '');
 export const EMOTES = ['👋', '👍', '😂', '❤️', '🔥', '😮'];
 
 /** localhost only: /map?dev=Name joins the local test server as a made-up student (no account needed). */

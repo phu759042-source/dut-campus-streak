@@ -1,12 +1,14 @@
 // Server mode UI for the 3D campus map: name tags and chat bubbles over everyone, the shared chat,
-// player list, meetings with voice chat, emotes, the character customizer, and football at the stadium
-// (game in ../soccer.js, its UI in map-soccer.js).
+// player list, meetings with voice chat, emotes, the character customizer, football at the stadium
+// (game in ../soccer.js, its UI in map-soccer.js) and the lost-and-found event (../lost.js, map-lost.js).
 import { html, useState, useEffect, useLayoutEffect, useRef } from 'preact';
 import { supabase } from '../lib.js';
 import { Icon, toast, openSheet } from '../ui.js';
 import { connectWorld, EMOTES, devName } from '../world.js';
 import { SoccerHud, SoccerPanel, SoccerChip, TEAM_CSS, showBoard } from './map-soccer.js';
 import { shouldAskRating, snoozeRating, openRating, Stars } from '../rating.js';
+import { LostChip, LostPanel, LostPick, ConfessionShow } from './map-lost.js';
+import { ITEM, ZONES, SPOTS, placeOf } from '../lost-core.js';
 
 const LOOK_LABELS = { skin: 'Màu da', hair: 'Kiểu tóc', hc: 'Màu tóc', shirt: 'Áo', pants: 'Quần', bag: 'Balo', glasses: 'Kính' };
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
@@ -140,6 +142,16 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const [text, setText] = useState('');
   const [unread, setUnread] = useState(0);
   const [socView, setSocView] = useState(null); // football: what to show (soccer.view())
+  // lost and found: what lies where ([[k, spot]]), your merit, the leaderboard, the thing in reach, the photo show
+  const [lfItems, setLfItems] = useState([]);
+  const [lfMe, setLfMe] = useState(null);
+  const [lfTop, setLfTop] = useState(null);
+  const [lfNear, setLfNear] = useState(null);
+  const [cfsShow, setCfsShow] = useState(null);
+  const lost = useRef(null);
+  const photoOf = useRef(null);
+  const lfNearRef = useRef(null);
+  const pickAt = useRef(0);
   // riding pillion: whose bike you sit on, and the nearest bike you could hop on (E)
   const [myRide, setMyRide] = useState(null);
   const [rideNear, setRideNear] = useState(null);
@@ -172,6 +184,10 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     // football: loaded right after (it needs three.js, already there for the map); messages wait until then
     const socQueue = [];
     const toSoccer = (m) => (soccer.current ? soccer.current.handle(m) : socQueue.push(m));
+    // lost and found: the things are drawn by ../lost.js (loaded with three.js); until then the list is kept
+    let lfList = [], sysN = 0;
+    const sys = (text) => setChat((c) => [...c.slice(-80), { id: 'sys', sys: true, name: '', text, at: Date.now() + (sysN++ % 1000) / 1000 }]);
+    const lfSet = (list) => { lfList = list; lost.current?.set(list); setLfItems(list); };
     let dead = false;
     const w = connectWorld({
       look,
@@ -179,9 +195,31 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       on: (m) => {
         switch (m.t) {
           case 'fs': case 'fb': case 'fe': case 'fpos': toSoccer(m); break;
+          case 'lf': lfSet(m.items || []); break;
+          case 'lfnew':
+            lfSet([...lfList.filter(([k]) => k !== m.k), [m.k, m.s]]);
+            if (ITEM[m.k] && SPOTS[m.s]) sys(`🔔 Có bạn vừa để quên ${ITEM[m.k].short} ở ${ZONES[SPOTS[m.s][4]]}…`);
+            break;
+          case 'lfgot': {
+            lfSet(lfList.filter(([k]) => k !== m.k));
+            const it = ITEM[m.k]; if (!it) break;
+            if (m.id === st.current.me?.id) {
+              setCfsShow({ k: m.k, s: m.s, cfs: m.cfs, pts: m.pts, photo: photoOf.current ? photoOf.current(m.k, m.s).catch(() => null) : null });
+              bubble(m.id, `📸 Nhặt được ${it.short}!`, 4000);
+            } else {
+              bubble(m.id, `📸 Nhặt được ${it.short}!`, 4500);
+              sys(`🙏 ${m.name} nhặt được ${it.short} ở ${placeOf(m.s)} (+${m.pts} công đức) · #cfs${m.cfs}`);
+            }
+            break;
+          }
+          case 'lfme': setLfMe({ pts: m.pts, n: m.n, rank: m.rank }); break;
+          case 'lftop': setLfTop(m.top || []); if (m.me) setLfMe({ pts: m.me.pts, n: m.me.n, rank: m.me.rank }); break;
+          case 'lfmiss':
+            toast(m.far ? 'Lại gần thêm chút nữa rồi nhặt nhé.' : `Chậm chân rồi! ${m.by || 'Bạn khác'} vừa nhặt mất ${ITEM[m.k]?.short || 'món đó'}.`, 'info', 3000);
+            break;
           case 'status':
             setStatus(m.status);
-            if (m.status === 'offline') { scene.players.clear(); setPlayers({}); scene.ride(null); setMyRide(null); }
+            if (m.status === 'offline') { scene.players.clear(); setPlayers({}); scene.ride(null); setMyRide(null); lfSet([]); }
             if (m.status === 'closed') { toast(m.msg || 'Đã rời server.', 'error', 4200); onClosed?.(); }
             break;
           case 'welcome': {
@@ -279,8 +317,16 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       for (const m of socQueue.splice(0)) soccer.current.handle(m);
       setSocView(soccer.current.view());
     }).catch((e) => console.warn('football', e));
+    import('../lost.js').then(({ createLost, photoOf: shoot }) => {
+      if (dead) return;
+      lost.current = createLost(scene);
+      photoOf.current = shoot;
+      lost.current.set(lfList);
+      if (location.hostname === 'localhost') window.__lost = lost.current; // debugging
+    }).catch((e) => console.warn('lost and found', e));
     return () => {
       dead = true;
+      lost.current?.dispose(); lost.current = null;
       soccer.current?.dispose(); soccer.current = null;
       document.querySelector('.map-page')?.classList.remove('in-soccer', 'soc-board-on');
       w.close(); world.current = null;
@@ -320,9 +366,12 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
         }
       }
       if (best !== rideRef.current.near) setRideNear(best);
+      const thing = lost.current?.near()?.k || null; // a lost thing within reach
+      if (thing !== lfNearRef.current) { lfNearRef.current = thing; setLfNear(thing); }
     }, 250);
-    // E: get off, or hop on the bike next to you (before sitting on the stands / building info)
+    // E: pick up the lost thing in reach, get off, or hop on the bike next to you (before sitting / building info)
     scene.setInteract(() => {
+      if (lfNearRef.current && !rideRef.current.mine) { pickUp(lfNearRef.current); return true; }
       const r = rideRef.current;
       if (r.mine) { hopOff(); return true; }
       if (r.near) { hopOn(r.near); return true; }
@@ -410,6 +459,24 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const messages = chatTab === 'meeting' && myMeeting ? mchat : chat;
 
   function hopOn(id) { world.current?.send({ t: 'ride', on: id }); }
+  function pickUp(k) {
+    const now = performance.now();
+    if (now - pickAt.current < 1200 || document.querySelector('.cfs-show')) return;
+    pickAt.current = now;
+    world.current?.send({ t: 'lfp', k });
+  }
+  // the merit leaderboard, fresh while its panel is open
+  useEffect(() => {
+    if (panel !== 'lost' || status !== 'online') return undefined;
+    world.current?.send({ t: 'lftop' });
+    const id = setInterval(() => world.current?.send({ t: 'lftop' }), 15000);
+    return () => clearInterval(id);
+  }, [panel, status]);
+  function goZone([spot, look]) {
+    if (myRide) hopOff();
+    scene.teleport(spot[0], spot[1], look);
+    setPanel(null);
+  }
   function hopOff() { world.current?.send({ t: 'ride', on: null }); scene.ride(null); setMyRide(null); }
   const passenger = me && Object.values(players).find((p) => p.r === me.id);
   function goTo(id) {
@@ -440,12 +507,16 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       <button class=${'map-btn sm' + (panel === 'meetings' ? ' on' : '')} title="Phòng họp & voice chat" aria-label="Phòng họp" onClick=${() => setPanel(panel === 'meetings' ? null : 'meetings')}>🎙</button>
       <button class=${'map-btn sm' + (panel === 'emotes' ? ' on' : '')} title="Biểu cảm" aria-label="Biểu cảm" onClick=${() => setPanel(panel === 'emotes' ? null : 'emotes')}>😀</button>
       <${SoccerChip} v=${socView} open=${panel === 'soccer'} onOpen=${() => setPanel(panel === 'soccer' ? null : 'soccer')} />
+      <${LostChip} me=${lfMe} open=${panel === 'lost'} onOpen=${() => setPanel(panel === 'lost' ? null : 'lost')} />
       <button class="map-btn sm" title="Đổi nhân vật" aria-label="Đổi nhân vật" onClick=${() => { setPanel(null); onEditLook(); }}>👕</button>
       ${mobile && html`<button class=${'map-btn sm' + (panel === 'chat' ? ' on' : '')} aria-label="Chat" onClick=${() => { setUnread(0); setPanel(panel === 'chat' ? null : 'chat'); }}>💬${unread > 0 && html`<span class="world-badge">${unread > 9 ? '9+' : unread}</span>`}</button>`}
     </div>
 
     <${SoccerHud} v=${socView} soccer=${soccer.current} mobile=${mobile} onOpen=${() => setPanel('soccer')} />
     ${panel === 'soccer' && html`<${SoccerPanel} v=${socView} soccer=${soccer.current} me=${me?.id} nameOf=${nameOf} mobile=${mobile} onClose=${() => setPanel(null)} />`}
+
+    ${panel === 'lost' && html`<${LostPanel} items=${lfItems} me=${lfMe} top=${lfTop} myId=${me?.id} onGo=${goZone} onClose=${() => setPanel(null)} />`}
+    ${cfsShow && html`<${ConfessionShow} key=${cfsShow.cfs} show=${cfsShow} onClose=${() => setCfsShow(null)} />`}
 
     ${panel === 'emotes' && html`<div class="world-panel emotes pop-in">${EMOTES.map((e, i) => html`<button class="world-emote" onClick=${() => emote(i)}>${e}</button>`)}</div>`}
 
@@ -488,6 +559,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
         <button class="btn btn-primary btn-sm" onClick=${(e) => { e.currentTarget.blur(); hopOff(); }}>Xuống xe${mobile ? '' : ' (E)'}</button></div>`
       : passenger ? html`<div class="world-ride pop-in"><span>🛵 <b>${passenger.name}</b> đang ngồi sau xe bạn</span>
         <button class="btn btn-ghost btn-sm" onClick=${(e) => { e.currentTarget.blur(); world.current?.send({ t: 'unride' }); }}>Cho xuống</button></div>`
+      : lfNear ? html`<${LostPick} k=${lfNear} mobile=${mobile} onPick=${() => pickUp(lfNear)} />`
       : rideNear ? html`<button class="world-ride pop-in" onClick=${(e) => { e.currentTarget.blur(); hopOn(rideNear); }}>
         <span>🛵 Ngồi sau xe <b>${nameOf(rideNear)}</b></span>${!mobile && html`<span class="map-near-key">E</span>`}</button>` : null}
 
@@ -496,8 +568,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
         <button class=${chatTab === 'all' ? 'on' : ''} onClick=${() => setChatTab('all')}>Chung</button>
         <button class=${chatTab === 'meeting' ? 'on' : ''} onClick=${() => setChatTab('meeting')}>🎙 Phòng họp</button>
       </div>`}
-      <div class="world-msgs" ref=${msgsBox} onScroll=${(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30; }}>${messages.slice(-30).map((c) => html`<div class="world-msg" key=${c.at + c.id}>
-        <b class=${c.id === me?.id ? 'me' : ''}>${c.name}</b> <span>${c.text}</span> <i>${fmtTime(c.at)}</i></div>`)}</div>
+      <div class="world-msgs" ref=${msgsBox} onScroll=${(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30; }}>${messages.slice(-30).map((c) => html`<div class=${'world-msg' + (c.sys ? ' sys' : '')} key=${c.at + c.id}>
+        ${!c.sys && html`<b class=${c.id === me?.id ? 'me' : ''}>${c.name}</b> `}<span>${c.text}</span> <i>${fmtTime(c.at)}</i></div>`)}</div>
       <form class="world-input" onSubmit=${send}>
         <input ref=${input} value=${text} maxLength="300" placeholder=${mobile ? 'Nhắn gì đó…' : 'Nhấn / để chat, Enter để gửi…'} aria-label="Tin nhắn"
           onInput=${(e) => setText(e.target.value)} onFocus=${() => setUnread(0)}

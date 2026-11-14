@@ -387,6 +387,12 @@ export function buildKhuH(b, out) {
       wall(F.at(a + 0.25, b0), F.at(a + 0.25, b1), y0, y0 + 0.85);
     }
     label(k, F, (g1[0] + g1[1]) / 2, CD - 0.13, y0 + 2.45, 'H' + name);
+    // desk tops (and the teacher's desk) where something can be left behind: js/lost-core.js
+    for (let a = a0 + 3.0, row = 0; a < a1 - 0.9; a += 1.3, row++) for (const [b0, b1] of [[CD + 1.2, mid - 0.7], [mid + 0.7, D - 0.9]]) {
+      const [x, z] = F.at(a, (b0 + b1) / 2 + ((row % 3) - 1) * 0.6);
+      out.lostSpots.push({ x, z, y: y0 + 0.77, ang: F.ang, room: 'H' + name, k });
+    }
+    { const [x, z] = F.at(a0 + 1.65, mid + 0.35); out.lostSpots.push({ x, z, y: y0 + 0.78, ang: F.ang, room: 'H' + name, k, teacher: true }); }
   }
   /** Closed rooms (WC, store rooms): walls with a shut door and a plate. Collision comes from a solid footprint. */
   function closed(k, F, a0, a1, D, names) {
@@ -544,6 +550,8 @@ export function buildKhuH(b, out) {
   let shown = -1;
   return {
     group, meshes, indoor: Pm,
+    /** Is (x, z, y) on a floor hidden right now (you stand inside on a lower floor)? */
+    hides: (x, z, y) => shown >= 0 && shown < 9 && y > Y(shown) + FH - 0.5 && insideP(Pm, x, z),
     /** While inside (third person), hide the floors above the one you stand on and the roofs over them. */
     update(st) {
       const inside = st && st.on && !st.fp && insideP(Pm, st.x, st.z);

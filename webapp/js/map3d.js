@@ -655,11 +655,15 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     },
     buildings,
     bounds: all,
+    /** debug: parked bikes and Khu H desk tops (to regenerate the lost-and-found spots in js/lost-core.js) */
+    _lostRaw: () => ({ bikes: canopies.bikes, desks: inter.lostSpots }),
     flyTo, focusBox, goHome, faceNorth, setSelected, setTheme, requestRender,
     startWalk, stopWalk, walking: () => walker.state.on,
     players,
     /** your own student: [x, z, y, heading, mode index, speed] for the world server */
     self() { const w = walker.state; return w.on ? [w.x, w.z, w.y + (w.carry ? 0 : w.lift || 0), w.heading, w.carry ? 4 : w.sit ? 3 : ['walk', 'scooter', 'moto'].indexOf(w.mode), w.speed] : null; },
+    /** is (x, z, y) on a floor of Khu H hidden right now (you are inside, on a lower floor)? */
+    hiddenAt: (x, z, y) => inter.hides(x, z, y),
     /** server mode: ride pillion on someone's bike (null: get off); E handler that runs before sitting / building info */
     ride, riding: () => !!walker.state.carry, setInteract(f) { interact = f; },
     setLook: (look) => { walker.setLook(look); requestRender(); },

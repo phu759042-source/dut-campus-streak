@@ -4,9 +4,11 @@
 //   positions, chat (everyone or inside a meeting), emotes, character looks, meetings, rides (sitting on the back
 //   of someone's scooter / motorbike), and WebRTC signaling
 //   for voice chat. Voice itself goes browser-to-browser; this server only passes the setup messages along.
-// Football on the stadium pitch (teams, ball, goalkeepers, score) lives in soccer.js.
+// Football on the stadium pitch (teams, ball, goalkeepers, score) lives in soccer.js; the lost-and-found event
+// ("Đồ thất lạc": things to find in the bike sheds and Khu H, merit points and their leaderboard) in lost.js.
 // Uses the WebSocket Hibernation API so an idle world costs nothing.
 import { Soccer } from './soccer.js';
+import { Lost } from './lost.js';
 
 const LOOK_RANGES = { skin: 5, hair: 5, hc: 6, shirt: 8, pants: 6, bag: 6, glasses: 2 };
 const MAX_MEETING = 8;          // voice is a mesh (everyone connects to everyone), so keep meetings small
@@ -37,6 +39,8 @@ export default {
       const relays = ice.filter((s) => [].concat(s.urls).some((u) => /^turns?:/.test(u))).length;
       return new Response(JSON.stringify({ turn: relays > 0 }), { headers: { 'Content-Type': 'application/json' } });
     }
+    // merit points leaderboard of the lost-and-found event, for the website's leaderboard page
+    if (url.pathname === '/merit' && req.method === 'GET') return env.WORLD.get(env.WORLD.idFromName('dut')).fetch(req);
     if (url.pathname !== '/world') return new Response('DUT Campus World', { status: 404 });
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
     const origin = req.headers.get('Origin') || '';
@@ -54,6 +58,7 @@ export class World {
     this.meetings = null; // loaded lazily from storage (survives hibernation)
     this.chat = null;
     this.soccer = new Soccer(this); // in memory only: a match keeps the object awake
+    this.lost = new Lost(this);
   }
 
   async load() {
@@ -69,10 +74,17 @@ export class World {
       if (!left.length) { delete this.meetings[id]; changed = true; }
     }
     if (changed) await this.saveMeetings();
+    await this.lost.load();
   }
   saveMeetings() { return this.ctx.storage.put('meetings', this.meetings); }
 
   async fetch(req) {
+    if (new URL(req.url).pathname === '/merit') { // public: names and points of the best finders
+      await this.load();
+      const origin = req.headers.get('Origin') || '';
+      const ok = String(this.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).includes(origin) || /^https:\/\/dut-campus-streak-webapp[a-z0-9-]*\.vercel\.app$/.test(origin);
+      return new Response(json({ top: this.lost.web() }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(ok ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}) } });
+    }
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
     pair[1].serializeAttachment({ auth: false, at: Date.now() });
@@ -142,6 +154,9 @@ export class World {
     });
     this.send(ws, this.soccer.state());
     this.send(ws, this.soccer.ball());
+    await this.lost.tick(Date.now());
+    this.send(ws, this.lost.state());
+    this.send(ws, this.lost.mine(a.id));
     this.broadcast({ t: 'join', p: this.pub(a) }, ws);
     if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + SWEEP_MS);
   }
@@ -156,7 +171,11 @@ export class World {
         try { ws.close(4408, 'timed out'); } catch { /* closed */ }
       } else left++;
     }
-    if (left) await this.ctx.storage.setAlarm(now + SWEEP_MS);
+    if (left) {
+      await this.load();
+      await this.lost.tick(now); // a lost thing due again turns up even when nobody sends anything
+      await this.ctx.storage.setAlarm(now + SWEEP_MS);
+    }
   }
 
   async iceServers() {
@@ -188,6 +207,7 @@ export class World {
     await this.load();
     const now = Date.now();
     if (now - (a.seen || 0) > 5000) { a.seen = now; ws.serializeAttachment(a); } // still here
+    await this.lost.tick(now);
     switch (msg.t) {
       case 'p': { // position: [x, z, y, heading, mode (0 walk, 1 scooter, 2 motorbike, 3 sitting, 4 on someone's back seat), speed]
         if (!Array.isArray(msg.p) || msg.p.length !== 6) return;
@@ -292,6 +312,14 @@ export class World {
       case 'fjoin': case 'fleave': case 'ft': case 'fk': case 'fx': case 'fxh': case 'fa': case 'fd': // football
         this.soccer.message(a, msg);
         return;
+      case 'lfp': await this.lost.pick(ws, a, msg); return; // pick up a lost thing (msg.k)
+      case 'lftop': { // merit leaderboard
+        const now2 = Date.now();
+        if (now2 - (a.lastTop || 0) < 1500) return;
+        a.lastTop = now2; ws.serializeAttachment(a);
+        this.send(ws, { t: 'lftop', top: this.lost.top(), me: this.lost.mine(a.id) });
+        return;
+      }
       case 'ping': // also used by the browser to estimate the server clock (football timing)
         this.send(ws, { t: 'pong', c: Number.isFinite(+msg.c) ? +msg.c : 0, s: Date.now() });
         return;

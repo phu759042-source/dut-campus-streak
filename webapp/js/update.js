@@ -12,10 +12,10 @@ let base = null, shown = false, timer = 0;
 // What's new. To announce something else, replace this (a new id shows it again to everyone, once).
 // `until`: people who first arrive after this day do not get the note; `place`: key of the map place it opens.
 const NEWS = {
-  id: '2026-11-map-bridge', until: '2026-12-01',
-  title: 'Bản đồ 3D vừa được cập nhật',
-  text: 'Tỉ lệ người và cảnh vật sát thực tế hơn, có thêm cầu vượt Ngô Sĩ Liên.',
-  go: 'Xem cầu', path: '/map?k=bridge', place: 'bridge',
+  id: '2026-11-lost-found', until: '2026-12-15', icon: '🔍',
+  title: 'Sự kiện mới: Đồ thất lạc',
+  text: 'Vào server bản đồ 3D nhặt đồ các bạn để quên ở nhà xe khu E, khu B và khu H, đăng confession tìm chủ, đua top công đức.',
+  go: 'Vào server', path: '/map?server=1', place: 'server',
 };
 const NEWS_KEY = 'cs-news';
 
@@ -29,8 +29,9 @@ function showNews() {
   const el = document.createElement('div');
   el.className = 'update-bar news-bar';
   el.setAttribute('role', 'status');
-  el.innerHTML = '<span class="update-ico" aria-hidden="true">🌉</span><span class="update-text"><b></b><span></span></span>'
+  el.innerHTML = '<span class="update-ico" aria-hidden="true"></span><span class="update-text"><b></b><span></span></span>'
     + '<button type="button" class="update-go"></button><button type="button" class="update-x" aria-label="Đóng">✕</button>';
+  el.querySelector('.update-ico').textContent = NEWS.icon || '✨';
   el.querySelector('.update-text b').textContent = NEWS.title;
   el.querySelector('.update-text span').textContent = NEWS.text;
   el.querySelector('.update-go').textContent = NEWS.go;
