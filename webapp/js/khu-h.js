@@ -126,7 +126,10 @@ export function buildKhuH(b, out) {
   const J1floor = clip(J1, (p) => JW0 - wC(p)), J2floor = clip(J2, (p) => JW0 - wC(p));
   const WC1 = clip(clip(J1, (p) => wC(p) - JW0), (p) => J1u[0] - uC(p));
   const WC2 = clip(clip(J2, (p) => wC(p) - JW0), (p) => uC(p) - J2u[1]);
-  const WCs = [WC1, WC2].filter((p) => p.length >= 3);
+  // WCs: the corner of each tower beside its stairs, with the door position (u) on the landing side
+  const WCs = [[WC1, J1u[0] - 1.05], [WC2, J2u[1] + 0.2]].filter(([p]) => p.length >= 3);
+  // centre bar: back corridor along the outer side (b from BC to C_D), store rooms UT wide at both ends
+  const BC = C_D - 2.0, UT = 3.1;
   // curved glass bay over the main entrance
   const bayOut = [-C.w[0], -C.w[1]];
   const arc = [];
@@ -164,6 +167,11 @@ export function buildKhuH(b, out) {
     lv[0].B.color(C_BRICK); boxF(lv[0].B, LW, u0 - 0.25, u0, -1.7, 0, 0, PL + 0.1); // cheek wall where the steps stop
     doors.push([LW.at(u0 + 0.2, 0), LW.at(L - 0.25, 0)], [LW.at(L, 0.25), LW.at(L, CD - 0.3)]);
     lv[0].B.color(0xf7f5f0); { const c = LW.at(L - 0.2, 0.2); lv[0].B.box(c[0], c[1], 0.36, 0.36, 0, Y(1) - SLAB, LW.ang); } // corner column
+    { // small cabinet against the end wall of 101, beside the steps (drawn on the plan)
+      const c = LW.at(L + 0.4, CD + 0.75);
+      lv[0].B.color(0x59616b); lv[0].B.box(c[0], c[1], 0.6, 0.9, 0, 1.5, LW.ang);
+      out.solids.push(LW.rect(L + 0.1, L + 0.7, CD + 0.3, CD + 1.2));
+    }
   }
   entry(SW.at(SW_L, 0.35), SW.at(SW_L, 2.45), SW.u);                   // end of the short wing (after 108)
   entry(LW.at(22.4, LW_D), LW.at(25.1, LW_D), LW.w);                   // through passage between 102 and 103
@@ -217,7 +225,7 @@ export function buildKhuH(b, out) {
     if (k === 0) return [Pm];
     const ps = [];
     if (k <= 2) ps.push(LW.rect(0, LW_L, 0, LW_D), SW.rect(0, SW_L, 0, SW_D));
-    ps.push(C.rect(0, hall0, 0, C_D), C.rect(hall0, hall1, -0.3, 4.6), C.rect(hall1, C_L, 0, C_D), bay, J1floor, J2floor);
+    ps.push(C.rect(0, hall0, 0, C_D), C.rect(hall0, hall1, -0.3, 4.6), C.rect(hall0, hall1, BC, C_D), C.rect(hall1, C_L, 0, C_D), bay, J1floor, J2floor);
     return ps;
   };
   lv[0].B.color(C_BRICK); lv[0].B.band(Pm, 0, PL); // brick plinth of the raised ground floor
@@ -230,7 +238,7 @@ export function buildKhuH(b, out) {
     }
     if (k > 0) { // slab edges around the stair wells
       B.color(0xe2ddd3);
-      B.band(C.rect(hall0, hall1, 4.6, C_D), Y(k) - SLAB, Y(k));
+      B.band(C.rect(hall0, hall1, 4.6, BC), Y(k) - SLAB, Y(k));
       B.band(C.rect(J1u[0], J1u[1], JW0, JW1), Y(k) - SLAB, Y(k));
       B.band(C.rect(J2u[0], J2u[1], JW0, JW1), Y(k) - SLAB, Y(k));
     }
@@ -242,7 +250,7 @@ export function buildKhuH(b, out) {
     [P[0], P[1], 'corr', N3], [P[1], P[2], 'corr', N4], [P[2], P[3], 'plain', N4], [P[4], P[5], 'plain', N4],
     [P[5], P[6], 'corr', N4], [P[6], SWe0, 'corr', N3],
     [SWe0, SWe1, 'end', N3], [SWe1, SWo0, 'room', N3], [SWo0, M14, 'tower', N4],
-    [M14, C2o, 'tower', N4], [C2o, C0o, 'room', N4], [C0o, P[14], 'tower', N4], [P[14], LWo, 'tower', N4],
+    [M14, C2o, 'tower', N4], [C2o, C0o, 'corr', N4], [C0o, P[14], 'tower', N4], [P[14], LWo, 'tower', N4],
     [LWo, P[15], 'room', N3], [P[15], P[0], 'end', N3], [P[1], LWo, 'plain', [3]], [P[6], SWo0, 'plain', [3]],
   ];
   function awning(B, E, s, e, y, depth = 0.75, drop = 0.32) {
@@ -333,28 +341,43 @@ export function buildKhuH(b, out) {
     if (open) boxF(B, F, g0 + 0.02, g0 + 0.07, CD + 0.1, CD + 1.0, Y(k), 2.1); // swung open into the room
     else boxF(B, F, g0, g0 + 0.95, CD - 0.03, CD + 0.03, Y(k), 2.1);
   };
-  /** Classroom between a0 and a1 on bar F (corridor at b < CD, outside wall at b = D): board, teacher's desk, rows. */
-  function classroom(k, F, a0, a1, D, name) {
+  /** Wall along b with windows between the door gaps (you can look into the class from the corridor). */
+  function glassWall(k, F, a0, a1, bb, gaps) {
+    const B = lv[k].B, y0 = Y(k);
+    for (const [s0, s1] of spans(a1 - a0, gaps.map(([g0, g1]) => [g0 - a0, g1 - a0]))) {
+      const u0 = a0 + s0, u1 = a0 + s1;
+      wall(F.at(u0, bb), F.at(u1, bb), y0, y0 + FH);
+      B.color(C_INNER); boxF(B, F, u0, u1, bb - 0.1, bb + 0.1, y0, 1.0); boxF(B, F, u0, u1, bb - 0.1, bb + 0.1, y0 + 2.2, FH - 2.2);
+      if (u1 - u0 < 1.2) { boxF(B, F, u0, u1, bb - 0.1, bb + 0.1, y0 + 1.0, 1.2); continue; }
+      const n = Math.max(1, Math.round((u1 - u0 - 0.6) / 1.4));
+      B.color(C_FRAME);
+      for (let i = 0; i <= n; i++) { const x = u0 + 0.3 + ((u1 - u0 - 0.6) * i) / n; boxF(B, F, x - 0.03, x + 0.03, bb - 0.06, bb + 0.06, y0 + 1.0, 1.2); }
+      B.color(C_INNER); boxF(B, F, u0, u0 + 0.3, bb - 0.1, bb + 0.1, y0 + 1.0, 1.2); boxF(B, F, u1 - 0.3, u1, bb - 0.1, bb + 0.1, y0 + 1.0, 1.2);
+      lv[k].G.color(0xbfdcef); boxF(lv[k].G, F, u0 + 0.3, u1 - 0.3, bb - 0.01, bb + 0.01, y0 + 1.0, 1.2);
+    }
+    for (const g of gaps) { B.color(C_INNER); boxF(B, F, g[0], g[1], bb - 0.1, bb + 0.1, y0 + 2.2, FH - 2.2); }
+  }
+  /**
+   * Classroom between a0 and a1 on bar F (corridor at b < CD, wall at b = D): board, teacher's desk, rows of desks.
+   * board: 'end' puts the board at a1 (as drawn on the plan for the long wing). back: D is an inner wall with windows
+   * and a door to the back corridor at the a1 end (centre bar).
+   */
+  function classroom(k, F0, a0, a1, D, name, { board = 'start', back = false } = {}) {
+    // board at a1: work in a mirrored frame where the room still spans [a0, a1]
+    const F = board === 'end' ? frame(F0.at(a0 + a1, 0), [-F0.u[0], -F0.u[1]], F0.w) : F0;
     const B = lv[k].B, y0 = Y(k), mid = (CD + D) / 2;
     B.color(C_ROOMFL); B.cap(F.rect(a0 + 0.1, a1 - 0.1, CD + 0.1, D - 0.12), y0 + 0.012);
     const g1 = [a0 + 0.7, a0 + 1.7], g2 = [a1 - 1.7, a1 - 0.7];
-    // wall to the corridor with windows between the doors: you can look into the class from the corridor
-    for (const [s0, s1] of spans(a1 - a0, [[g1[0] - a0, g1[1] - a0], [g2[0] - a0, g2[1] - a0]])) {
-      const u0 = a0 + s0, u1 = a0 + s1;
-      wall(F.at(u0, CD), F.at(u1, CD), y0, y0 + FH);
-      B.color(C_INNER); boxF(B, F, u0, u1, CD - 0.1, CD + 0.1, y0, 1.0); boxF(B, F, u0, u1, CD - 0.1, CD + 0.1, y0 + 2.2, FH - 2.2);
-      if (u1 - u0 < 1.2) { boxF(B, F, u0, u1, CD - 0.1, CD + 0.1, y0 + 1.0, 1.2); continue; }
-      const n = Math.max(1, Math.round((u1 - u0 - 0.6) / 1.4));
-      B.color(C_FRAME);
-      for (let i = 0; i <= n; i++) { const x = u0 + 0.3 + ((u1 - u0 - 0.6) * i) / n; boxF(B, F, x - 0.03, x + 0.03, CD - 0.06, CD + 0.06, y0 + 1.0, 1.2); }
-      B.color(C_INNER); boxF(B, F, u0, u0 + 0.3, CD - 0.1, CD + 0.1, y0 + 1.0, 1.2); boxF(B, F, u1 - 0.3, u1, CD - 0.1, CD + 0.1, y0 + 1.0, 1.2);
-      lv[k].G.color(0xbfdcef); boxF(lv[k].G, F, u0 + 0.3, u1 - 0.3, CD - 0.01, CD + 0.01, y0 + 1.0, 1.2);
+    glassWall(k, F, a0, a1, CD, [g1, g2]);
+    for (const g of [g1, g2]) doorLeaf(k, F, g[0], true);
+    if (back) {
+      glassWall(k, F, a0, a1, D, [g2]);
+      B.color(C_DOOR); boxF(B, F, g2[0] + 0.02, g2[0] + 0.07, D - 1.0, D - 0.1, y0, 2.1);
     }
-    for (const g of [g1, g2]) { B.color(C_INNER); boxF(B, F, g[0], g[1], CD - 0.1, CD + 0.1, y0 + 2.2, FH - 2.2); doorLeaf(k, F, g[0], true); }
     seg(k, F.at(a0, CD), F.at(a0, D), y0, FH, C_INNER); seg(k, F.at(a1, CD), F.at(a1, D), y0, FH, C_INNER);
     // board on the end wall, teacher's desk in front of it
-    B.color(0x2f4a3a); boxF(B, F, a0 + 0.1, a0 + 0.16, CD + 2.2, D - 2.2, y0 + 0.95, 1.2);
-    B.color(0xd8d2c4); boxF(B, F, a0 + 0.1, a0 + 0.2, CD + 2.1, D - 2.1, y0 + 0.9, 0.05);
+    B.color(0x2f4a3a); boxF(B, F, a0 + 0.1, a0 + 0.16, CD + 1.6, D - 1.6, y0 + 0.95, 1.2);
+    B.color(0xd8d2c4); boxF(B, F, a0 + 0.1, a0 + 0.2, CD + 1.5, D - 1.5, y0 + 0.9, 0.05);
     B.color(C_DOOR); boxF(B, F, a0 + 1.3, a0 + 2.0, mid - 0.7, mid + 0.7, y0, 0.78); wall(F.at(a0 + 1.65, mid - 0.7), F.at(a0 + 1.65, mid + 0.7), y0, y0 + 0.85);
     // rows of long desks with benches (students face the board), aisles in the middle and along the walls
     for (let a = a0 + 3.0; a < a1 - 0.9; a += 1.3) for (const [b0, b1] of [[CD + 1.2, mid - 0.7], [mid + 0.7, D - 0.9]]) {
@@ -368,7 +391,7 @@ export function buildKhuH(b, out) {
   /** Closed rooms (WC, store rooms): walls with a shut door and a plate. Collision comes from a solid footprint. */
   function closed(k, F, a0, a1, D, names) {
     const B = lv[k].B, y0 = Y(k), n = names.length, w = (a1 - a0) / n;
-    run(k, F, a0, a1, CD, [], y0, FH, C_INNER, false);
+    run(k, F, a0, a1, CD, [], y0, FH, C_INNER, false); run(k, F, a0, a1, D, [], y0, FH, C_INNER, false);
     seg(k, F.at(a0, CD), F.at(a0, D), y0, FH, C_INNER, 0.2, false); seg(k, F.at(a1, CD), F.at(a1, D), y0, FH, C_INNER, 0.2, false);
     names.forEach((nm, i) => {
       const s = a0 + w * i;
@@ -379,23 +402,29 @@ export function buildKhuH(b, out) {
   }
   const NUM = (k, n) => `${k + 1}0${n}`;
   for (let k = 0; k <= 2; k++) {
-    // long wing: 104 103 | passage (ground floor) | 102 101, store at the end
-    const lw = k === 0 ? [[0, 11, 4], [11, 22, 3], [25.5, 36.5, 2], [36.5, 47.5, 1]] : [[0, 11.85, 4], [11.85, 23.7, 3], [23.7, 35.6, 2], [35.6, 47.5, 1]];
-    for (const [a0, a1, n] of lw) classroom(k, LW, a0, a1, LW_D, NUM(k, n));
-    closed(k, LW, 47.5, LW_L - 0.05, LW_D, ['Kho']);
-    // short wing: 107 108
-    classroom(k, SW, 0, 11.85, SW_D, NUM(k, 7)); classroom(k, SW, 11.85, 23.7, SW_D, NUM(k, 8));
-    closed(k, SW, 23.7, SW_L - 0.05, SW_D, ['Kho']);
+    // long wing: 104 103 | passage (ground floor) | 102 101 to the end of the wing; boards at the far end (plan)
+    const q = LW_L / 4;
+    const lw = k === 0 ? [[0, 11, 4], [11, 22, 3], [25.5, 38, 2], [38, LW_L - 0.05, 1]] : [[0, q, 4], [q, 2 * q, 3], [2 * q, 3 * q, 2], [3 * q, LW_L - 0.05, 1]];
+    for (const [a0, a1, n] of lw) classroom(k, LW, a0, a1, LW_D, NUM(k, n), { board: 'end' });
+    // short wing: 107 108 to the end of the wing; boards at the junction end
+    classroom(k, SW, 0, SW_L / 2, SW_D, NUM(k, 7)); classroom(k, SW, SW_L / 2, SW_L - 0.05, SW_D, NUM(k, 8));
   }
   const RIGHT = ['Phòng nước GV', 'Kho vật tư', 'Kho vật tư', 'Kho vật tư'], LEFT = ['Kho vật tư', 'Kho vật tư', 'Phòng nước GV', 'Phòng nước GV'];
+  // centre bar (plan): store / teachers' water room next to each corner tower, a classroom each side of the hall,
+  // and a back corridor along the outer side on every floor (rooms have a back door at their far end)
   for (let k = 0; k <= 3; k++) {
-    classroom(k, C, 6.0, hall0, C_D, k < 3 ? NUM(k, 5) : '401');
-    classroom(k, C, hall1, C_L - 6.16, C_D, k < 3 ? NUM(k, 6) : '402');
-    closed(k, C, 0.02, 6.0, C_D, ['WC', RIGHT[k]]);
-    closed(k, C, C_L - 6.16, C_L - 0.02, C_D, [LEFT[k], 'WC']);
-    for (const poly of WCs) { const B = lv[k].B; B.color(C_INNER); B.band(poly, Y(k), Y(k) + FH); }
+    classroom(k, C, UT, hall0, BC, k < 3 ? NUM(k, 5) : '401', { back: true });
+    classroom(k, C, hall1, C_L - UT, BC, k < 3 ? NUM(k, 6) : '402', { back: true });
+    closed(k, C, 0.02, UT, BC, [RIGHT[k]]);
+    closed(k, C, C_L - UT, C_L - 0.02, BC, [LEFT[k]]);
+    // WC in each corner tower, its door on the stair landing
+    for (const [poly, d0] of WCs) {
+      const B = lv[k].B; B.color(C_INNER); B.band(poly, Y(k), Y(k) + FH);
+      B.color(C_DOOR); boxF(B, C, d0, d0 + 0.85, JW0 - 0.04, JW0 + 0.04, Y(k), 2.1);
+      label(k, C, d0 + 0.42, JW0 - 0.08, Y(k) + 2.4, 'WC');
+    }
   }
-  out.solids.push(C.rect(0.02, 6.0, CD, C_D), C.rect(C_L - 6.16, C_L - 0.02, CD, C_D), LW.rect(47.5, LW_L, CD, LW_D), SW.rect(23.7, SW_L, CD, SW_D), ...WCs);
+  out.solids.push(C.rect(0.02, UT, CD, BC), C.rect(C_L - UT, C_L - 0.02, CD, BC), ...WCs.map(([p]) => p));
 
   // ---------- stairs: dog-leg, flight A up along +b, landing, flight B back to the next floor ----------
   function flight(k, F, a0, a1, bS, bE, yS, yE, rail) {
@@ -456,13 +485,26 @@ export function buildKhuH(b, out) {
       lv[k].B.color(0xe2ddd3); boxF(lv[k].B, F, sp - 0.08, sp + 0.08, b0, b0 + R, Y(k) - (k ? FH / 2 : 0), k ? FH / 2 + 0.3 : 0.3);
     }
     for (const sp of [s0, s1]) wall(F.at(sp, b0), F.at(sp, b0 + R), Y(0) - 1, Y(3) + 1.2);
+    // back corridor runs behind the stairs: railing along the well on floors 2-4, and along the back of each landing
+    for (let k = 0; k <= 3; k++) {
+      const Bk = lv[k].B, hA = k === 0 ? 2.3 : half;
+      if (k > 0) {
+        Bk.color(C_RAIL); boxF(Bk, F, ua, ub, b2 + 0.02, b2 + 0.08, Y(k) + 0.92, 0.06);
+        for (let a = ua + 0.1; a < ub; a += 0.5) boxF(Bk, F, a - 0.02, a + 0.02, b2 + 0.03, b2 + 0.07, Y(k), 0.95);
+        wall(F.at(ua, b2 + 0.05), F.at(ub, b2 + 0.05), Y(k), Y(k) + 1.0);
+      }
+      if (k < 3) {
+        Bk.color(C_RAIL); boxF(Bk, F, ua, ub, b2 - 0.08, b2 - 0.02, Y(k) + hA + 0.92, 0.06);
+        wall(F.at(ua, b2 - 0.05), F.at(ub, b2 - 0.05), Y(k) + hA - 0.1, Y(k) + hA + 1.1);
+      }
+    }
     // top floor: railing across the middle flight (nothing further up)
     const B = lv[3].B; B.color(C_RAIL);
     boxF(B, F, s0, s1, b0 - 0.03, b0 + 0.03, Y(3) + 0.92, 0.06);
     for (let a = s0 + 0.1; a < s1; a += 0.5) boxF(B, F, a - 0.02, a + 0.02, b0 - 0.02, b0 + 0.02, Y(3), 0.95);
     wall(F.at(s0, b0), F.at(s1, b0), Y(3), Y(3) + 1.0);
   }
-  splitStair(C, hall0 + 0.1, hall1 - 0.1, 4.6, 4.0, C_D - 0.15);    // main stairs behind the entrance
+  splitStair(C, hall0 + 0.1, hall1 - 0.1, 4.6, 4.0, BC - 0.05);    // main stairs behind the entrance
   dogLeg(C, J1u[0], J1u[1], JW0, 3.6, JW1, true);                  // corner tower by 104/105
   dogLeg(C, J2u[0], J2u[1], JW0, 3.6, JW1, true);                  // corner tower by 106/107
 
