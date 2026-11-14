@@ -144,7 +144,27 @@ export function buildKhuH(b, out) {
     B.color(C_BRICK); boxF(B, E, -0.25, 0, 0, run, 0, PL + 0.1); boxF(B, E, W, W + 0.25, 0, run, 0, PL + 0.1); // cheek walls
     doors.push([a, c]);
   }
-  entry(LW.at(LW_L, 0.35), LW.at(LW_L, 2.45), LW.u);                   // end of the long wing (after 101)
+  /** Steps as nested shapes, the top one level with the floor (shape(i) for i = 1..5, the lower ones larger). */
+  const stack = (shape) => {
+    const B = lv[0].B;
+    for (let i = 1; i <= 5; i++) {
+      const pts = shape(i), y = (i * PL) / 5;
+      B.color(i % 2 ? 0xc8c2b6 : 0xbab4a8); B.band(pts, ((i - 1) * PL) / 5, y); B.cap(pts, y);
+      out.surfaces.push({ pts, y });
+    }
+  };
+  // end of the long wing (after 101), as on the plan: the corridor end opens on two sides and the steps wrap round
+  // the corner (courtyard side + end) with a cut corner
+  {
+    const L = LW_L, u0 = L - 3.0;
+    stack((i) => {
+      const d = (6 - i) * 0.32, ch = 1.0 + d;
+      return [LW.at(u0, 0), LW.at(u0, -d), LW.at(L + d - ch, -d), LW.at(L + d, -d + ch), LW.at(L + d, CD), LW.at(L, CD)];
+    });
+    lv[0].B.color(C_BRICK); boxF(lv[0].B, LW, u0 - 0.25, u0, -1.7, 0, 0, PL + 0.1); // cheek wall where the steps stop
+    doors.push([LW.at(u0 + 0.2, 0), LW.at(L - 0.25, 0)], [LW.at(L, 0.25), LW.at(L, CD - 0.3)]);
+    lv[0].B.color(0xf7f5f0); { const c = LW.at(L - 0.2, 0.2); lv[0].B.box(c[0], c[1], 0.36, 0.36, 0, Y(1) - SLAB, LW.ang); } // corner column
+  }
   entry(SW.at(SW_L, 0.35), SW.at(SW_L, 2.45), SW.u);                   // end of the short wing (after 108)
   entry(LW.at(22.4, LW_D), LW.at(25.1, LW_D), LW.w);                   // through passage between 102 and 103
   entry(LW.at(22.4, 0), LW.at(25.1, 0), [-LW.w[0], -LW.w[1]]);
@@ -153,9 +173,25 @@ export function buildKhuH(b, out) {
   // back door of the entrance hall (ground floor, as on the plan): through the hall under the stair landing, two
   // doors either side of the middle flight, a porch with steps down to the outer side
   {
-    const ua = hall0 + 0.1, ub = hall1 - 0.1, sw = (ub - ua) * 0.28;
-    entry(C.at(hall0 - 0.2, C_D), C.at(hall1 + 0.2, C_D), C.w, 2.2, 6);
-    doors.pop();
+    const ua = hall0 + 0.1, ub = hall1 - 0.1, sw = (ub - ua) * 0.28, mid = (hall0 + hall1) / 2, Ls = 1.2;
+    // rounded porch (straight sides, half-circle end) with steps all round, two columns at its end
+    stack((i) => {
+      const h = 3.6 + (5 - i) * 0.3, pts = [C.at(mid - h, C_D - 0.05)];
+      for (let j = 0; j <= 16; j++) { const a = (Math.PI * j) / 16; pts.push(C.at(mid - h * Math.cos(a), C_D + Ls + h * Math.sin(a))); }
+      pts.push(C.at(mid + h, C_D - 0.05));
+      return pts;
+    });
+    for (const sg of [-1, 1]) {
+      const a = Math.PI / 2 + sg * 0.55, c = C.at(mid - 3.1 * Math.cos(a), C_D + Ls + 3.1 * Math.sin(a));
+      lv[0].B.color(0xf7f5f0); lv[0].B.box(c[0], c[1], 0.36, 0.36, PL, 2.9, C.ang);
+      out.solids.push([[c[0] - 0.2, c[1] - 0.2], [c[0] + 0.2, c[1] - 0.2], [c[0] + 0.2, c[1] + 0.2], [c[0] - 0.2, c[1] + 0.2]]);
+    }
+    { // flat canopy over the porch on the columns
+      const pts = [C.at(mid - 3.4, C_D)];
+      for (let j = 0; j <= 16; j++) { const a = (Math.PI * j) / 16; pts.push(C.at(mid - 3.4 * Math.cos(a), C_D + Ls + 3.4 * Math.sin(a))); }
+      pts.push(C.at(mid + 3.4, C_D));
+      lv[0].B.color(C_WALL); lv[0].B.band(pts, PL + 2.9, PL + 3.15); lv[0].B.cap(pts, PL + 3.15); lv[0].B.color(C_CEIL); lv[0].B.cap(pts, PL + 2.9);
+    }
     doors.push([C.at(ua + 0.2, C_D), C.at(ua + sw - 0.2, C_D)], [C.at(ub - sw + 0.2, C_D), C.at(ub - 0.2, C_D)]);
   }
   // main entrance: curved steps (half discs, the top one level with the floor) under the bay
