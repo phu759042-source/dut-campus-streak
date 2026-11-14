@@ -145,6 +145,8 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   động cao 2,8 m để đứng ngoài đường gom không nhìn thấy sân).
 - Đi vào bên trong (`js/interiors.js`): Căn tin cạnh Khu E1 (cửa trước + cửa hông, 5 bàn ăn, tủ lạnh nước, quầy cà phê, bếp
   phía sau quầy phục vụ; mái tự ẩn khi đứng trong) và Khu E1 có hành lang tầng 1–2 + cầu thang ở đầu gần căn tin.
+- Logo trường trên bản đồ (lõi Nhà S, khối vuông trên cột ở cổng chính, ô nhỏ chân cột, bảng xanh trên nhà bảo vệ)
+  luôn dùng đúng ảnh gốc `img/dut-logo.jpg`, không tự vẽ lại (`emblemTex` / `drawEmblem` trong `js/campus-details.js`).
 - Khu H đi vào được hết (`js/khu-h.js`), dựng theo sơ đồ phòng chức năng treo trong khu H: khối giữa 4 tầng, hai cánh
   3 tầng, sàn tầng 1 nâng cao 0,75 m (chân tường gạch, bậc lên ở mọi cửa), hành lang phía sân trong có cửa kính + mái
   ngói nhỏ, phòng học đánh số như sơ đồ (101–108, 201–208, 301–308, 401–402, có bảng, bàn giáo viên, dãy bàn ghế),

@@ -327,7 +327,7 @@ function towerS(b, B, group, glowMats) {
 
   // emblem at the top of the core, in front of everything, its lower edge just above the lettering
   const LOGO = 4.6;
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(LOGO, LOGO), logoMaterial());
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(LOGO, LOGO * LOGO_ASPECT), logoMaterial());
   const [ex, ez] = at(0, 0.62);
   logo.position.set(ex, bandY0 + bandH + 0.15 + LOGO / 2, ez);
   logo.rotation.y = E.rot;
@@ -496,28 +496,38 @@ function fitText(g, text, x, y, maxW, weight, size) {
   g.fillText(text, x, y);
 }
 /**
- * School emblem as on the Nhà S core (drawn from the photo): white panel, "BÁCH KHOA" along the top,
- * "ĐÀ NẴNG" running down the left edge, and a blue square holding a yellow crescent "D".
+ * The school emblem is the official image (img/dut-logo.jpg), never redrawn: it is the university's identity.
+ * Canvas textures that include it are drawn again once the image has loaded; the map re-renders on 'cs-redraw'.
  */
+export const LOGO_SRC = '/img/dut-logo.jpg', LOGO_ASPECT = 386 / 392; // height / width of the image
+let logoImg = null;
+const logoWait = [];
+function onLogo(fn) {
+  if (!logoImg) {
+    logoImg = new Image();
+    logoImg.onload = () => { for (const f of logoWait.splice(0)) f(); window.dispatchEvent(new Event('cs-redraw')); };
+    logoImg.src = LOGO_SRC;
+  }
+  if (logoImg.complete && logoImg.naturalWidth) fn(); else logoWait.push(fn);
+}
+/** Draw the emblem `s` wide with its top-left corner at (x, y) (nothing until the image has loaded). */
 function drawEmblem(g, x, y, s) {
-  g.fillStyle = '#ffffff'; g.fillRect(x, y, s, s);
-  g.strokeStyle = '#1b2f7a'; g.lineWidth = Math.max(2, s * 0.012); g.strokeRect(x + 1, y + 1, s - 2, s - 2);
-  const bx = x + s * 0.2, by = y + s * 0.2, bs = s * 0.74; // blue square (lower right)
-  g.fillStyle = '#1f3fae'; g.fillRect(bx, by, bs, bs);
-  // yellow crescent "D": outer half-disc minus an offset inner half-disc
-  const cy = by + bs / 2, cx = bx + bs * 0.34, R = bs * 0.45;
-  g.fillStyle = '#f6c21a';
-  g.beginPath(); g.moveTo(cx, cy - R); g.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2); g.closePath(); g.fill();
-  g.fillRect(cx - bs * 0.07, cy - R, bs * 0.07, R * 2);
-  g.fillStyle = '#1f3fae';
-  g.beginPath(); g.moveTo(cx - bs * 0.07, cy - R * 0.74); g.arc(cx - bs * 0.07, cy, R * 0.74, -Math.PI / 2, Math.PI / 2); g.closePath(); g.fill();
-  // lettering
-  g.fillStyle = '#1b2f7a'; g.textBaseline = 'middle'; g.textAlign = 'center';
-  g.font = `600 ${Math.round(s * 0.1)}px ${FONT}`;
-  g.fillText('BÁCH KHOA', bx + bs / 2, y + s * 0.105);
-  g.save(); g.translate(x + s * 0.1, by + bs / 2); g.rotate(Math.PI / 2);
-  g.fillText('ĐÀ NẴNG', 0, 0);
-  g.restore();
+  if (logoImg?.complete && logoImg.naturalWidth) g.drawImage(logoImg, x, y, s, s * LOGO_ASPECT);
+}
+/** Canvas texture whose drawing includes the emblem: drawn now, and again when the image is ready. */
+function canvasTexWithLogo(w, h, draw) {
+  const t = canvasTex(w, h, draw);
+  onLogo(() => { const g = t.image.getContext('2d'); g.clearRect(0, 0, w, h); draw(g, w, h); t.needsUpdate = true; });
+  return t;
+}
+let emblemShared = null;
+/** The emblem image as a texture (shared). */
+function emblemTex() {
+  if (!emblemShared) {
+    emblemShared = new THREE.TextureLoader().load(LOGO_SRC, () => window.dispatchEvent(new Event('cs-redraw')));
+    emblemShared.colorSpace = THREE.SRGBColorSpace; emblemShared.anisotropy = 8;
+  }
+  return emblemShared;
 }
 /** Granite name sign (right of the main gate): pink-brown granite, bevelled frame, engraved white lettering. */
 const stoneSignTex = () => canvasTex(1024, 412, (g, w, h) => {
@@ -541,7 +551,7 @@ const stoneSignTex = () => canvasTex(1024, 412, (g, w, h) => {
   engraved('ĐT: 0236.3842308', w - 70, 352, 360, 700, 28, 'right');
 });
 /** Blue billboard over the guard house (left of the main gate). */
-const billboardTex = () => canvasTex(512, 640, (g, w, h) => {
+const billboardTex = () => canvasTexWithLogo(512, 640, (g, w, h) => {
   const grd = g.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, '#2457c5'); grd.addColorStop(1, '#173f99');
   g.fillStyle = grd; g.fillRect(0, 0, w, h);
   drawEmblem(g, w / 2 - 60, 40, 120);
@@ -551,7 +561,6 @@ const billboardTex = () => canvasTex(512, 640, (g, w, h) => {
   fitText(g, 'BÁCH KHOA', w / 2, 366, w - 60, 900, 52);
   g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(40, 420, w - 80, 4);
 });
-const emblemTex = () => canvasTex(256, 256, (g) => drawEmblem(g, 0, 0, 256));
 const flagTex = () => canvasTex(300, 200, (g, w, h) => {
   g.fillStyle = '#da251d'; g.fillRect(0, 0, w, h);
   g.fillStyle = '#ffde00'; g.beginPath();
@@ -676,7 +685,7 @@ export function buildGates(pois) {
       cube.position.set(cx, cy, cz); cube.rotation.y = faceOut; cube.castShadow = true; group.add(cube);
       const logoMat = new THREE.MeshLambertMaterial({ map: emblemTex() });
       for (let k = 0; k < 4; k++) {                                      // emblem inset on each face, white frame around
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(C * 0.84, C * 0.84), logoMat);
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(C * 0.84, C * 0.84 * LOGO_ASPECT), logoMat);
         const a2 = faceOut + (k * Math.PI) / 2;
         m.position.set(cx + Math.sin(a2) * (C / 2 + 0.005), cy, cz + Math.cos(a2) * (C / 2 + 0.005));
         m.rotation.y = a2;
@@ -687,7 +696,7 @@ export function buildGates(pois) {
       // small white box with the emblem at the foot of the column (street side)
       const [kx, kz] = P(half - 1.75, -0.2);
       B.color(0xf2f2f0); B.box(kx, kz, 0.5, 0.32, 0, 1.0, across);
-      const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), logoMat);
+      const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32 * LOGO_ASPECT), logoMat);
       tag.position.set(kx - fx * 0.17, 0.72, kz - fz * 0.17); tag.rotation.y = faceOut; group.add(tag);
     }
     {

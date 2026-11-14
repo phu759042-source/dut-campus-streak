@@ -139,6 +139,7 @@ function rng(seed) {
 export function createCampus(container, data, { dark = false, mobile = false, onPick, onPickPlayer, onBillboard, onFrame, onNear, onInteract, onExitWalk, onView } = {}) {
   let needs = true, raf = 0, disposed = false;
   function requestRender() { needs = true; }
+  addEventListener('cs-redraw', requestRender); // an image texture (school emblem) finished loading
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2));
   renderer.shadowMap.enabled = true;
@@ -656,6 +657,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     setJoy: (x, y) => walker.setJoy(x, y), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt, y) => walker.teleport(x, z, lookAt, y),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
+      removeEventListener('cs-redraw', requestRender);
       disposed = true;
       cancelAnimationFrame(raf);
       walker.dispose();
