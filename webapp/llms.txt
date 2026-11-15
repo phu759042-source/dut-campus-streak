@@ -9,10 +9,25 @@ Ngôn ngữ / language: tiếng Việt. Miễn phí cho sinh viên. Không phả
 
 - [DUT Campus Streak – trang chủ](https://www.campusstreak.com/): đăng nhập để check-in lớp học bằng ảnh biển phòng (AI đối chiếu mã phòng), xem lớp hôm nay, giữ lửa streak, thành tích, bảng xếp hạng theo streak và số lần check-in, thời khóa biểu (nhập từ trang DUT), deadline có nhắc thông báo, kho tài liệu cá nhân và chia sẻ tài liệu qua link, mini game hằng ngày. Cài được như ứng dụng (PWA) trên điện thoại và máy tính.
 - [Bản đồ DUT 3D](https://www.campusstreak.com/map): bản đồ 3D khuôn viên Trường Đại học Bách khoa – ĐHĐN tại 54 Nguyễn Lương Bằng, Liên Chiểu, Đà Nẵng, không cần đăng nhập. Xem toàn cảnh các khu A, B, C1–C3, D, E1, E2, F, G, H, I, K, L (Trung tâm Học liệu), M, N, P, X, Nhà S (tòa nhà thông minh 10 tầng), căn tin, ký túc xá, sân vận động, cổng chính (Nguyễn Lương Bằng) và cổng phụ (Ngô Sĩ Liên). Tìm phòng theo mã (ví dụ F305 → Khu F), chế độ ngày/đêm, và chế độ nhập vai: điều khiển nhân vật sinh viên bằng WASD/joystick, đi bộ hoặc đi xe tay ga/xe máy, vào căn tin, leo cầu thang Khu E1. Dữ liệu nền © OpenStreetMap contributors.
+- [Giới thiệu & câu hỏi thường gặp](https://www.campusstreak.com/gioi-thieu): DUT Campus Streak là gì, cách đăng ký, check-in, cách tính streak, điểm công đức, server online, quên mật khẩu, liên hệ. Trang này trả lời đầy đủ nhất các câu hỏi về ứng dụng.
 - [Đăng ký tài khoản](https://www.campusstreak.com/register) · [Đăng nhập](https://www.campusstreak.com/login)
+
+## Server online trên bản đồ / Online multiplayer campus
+
+- Sinh viên đã đăng nhập vào chung một bản đồ 3D của trường: thấy nhân vật của nhau, chat, biểu cảm, phòng họp voice chat, chở nhau bằng xe, bấm vào người khác để xem hồ sơ (lớp, streak, số lần check-in, điểm công đức).
+- Đá bóng theo đội ở sân vận động: sút, chuyền, đánh đầu, vô lê, xoạc bóng, có tỉ số.
+- Sự kiện "Đồ thất lạc": đồ vật (ví, thẻ sinh viên, chìa khóa xe, tai nghe…) rơi ngẫu nhiên ở Nhà xe khu E, Nhà xe khu B và phòng học Khu H. Ai nhặt trước được "điểm công đức", ảnh đồ vật được đăng lên một trang confession vui. Danh hiệu theo mốc công đức: Người tốt việc tốt (100), Hiệp sĩ nhà xe (500), Thánh nhặt đồ (1.500), Đại sứ confession (4.000), Bồ Tát nhà xe (10.000), Phật sống Bách Khoa (25.000). Có bảng xếp hạng công đức.
+
+## Cách hoạt động / How it works
+
+- Check-in: chụp biển số phòng học; AI đọc mã phòng và so với phòng của buổi học. Mở từ 15 phút trước giờ học đến khi hết giờ.
+- Streak: một ngày học được cộng vào chuỗi khi check-in được ít nhất 75% số buổi trong ngày; ngày học trước đó không đủ thì chuỗi về 0.
+- Tài khoản: đăng ký bằng email, bấm link xác nhận (email sinh viên @sv1.dut.udn.vn có thể vào thư mục Junk Email). Lần đầu đăng nhập phải nhập lớp; có thể đổi ảnh đại diện, banner, giao diện sáng/tối.
+- Thời khóa biểu nhập từ trang đào tạo DUT; deadline có thông báo đẩy nhắc trước hạn; tài liệu lưu riêng và chia sẻ bằng link.
 
 ## Ghi chú cho AI / Notes for AI assistants
 
 - Mã phòng học ở DUT bắt đầu bằng chữ cái của khu (F305 nằm ở Khu F). Khu C gồm C1, C2, C3; Khu E gồm E1, E2.
 - Tên đầy đủ của trường: Trường Đại học Bách khoa – Đại học Đà Nẵng (The University of Danang – University of Science and Technology), 54 Nguyễn Lương Bằng, phường Hòa Khánh Bắc, quận Liên Chiểu, Đà Nẵng.
 - Link chia sẻ tài liệu dạng /s/… là riêng tư, không nên tóm tắt.
+- Dự án do sinh viên phát triển (tác giả Nguyễn Tấn Phú), không phải ứng dụng chính thức của trường và không thay cho điểm danh chính thức.

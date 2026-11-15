@@ -93,6 +93,7 @@ export function LoginPage() {
     </form>
     <div class="auth-foot">Chưa có tài khoản? <a class="link strong" href="/register" onClick=${(e) => { e.preventDefault(); navigate('/register'); }}>Đăng ký</a></div>
     <div class="auth-foot">Tân sinh viên? <a class="link strong" href="/map" onClick=${(e) => { e.preventDefault(); navigate('/map'); }}>Khám phá bản đồ trường 3D</a></div>
+    <div class="auth-foot"><a class="link" href="/gioi-thieu" onClick=${(e) => { e.preventDefault(); navigate('/gioi-thieu'); }}>Giới thiệu & câu hỏi thường gặp</a></div>
   <//>`;
 }
 

@@ -14,11 +14,12 @@ import { ProfilePage, WelcomePage, AFTER_WELCOME } from './pages/profile.js';
 import { AchievementsPage, AboutPage } from './pages/misc.js';
 import { SharedLinkPage } from './pages/sharelink.js';
 import { AdminPage, useIsAdmin } from './pages/admin.js';
+import { IntroPage } from './pages/intro.js';
 import { syncPush } from './push.js';
 import { InstallButton } from './install.js';
 import { UploadIndicator } from './uploads.js';
 
-const PUBLIC = ['/login', '/register', '/forgot', '/reset', '/map'];
+const PUBLIC = ['/login', '/register', '/forgot', '/reset', '/map', '/gioi-thieu'];
 
 // The 3D map pulls in Three.js, so it is loaded only when opened.
 function LazyMap() {
@@ -113,6 +114,7 @@ function App() {
   const shareParams = match('/s/:token', path);
   if (shareParams) return html`<${SharedLinkPage} token=${shareParams.token} key=${path} />`;
   if (path === '/map') return html`<${LazyMap} />`;
+  if (path === '/gioi-thieu') return html`<${IntroPage} />`;
   if (session === undefined) return html`<${Splash} />`;
   if (path === '/login') return html`<${LoginPage} />`;
   if (path === '/register') return html`<${RegisterPage} />`;

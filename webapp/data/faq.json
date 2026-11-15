@@ -1,0 +1,27 @@
+{
+  "intro": "DUT Campus Streak (campusstreak.com) là ứng dụng web miễn phí dành cho sinh viên Trường Đại học Bách khoa – Đại học Đà Nẵng (DUT). Sinh viên check-in lớp học bằng ảnh chụp biển số phòng, giữ chuỗi streak đi học đều, đua bảng xếp hạng, quản lý thời khóa biểu, deadline, tài liệu, và khám phá khuôn viên trường qua bản đồ 3D có chế độ chơi online nhiều người. Đây là dự án do sinh viên phát triển, không phải trang chính thức của nhà trường.",
+  "features": [
+    ["Check-in lớp học bằng ảnh", "Chụp biển số phòng học khi đến lớp; AI đối chiếu mã phòng trong ảnh với phòng của buổi học. Cổng check-in mở từ 15 phút trước giờ học đến khi hết giờ."],
+    ["Streak đi học đều", "Một ngày được tính vào chuỗi streak khi bạn check-in được ít nhất 75% số buổi học trong ngày. Bỏ lỡ một ngày học thì chuỗi về 0."],
+    ["Bảng xếp hạng", "Xếp hạng theo streak, theo số lần check-in, theo tuần, theo lớp và theo điểm công đức của sự kiện tìm đồ thất lạc."],
+    ["Thời khóa biểu, deadline, tài liệu", "Nhập thời khóa biểu từ trang đào tạo của DUT, tạo deadline có thông báo nhắc trên điện thoại, lưu tài liệu cá nhân và chia sẻ bằng link."],
+    ["Hồ sơ sinh viên", "Ảnh đại diện, banner, tên hiển thị và lớp (bắt buộc), thành tích và mini game hằng ngày: Lật thẻ, Toán nhanh, Bắt lửa."],
+    ["Bản đồ DUT 3D", "Bản đồ 3D khuôn viên trường tại 54 Nguyễn Lương Bằng, Liên Chiểu, Đà Nẵng, không cần đăng nhập: tìm phòng theo mã (F305 nằm ở Khu F), chế độ ngày/đêm, đi bộ hoặc đi xe quanh trường."],
+    ["Server online nhiều người", "Sinh viên đã đăng nhập vào chung một bản đồ: thấy nhân vật của nhau, chat, biểu cảm, phòng họp voice chat, chở nhau bằng xe, và bấm vào người khác để xem hồ sơ (lớp, streak, số lần check-in, công đức)."],
+    ["Đá bóng ở sân vận động", "Chia đội đá bóng trên sân vận động trong server online: sút, chuyền, đánh đầu, vô lê, xoạc bóng, có tỉ số và bảng điểm."],
+    ["Sự kiện Đồ thất lạc", "Đồ vật rơi ngẫu nhiên ở Nhà xe khu E, Nhà xe khu B và các phòng học Khu H. Ai nhặt trước sẽ được điểm công đức, ảnh đồ vật được đăng lên một trang confession vui, và có danh hiệu theo mốc công đức (từ Người tốt việc tốt đến Phật sống Bách Khoa)."]
+  ],
+  "faq": [
+    ["DUT Campus Streak là gì?", "Là ứng dụng web miễn phí giúp sinh viên Trường Đại học Bách khoa – Đại học Đà Nẵng đi học đều: check-in lớp học bằng ảnh biển phòng, giữ chuỗi streak, đua bảng xếp hạng, quản lý thời khóa biểu, deadline, tài liệu, kèm bản đồ 3D khuôn viên trường và server chơi online."],
+    ["Có phải ứng dụng chính thức của Trường Đại học Bách khoa Đà Nẵng không?", "Không. Đây là dự án do sinh viên tự phát triển (tác giả Nguyễn Tấn Phú), không phải trang chính thức của nhà trường và không dùng để điểm danh chính thức."],
+    ["Dùng có mất phí không? Cần cài gì không?", "Miễn phí. Mở campusstreak.com trên trình duyệt là dùng được; có thể cài như ứng dụng (PWA) trên Android, iPhone, Windows và macOS bằng nút Cài app."],
+    ["Làm sao để đăng ký?", "Vào campusstreak.com/register, nhập tên, email và mật khẩu, rồi bấm link xác nhận trong email (xem cả thư mục Spam hoặc Junk Email, nhất là với email sinh viên @sv1.dut.udn.vn). Lần đầu đăng nhập sẽ được mời nhập lớp và chọn ảnh đại diện, banner, giao diện sáng/tối."],
+    ["Check-in lớp học hoạt động thế nào?", "Khi đến lớp, mở buổi học hôm nay và chụp biển số phòng. AI đọc mã phòng trong ảnh và so với phòng của buổi học. Check-in mở từ 15 phút trước giờ học đến lúc hết giờ."],
+    ["Streak được tính như thế nào?", "Mỗi ngày có lịch học, nếu bạn check-in được ít nhất 75% số buổi thì ngày đó được cộng vào chuỗi. Ngày hôm nay chưa đủ thì chưa bị tính là trượt; một ngày học trước đó không đủ 75% thì chuỗi về 0."],
+    ["Bản đồ DUT 3D có những gì?", "Toàn cảnh các khu A, B, C1–C3, D, E1, E2, F, G, H, I, K, L (Trung tâm Học liệu), M, N, P, X, Nhà S, căn tin, ký túc xá, sân vận động, cổng chính Nguyễn Lương Bằng và cổng phụ Ngô Sĩ Liên. Có tìm phòng theo mã, chế độ ngày/đêm và đi dạo nhập vai. Không cần đăng nhập."],
+    ["Server online trên bản đồ dùng để làm gì?", "Để sinh viên gặp nhau trong khuôn viên ảo: đi lại, chat, mở phòng họp voice chat, đá bóng ở sân vận động, chở nhau bằng xe và tham gia sự kiện tìm đồ thất lạc. Cần đăng nhập để vào server."],
+    ["Điểm công đức là gì?", "Là điểm của sự kiện Đồ thất lạc trên server online: nhặt được đồ rơi (ví, thẻ sinh viên, chìa khóa xe, tai nghe…) ở nhà xe hoặc phòng học thì được cộng công đức. Điểm được lưu theo tài khoản, có bảng xếp hạng và danh hiệu theo mốc: Người tốt việc tốt (100), Hiệp sĩ nhà xe (500), Thánh nhặt đồ (1.500), Đại sứ confession (4.000), Bồ Tát nhà xe (10.000), Phật sống Bách Khoa (25.000)."],
+    ["Quên mật khẩu thì làm sao?", "Vào trang Quên mật khẩu và nhập email đã đăng ký. Chỉ tài khoản đã đăng ký và đã xác nhận email mới nhận được thư đặt lại mật khẩu; nếu email chưa đăng ký, trang sẽ báo để bạn tạo tài khoản mới."],
+    ["Liên hệ, góp ý hoặc báo lỗi ở đâu?", "Trong ứng dụng, mở Hồ sơ → Liên hệ & Giới thiệu để xem email liên hệ của tác giả, hoặc dùng mục Đánh giá ứng dụng để chấm sao và góp ý."]
+  ]
+}
