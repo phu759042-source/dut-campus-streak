@@ -674,7 +674,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     /** stands: can sit here / sit or stand up / go and sit on a seat with a good view */
     canSit: () => !!seatHere(), toggleSit, sitting: () => !!walker.state.sit,
     watchMatch() { const s = stadium?.randomSeat(); if (!s || !walker.state.on) return false; walker.sitAt(s); requestRender(); return true; },
-    setJoy: (x, y, held) => walker.setJoy(x, y, held), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt, y) => walker.teleport(x, z, lookAt, y),
+    setJoy: (x, y, held) => walker.setJoy(x, y, held), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), relockMouse: () => walker.relock(), mouseLocked: () => walker.isLocked(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt, y) => walker.teleport(x, z, lookAt, y),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       removeEventListener('cs-redraw', requestRender);

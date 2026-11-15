@@ -110,7 +110,7 @@ function useCount(to, ms, start) {
  * the phone camera with the photo, the shutter and flash, "sending to the admin", then the confession post with
  * reactions and comments coming in, and "Công đức +pts".
  */
-export function ConfessionShow({ show, onClose }) {
+export function ConfessionShow({ show, onClose, relock }) {
   const it = ITEM[show.k];
   const [stage, setStage] = useState('cam'); // cam -> flash -> send -> post
   const [img, setImg] = useState(null);
@@ -142,14 +142,15 @@ export function ConfessionShow({ show, onClose }) {
       at(w + 26000, () => close.current());
     };
     Promise.resolve(show.photo).then(go, () => go(null));
-    // The mouse stays as it was: locked (looking around with the mouse) or free. While locked the show is closed
-    // from the keyboard (Enter, E or Space), so walking on afterwards needs no new click to lock it again.
+    // The mouse is freed for the buttons; if it was locked (looking around with the mouse) it locks again on close.
     const onKey = (e) => {
       if (e.repeat || !['Escape', 'Enter', ' ', 'e', 'E'].includes(e.key)) return;
       e.preventDefault(); e.stopPropagation(); close.current();
     };
     addEventListener('keydown', onKey, true);
-    return () => { alive = false; timers.forEach(clearTimeout); removeEventListener('keydown', onKey, true); };
+    const wasLocked = !!document.pointerLockElement;
+    if (wasLocked) document.exitPointerLock();
+    return () => { alive = false; timers.forEach(clearTimeout); removeEventListener('keydown', onKey, true); if (wasLocked) relock?.(); };
   }, []);
   const posted = stage === 'post';
   const likes = useCount(fixed.current.likes, 2600, posted);

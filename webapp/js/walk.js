@@ -469,7 +469,17 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
       if (p && p.catch) p.catch(fallback);
     } catch { fallback(); }
   }
-  const lockChange = () => { if (!locked()) unlockedAt = performance.now(); drag = null; emitView(); };
+  // Lock the mouse again after the page released it on purpose (the chat, the confession show). The browser may
+  // refuse without a click or key press just before: then the next click on the map locks it (quietly, no toast).
+  let relockOnClick = false;
+  function relock() {
+    if (!st.on || locked() || !el.requestPointerLock) return;
+    const later = () => { relockOnClick = true; };
+    const plain = () => { try { const q = el.requestPointerLock(); if (q && q.catch) q.catch(later); } catch { later(); } };
+    try { const p = el.requestPointerLock({ unadjustedMovement: true }); if (p && p.catch) p.catch(plain); } catch { plain(); }
+  }
+  el.addEventListener('pointerdown', () => { if (relockOnClick && st.on && !locked()) { relockOnClick = false; relock(); } });
+  const lockChange = () => { if (!locked()) unlockedAt = performance.now(); else relockOnClick = false; drag = null; emitView(); };
   document.addEventListener('pointerlockchange', lockChange);
   const mousemove = (e) => { if (st.on && locked()) turn(e.movementX * 0.0024, e.movementY * 0.0021); };
   document.addEventListener('mousemove', mousemove);
@@ -894,7 +904,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     setJoy(x, y, held = x !== 0 || y !== 0) { st.joy.x = x; st.joy.y = y; st.joyHeld = held; },
     jump() { st.jumpReq = true; },
     setMode,
-    toggleLock, setFirstPerson, isLocked: locked,
+    toggleLock, relock, setFirstPerson, isLocked: locked,
     dispose() {
       window.removeEventListener('keydown', keydown);
       window.removeEventListener('keyup', keyup);

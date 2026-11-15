@@ -171,6 +171,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const input = useRef();
   const msgsBox = useRef();
   const stick = useRef(true); // chat follows new messages unless you scrolled up to read
+  const chatLock = useRef(false); // the mouse was locked when "/" opened the chat
   const st = useRef({});
   st.current = { me, players, fp, panel, myMeeting };
 
@@ -350,7 +351,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     const onKey = (e) => {
       if (e.key !== '/' || e.ctrlKey || e.altKey || e.metaKey) return;
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') || document.body.classList.contains('no-scroll')) return;
-      if (document.pointerLockElement) document.exitPointerLock();
+      // the mouse is freed to type; it locks again when you leave the chat (Esc, Enter, a click on the map)
+      if (document.pointerLockElement) { chatLock.current = true; document.exitPointerLock(); }
       e.preventDefault();
       if (mobile) setPanel('chat');
       setTimeout(() => input.current?.focus(), 0);
@@ -526,7 +528,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     ${panel === 'soccer' && html`<${SoccerPanel} v=${socView} soccer=${soccer.current} me=${me?.id} nameOf=${nameOf} mobile=${mobile} onClose=${() => setPanel(null)} />`}
 
     ${panel === 'lost' && html`<${LostPanel} items=${lfItems} me=${lfMe} top=${lfTop} myId=${me?.id} onGo=${goZone} onClose=${() => setPanel(null)} />`}
-    ${cfsShow && html`<${ConfessionShow} key=${cfsShow.cfs} show=${cfsShow} onClose=${() => setCfsShow(null)} />`}
+    ${cfsShow && html`<${ConfessionShow} key=${cfsShow.cfs} show=${cfsShow} onClose=${() => setCfsShow(null)} relock=${() => scene.relockMouse?.()} />`}
 
     ${panel === 'emotes' && html`<div class="world-panel emotes pop-in">${EMOTES.map((e, i) => html`<button class="world-emote" onClick=${() => emote(i)}>${e}</button>`)}</div>`}
 
@@ -583,6 +585,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       <form class="world-input" onSubmit=${send}>
         <input ref=${input} value=${text} maxLength="300" placeholder=${mobile ? 'Nhắn gì đó…' : 'Nhấn / để chat, Enter để gửi…'} aria-label="Tin nhắn"
           onInput=${(e) => setText(e.target.value)} onFocus=${() => setUnread(0)}
+          onBlur=${() => { if (chatLock.current) { chatLock.current = false; scene.relockMouse?.(); } }}
           onKeyDown=${(e) => { if (e.key === 'Enter' && !text.trim() && !mobile) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); e.currentTarget.blur(); } }} />
         <button class="map-btn sm" type="submit" aria-label="Gửi" disabled=${!text.trim()}><${Icon} name="chevron" size=${18} /></button>
       </form>
