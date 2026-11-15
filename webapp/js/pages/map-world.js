@@ -458,7 +458,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     world.current.chat(v, chatTab === 'meeting' && myMeeting ? myMeeting : null);
     setText('');
     stick.current = true;
-    if (!mobile) input.current?.blur(); // back to walking right away
+    if (!mobile) leaveChat(); // back to walking right away (the mouse locks again if it was locked)
   }
   // keep the newest message in view, unless you scrolled up to read older ones
   useLayoutEffect(() => { stick.current = true; }, [panel, chatTab]);
@@ -473,6 +473,11 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
   const sel = selPlayer && players[selPlayer];
   const messages = chatTab === 'meeting' && myMeeting ? mchat : chat;
 
+  /** Out of the chat box (Enter): the key press lets the mouse lock again at once if "/" freed it. */
+  function leaveChat() {
+    if (chatLock.current) { chatLock.current = false; scene.relockMouse?.(); }
+    input.current?.blur();
+  }
   function hopOn(id) { world.current?.send({ t: 'ride', on: id }); }
   function pickUp(k) {
     const now = performance.now();
@@ -586,10 +591,10 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       <div class="world-msgs" ref=${msgsBox} onScroll=${(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30; }}>${messages.slice(-30).map((c) => html`<div class=${'world-msg' + (c.sys ? ' sys' : '')} key=${c.at + c.id}>
         ${!c.sys && html`<b class=${c.id === me?.id ? 'me' : ''}>${c.name}</b> `}<span>${c.text}</span> <i>${fmtTime(c.at)}</i></div>`)}</div>
       <form class="world-input" onSubmit=${send}>
-        <input ref=${input} value=${text} maxLength="300" placeholder=${mobile ? 'Nhắn gì đó…' : 'Nhấn / để chat, Enter để gửi…'} aria-label="Tin nhắn"
+        <input ref=${input} value=${text} maxLength="300" placeholder=${mobile ? 'Nhắn gì đó…' : 'Nhấn / để chat, Enter để gửi và chơi tiếp…'} aria-label="Tin nhắn"
           onInput=${(e) => setText(e.target.value)} onFocus=${() => setUnread(0)}
           onBlur=${() => { if (chatLock.current) { chatLock.current = false; scene.relockMouse?.(); } }}
-          onKeyDown=${(e) => { if (e.key === 'Enter' && !text.trim() && !mobile) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); e.currentTarget.blur(); } }} />
+          onKeyDown=${(e) => { if (e.key === 'Enter' && !text.trim() && !mobile) { e.preventDefault(); leaveChat(); } if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); e.currentTarget.blur(); } }} />
         <button class="map-btn sm" type="submit" aria-label="Gửi" disabled=${!text.trim()}><${Icon} name="chevron" size=${18} /></button>
       </form>
     </div>`}
