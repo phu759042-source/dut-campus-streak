@@ -148,21 +148,43 @@ export function ForgotPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState(null);
+  const [status, setStatus] = useState(null); // null | 'none' | 'unconfirmed' (why no mail was sent)
+  const [resent, setResent] = useState(false);
+  const goto = (path) => (ev) => { ev.preventDefault(); navigate(path); };
 
   async function submit(e) {
     e.preventDefault();
-    if (!email.trim()) return setError('Vui lòng nhập email đã đăng ký.');
-    setLoading(true); setError(null);
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${location.origin}/reset` });
+    const addr = email.trim();
+    if (!addr) return setError('Vui lòng nhập email đã đăng ký.');
+    setLoading(true); setError(null); setStatus(null); setResent(false);
+    // Only a registered and confirmed account gets the reset mail; otherwise say why instead of a silent "sent".
+    const { data: st, error: e0 } = await supabase.rpc('auth_email_status', { p_email: addr });
+    if (!e0 && st !== 'confirmed') { setLoading(false); return setStatus(st); }
+    const { error: err } = await supabase.auth.resetPasswordForEmail(addr, { redirectTo: `${location.origin}/reset` });
     setLoading(false);
     if (err) return setError(errMsg(err));
     setSent(true);
+  }
+  async function resendConfirm() {
+    setLoading(true);
+    const { error: err } = await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: `${location.origin}/` } });
+    setLoading(false);
+    if (err) return setError(errMsg(err));
+    setResent(true);
   }
 
   return html`<${AuthShell} title="Quên mật khẩu" subtitle="Nhập email, mình sẽ gửi liên kết đặt lại mật khẩu.">
     ${sent ? html`<div class="success-box pop-in"><${Icon} name="mail" /> <span>Đã gửi email tới <b>${email}</b>. Mở liên kết trong email trên thiết bị này để đặt mật khẩu mới.</span></div>`
       : html`<form class="stack" onSubmit=${submit}>
-        <${IconInput} icon="mail" type="email" placeholder="Email" value=${email} onInput=${(e) => setEmail(e.target.value)} />
+        <${IconInput} icon="mail" type="email" placeholder="Email" value=${email} onInput=${(e) => { setEmail(e.target.value); setStatus(null); }} />
+        ${status === 'none' && html`<div class="form-error shake">
+          Email <b>${email.trim()}</b> chưa được đăng ký tài khoản nên không thể gửi email đặt lại mật khẩu.
+          Hãy kiểm tra lại email, hoặc <a class="link strong" href="/register" onClick=${goto('/register')}>quay về trang đăng ký</a> để tạo tài khoản mới.</div>`}
+        ${status === 'unconfirmed' && html`<div class="form-error shake">
+          Tài khoản <b>${email.trim()}</b> đã đăng ký nhưng chưa xác nhận email, nên chưa thể đặt lại mật khẩu.
+          Hãy mở thư xác nhận (xem cả thư mục Spam / Junk Email) rồi đăng nhập.
+          <div style="margin-top:8px">${resent ? html`<span>Đã gửi lại email xác nhận ✓</span>`
+            : html`<button type="button" class="btn btn-sm btn-ghost" disabled=${loading} onClick=${resendConfirm}>Gửi lại email xác nhận</button>`}</div></div>`}
         ${error && html`<div class="form-error shake">${error}</div>`}
         <button class="btn btn-primary btn-lg btn-block" disabled=${loading}>${loading ? html`<${Spinner} size=${18} />` : 'Gửi liên kết'}</button>
       </form>`}
