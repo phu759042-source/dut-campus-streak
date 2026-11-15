@@ -103,7 +103,7 @@ export class World {
     return out;
   }
   players() { return this.sockets().map(([, a]) => a); }
-  pub(a) { return { id: a.id, name: a.name, look: a.look, p: a.p || null, m: a.m || null, away: !!a.away, r: a.r || null }; }
+  pub(a) { return { id: a.id, name: a.name, look: a.look, p: a.p || null, m: a.m || null, away: !!a.away, r: a.r || null, mp: a.mp || 0 }; } // mp: merit points (title over the name)
   send(ws, o) { try { ws.send(typeof o === 'string' ? o : json(o)); } catch { /* closed */ } }
   broadcast(o, except) {
     const s = json(o);
@@ -145,8 +145,9 @@ export class World {
       try { old.close(4409, 'opened elsewhere'); } catch { /* closed */ }
     }
     const a = { auth: true, id: user.id, name, look: cleanLook(look || savedLook), p: null, m: null, r: null, lastChat: 0, at: Date.now(), seen: Date.now(), away: false };
-    ws.serializeAttachment(a);
     await this.load();
+    a.mp = this.lost.mine(a.id).pts;
+    ws.serializeAttachment(a);
     this.send(ws, {
       t: 'welcome', me: this.pub(a),
       players: this.players().filter((p) => p.id !== a.id).map((p) => this.pub(p)),

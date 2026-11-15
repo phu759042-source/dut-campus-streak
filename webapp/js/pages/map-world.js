@@ -8,7 +8,7 @@ import { connectWorld, EMOTES, devName } from '../world.js';
 import { SoccerHud, SoccerPanel, SoccerChip, TEAM_CSS, showBoard } from './map-soccer.js';
 import { shouldAskRating, snoozeRating, openRating, Stars } from '../rating.js';
 import { LostChip, LostPanel, LostPick, ConfessionShow } from './map-lost.js';
-import { ITEM, ZONES, SPOTS, placeOf } from '../lost-core.js';
+import { ITEM, ZONES, SPOTS, placeOf, titleOf } from '../lost-core.js';
 
 const LOOK_LABELS = { skin: 'Màu da', hair: 'Kiểu tóc', hc: 'Màu tóc', shirt: 'Áo', pants: 'Quần', bag: 'Balo', glasses: 'Kính' };
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
@@ -203,8 +203,16 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
           case 'lfgot': {
             lfSet(lfList.filter(([k]) => k !== m.k));
             const it = ITEM[m.k]; if (!it) break;
+            // the finder's new total: a new title over their name?
+            const was = m.id === st.current.me?.id ? st.current.me?.mp : st.current.players[m.id]?.mp;
+            const up = m.total != null && titleOf(m.total) && titleOf(m.total) !== titleOf(was) ? titleOf(m.total) : null;
+            if (m.total != null) {
+              if (m.id === st.current.me?.id) { const me2 = { ...st.current.me, mp: m.total }; st.current.me = me2; setMe(me2); }
+              else setPlayers((o) => (o[m.id] ? { ...o, [m.id]: { ...o[m.id], mp: m.total } } : o));
+            }
+            if (up && m.id !== st.current.me?.id) sys(`🎉 ${m.name} vừa đạt danh hiệu ${up.icon} ${up.name}!`);
             if (m.id === st.current.me?.id) {
-              setCfsShow({ k: m.k, s: m.s, cfs: m.cfs, pts: m.pts, photo: photoOf.current ? photoOf.current(m.k, m.s).catch(() => null) : null });
+              setCfsShow({ k: m.k, s: m.s, cfs: m.cfs, pts: m.pts, up, photo: photoOf.current ? photoOf.current(m.k, m.s).catch(() => null) : null });
               bubble(m.id, `📸 Nhặt được ${it.short}!`, 4000);
             } else {
               bubble(m.id, `📸 Nhặt được ${it.short}!`, 4500);
@@ -406,7 +414,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       if (!t || !t.el) {
         const el = document.createElement('div');
         el.className = 'world-tag' + (h.me ? ' me' : '');
-        el.innerHTML = '<div class="world-bubble"></div><div class="world-name"><i></i><span></span></div>';
+        el.innerHTML = '<div class="world-bubble"></div><div class="world-title"></div><div class="world-name"><i></i><span></span></div>';
         if (!h.me) el.addEventListener('click', () => { setSelPlayer(h.id); setPanel(null); });
         box.appendChild(el);
         t = { ...(t || {}), el };
@@ -420,6 +428,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       t.el.style.zIndex = String(1000 - Math.round(p.depth * 1000));
       const name = info.name + (info.m && !h.me ? ' 🎙' : '') + (info.away && !h.me ? ' 💤' : '');
       if (t.name !== name) { t.name = name; t.el.querySelector('.world-name span').textContent = name; }
+      const ttl = titleOf(info.mp), tt = ttl ? `${ttl.icon} ${ttl.name}` : ''; // merit title (lost-and-found event)
+      if (t.title !== tt) { t.title = tt; const e = t.el.querySelector('.world-title'); e.textContent = tt; e.style.display = tt ? '' : 'none'; e.dataset.tier = ttl ? String(ttl.at) : ''; t.el.classList.toggle('titled', !!tt); }
       const showB = t.bubble && t.until > now;
       const bt = showB ? t.bubble : '';
       if (t.shown !== bt) { t.shown = bt; const b = t.el.querySelector('.world-bubble'); b.textContent = bt; b.style.display = bt ? '' : 'none'; }

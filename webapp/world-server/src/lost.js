@@ -101,8 +101,10 @@ export class Lost {
     this.db().exec(`INSERT INTO merit (id, name, pts, n, at) VALUES (?, ?, ?, 1, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, pts = merit.pts + excluded.pts, n = merit.n + 1, at = excluded.at`, a.id, a.name, it.pts, now);
     this.webTop = null;
-    this.w.broadcast({ t: 'lfgot', k: msg.k, s, id: a.id, name: a.name, pts: it.pts, cfs });
-    this.w.send(ws, this.mine(a.id));
+    const me = this.mine(a.id);
+    a.mp = me.pts; ws.serializeAttachment(a); // the finder's new total: everyone updates the title over their name
+    this.w.broadcast({ t: 'lfgot', k: msg.k, s, id: a.id, name: a.name, pts: it.pts, total: me.pts, cfs });
+    this.w.send(ws, me);
     await this.w.ctx.storage.put('cfs', this.cfs);
     await this.save();
   }

@@ -57,6 +57,20 @@ export const ITEMS = [
 ];
 export const ITEM = Object.fromEntries(ITEMS.map((it) => [it.k, it]));
 
+// Titles by merit points: shown over the name in the server, in the event panel and on the leaderboard.
+export const TITLES = [
+  { at: 10, name: 'Người tốt việc tốt', icon: '🌱' },
+  { at: 50, name: 'Hiệp sĩ nhà xe', icon: '🛵' },
+  { at: 150, name: 'Thánh nhặt đồ', icon: '🔍' },
+  { at: 300, name: 'Đại sứ confession', icon: '📢' },
+  { at: 600, name: 'Bồ Tát nhà xe', icon: '🪷' },
+  { at: 1000, name: 'Phật sống Bách Khoa', icon: '🙏' },
+];
+/** The title for this many points (null below the first one). */
+export const titleOf = (pts) => { let t = null; for (const x of TITLES) if ((pts || 0) >= x.at) t = x; return t; };
+/** The next title to reach, or null at the top. */
+export const nextTitle = (pts) => TITLES.find((x) => (pts || 0) < x.at) || null;
+
 /** Where spot i is, in words: "Nhà xe khu B" or "phòng H203". */
 export const placeOf = (i) => { const s = SPOTS[i]; return !s ? '' : s[6] ? `phòng ${s[6]}` : ZONES[s[4]]; };
 

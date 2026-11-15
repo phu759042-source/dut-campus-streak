@@ -3,7 +3,7 @@
 // the post on the (in-game) confession page asking the owner to come and get it, and the merit points.
 import { html, useState, useEffect, useRef } from 'preact';
 import { Icon } from '../ui.js';
-import { ITEM, ZONES, SPOTS, placeOf } from '../lost-core.js';
+import { ITEM, ZONES, SPOTS, placeOf, TITLES, titleOf, nextTitle } from '../lost-core.js';
 
 export const SLOGAN = 'Nam 1 lốc Sting, nữ 1 hôn lốc xoáy kiểu Pháp 💋';
 // where "Tới đó" takes you in each place: [spot, look at]
@@ -70,10 +70,24 @@ export function LostPanel({ items, me, top, myId, onGo, onClose }) {
       <span class="lf-count">${byZone[i].length}</span>
       <button class="btn btn-ghost btn-sm" onClick=${() => onGo(ZONE_GO[i])}>Tới đó</button>
     </div>`)}</div>
+    <${TitleProgress} pts=${me?.pts || 0} />
     <div class="lf-board-head"><b>🙏 Bảng công đức</b>${me && me.n > 0 && html`<span class="muted small">Bạn: hạng #${me.rank} · ${me.pts} điểm · ${me.n} món</span>`}</div>
     ${!top ? html`<p class="muted small">Đang tải…</p>` : !top.length ? html`<p class="muted small">Chưa ai nhặt được gì. Người đầu tiên là bạn?</p>`
       : html`<ol class="lf-board">${top.map((r, i) => html`<li class=${r.id === myId ? 'me' : ''}>
-        <span class="lf-rank">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span><span class="grow">${r.name}</span><span class="muted small">${r.n} món</span><b>${r.pts}</b></li>`)}</ol>`}
+        <span class="lf-rank">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span><span class="grow">${r.name}${titleOf(r.pts) && html`<span class="lf-title world-block">${titleOf(r.pts).icon} ${titleOf(r.pts).name}</span>`}</span><span class="muted small">${r.n} món</span><b>${r.pts}</b></li>`)}</ol>`}
+  </div>`;
+}
+
+/** Your title, the bar to the next one, and the list of all titles. */
+function TitleProgress({ pts }) {
+  const cur = titleOf(pts), next = nextTitle(pts);
+  const from = cur ? cur.at : 0, pct = next ? Math.min(100, ((pts - from) / (next.at - from)) * 100) : 100;
+  return html`<div class="lf-tier">
+    <div class="lf-tier-now"><span>${cur ? html`<b>${cur.icon} ${cur.name}</b>` : html`<b>Chưa có danh hiệu</b>`}</span>
+      <span class="muted small">${next ? `${pts}/${next.at} → ${next.icon} ${next.name}` : 'Danh hiệu cao nhất!'}</span></div>
+    <span class="lf-tier-bar"><i style=${`width:${pct}%`}></i></span>
+    <details class="small"><summary class="muted">Các danh hiệu</summary>
+      <ul class="lf-tier-list">${TITLES.map((t) => html`<li class=${pts >= t.at ? 'got' : ''}><span>${t.icon} ${t.name}</span><b>${t.at}</b></li>`)}</ul></details>
   </div>`;
 }
 
@@ -160,5 +174,6 @@ export function ConfessionShow({ show, onClose }) {
       <button class="btn btn-primary cfs-close" onClick=${onClose}>Tiếp tục tìm đồ</button>
     </div>`}
     ${posted && html`<div class="cfs-merit" aria-live="polite">🙏 Công đức +${show.pts}</div>`}
+    ${posted && show.up && html`<div class="cfs-levelup" aria-live="polite"><small>Danh hiệu mới</small><b>${show.up.icon} ${show.up.name}</b></div>`}
   </div>`;
 }

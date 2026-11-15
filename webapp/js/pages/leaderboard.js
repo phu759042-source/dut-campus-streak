@@ -4,6 +4,7 @@ import { Icon, Avatar, Skeleton, ErrorBox, Empty, Segmented, openSheet } from '.
 import { PageHeader } from './shared.js';
 import { WORLD_HTTP } from '../world.js';
 import { navigate } from '../router.js';
+import { titleOf } from '../lost-core.js';
 
 const PAGE_SIZE = 50;
 const name = (r) => String(r.display_name || '').trim() || 'Sinh viên';
@@ -149,7 +150,7 @@ export function LeaderboardPage() {
 
     ${myRow && html`<button class="me-card slide-up" onClick=${locateMe}>
       <${Avatar} url=${myRow.avatar_url} name=${name(myRow)} size=${46} />
-      <span class="grow"><b>Hạng #${myRow.rank}</b><br /><span class="small">${metric === 'merit' ? `🙏 ${num(myRow.pts)} công đức · nhặt được ${num(myRow.n)} món đồ thất lạc` : `${num(myRow.total_check_ins)} check-in · 🔥 ${num(myRow.current_streak)} ngày · 📅 ${num(myRow.weekly_streak)} tuần`}</span></span>
+      <span class="grow"><b>Hạng #${myRow.rank}</b><br /><span class="small">${metric === 'merit' ? `${titleOf(myRow.pts) ? `${titleOf(myRow.pts).icon} ${titleOf(myRow.pts).name} · ` : ''}🙏 ${num(myRow.pts)} công đức · nhặt được ${num(myRow.n)} món đồ thất lạc` : `${num(myRow.total_check_ins)} check-in · 🔥 ${num(myRow.current_streak)} ngày · 📅 ${num(myRow.weekly_streak)} tuần`}</span></span>
       <${Icon} name="crosshair" />
     </button>`}
     ${rows && !myRow && scope === 'class' && html`<div class="note">Bạn không thuộc lớp đang xem.</div>`}
@@ -167,7 +168,7 @@ export function LeaderboardPage() {
               style=${`--d:${Math.min(i, 12) * 35}ms` + (r.banner_url ? `;--banner:url('${r.banner_url}')` : '')} onClick=${() => open(r)}>
             <span class="lb-rank">${r.rank}</span>
             <${Avatar} url=${r.avatar_url} name=${name(r)} size=${42} />
-            <span class="grow lb-who"><b>${name(r)}</b><span class="small muted">${cls(r)}</span></span>
+            <span class="grow lb-who"><b>${name(r)}</b><span class="small muted">${metric === 'merit' && titleOf(r.pts) ? `${titleOf(r.pts).icon} ${titleOf(r.pts).name} · ` : ''}${cls(r)}</span></span>
             <span class="lb-score">${SCORE[metric](r)}</span>
           </button>`)}
         </div>

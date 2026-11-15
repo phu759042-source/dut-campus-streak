@@ -1377,3 +1377,24 @@ button.world-ride { padding: 9px 10px 9px 14px; }
 .cfs-merit { position: fixed; z-index: 61; left: 0; right: 0; top: 18%; margin: 0 auto; width: fit-content; padding: 10px 22px; border-radius: 999px; pointer-events: none; font-size: 30px; font-weight: 900; color: #7a4a00;
   background: linear-gradient(135deg, #fff1b8, #ffc94d); box-shadow: 0 10px 40px rgba(255, 170, 30, 0.6); animation: cfsMerit 2.6s ease-out both; }
 @keyframes cfsMerit { 0% { opacity: 0; transform: translateY(40px) scale(0.6); } 15% { opacity: 1; transform: translateY(0) scale(1.12); } 25% { transform: scale(1); } 75% { opacity: 1; transform: translateY(-30px); } 100% { opacity: 0; transform: translateY(-80px); } }
+
+/* merit titles (lost-and-found event): over the name tag, in the panel, on a new title */
+.world-title { position: absolute; left: 0; bottom: 27px; transform: translateX(-50%); white-space: nowrap; pointer-events: none; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; color: #6b4300; background: linear-gradient(135deg, #fff3bf, #ffd43b); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+.world-title[data-tier='150'], .world-title[data-tier='300'] { color: #fff; background: linear-gradient(135deg, #845ef7, #d6336c); }
+.world-title[data-tier='600'], .world-title[data-tier='1000'] { color: #fff; background: linear-gradient(135deg, #f59f00, #e8590c); box-shadow: 0 0 12px rgba(255, 190, 40, 0.8); }
+.world-tag.titled .world-bubble { bottom: 52px; }
+.world-tag.far .world-title { font-size: 10px; opacity: 0.8; }
+.lf-title { font-size: 11.5px; font-weight: 700; color: #d9822b; }
+.lf-tier { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 12px; background: linear-gradient(135deg, rgba(255, 212, 59, 0.16), rgba(255, 146, 43, 0.1)); }
+.lf-tier-now { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lf-tier-bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.lf-tier-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ffd43b, #ff922b); }
+.lf-tier summary { cursor: pointer; }
+.lf-tier-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.lf-tier-list li { display: flex; justify-content: space-between; opacity: 0.55; }
+.lf-tier-list li.got { opacity: 1; font-weight: 700; }
+.cfs-levelup { position: fixed; z-index: 61; left: 0; right: 0; top: calc(18% + 76px); margin: 0 auto; width: fit-content; display: flex; flex-direction: column; align-items: center; padding: 10px 22px;
+  border-radius: 18px; pointer-events: none; color: #fff; background: linear-gradient(135deg, #845ef7, #d6336c); box-shadow: 0 10px 40px rgba(132, 94, 247, 0.55); animation: cfsMerit 3.4s ease-out 0.5s both; }
+.cfs-levelup small { font-size: 12px; font-weight: 700; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; }
+.cfs-levelup b { font-size: 24px; font-weight: 900; }
