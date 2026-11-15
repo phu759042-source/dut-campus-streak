@@ -204,6 +204,10 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
           case 'lfgot': {
             lfSet(lfList.filter(([k]) => k !== m.k));
             const it = ITEM[m.k]; if (!it) break;
+            const mine = m.id === st.current.me?.id;
+            // in the chat for everyone (you too); a short note on screen when someone else found it
+            sys(`🙏 ${mine ? 'Bạn' : m.name} nhặt được ${it.short} ở ${placeOf(m.s)} và đăng confession tìm chủ #cfs${m.cfs} (+${m.pts} công đức)`);
+            if (!mine) toast(`📸 ${m.name} vừa nhặt được ${it.short} ở ${placeOf(m.s)} và đăng confession tìm chủ!`, 'info', 3500);
             // the finder's new total: a new title over their name?
             const was = m.id === st.current.me?.id ? st.current.me?.mp : st.current.players[m.id]?.mp;
             const up = m.total != null && titleOf(m.total) && titleOf(m.total) !== titleOf(was) ? titleOf(m.total) : null;
@@ -217,7 +221,6 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
               bubble(m.id, `📸 Nhặt được ${it.short}!`, 4000);
             } else {
               bubble(m.id, `📸 Nhặt được ${it.short}!`, 4500);
-              sys(`🙏 ${m.name} nhặt được ${it.short} ở ${placeOf(m.s)} (+${m.pts} công đức) · #cfs${m.cfs}`);
             }
             break;
           }

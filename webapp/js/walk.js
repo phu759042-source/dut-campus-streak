@@ -427,6 +427,9 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
   const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
   function keydown(e) {
     if (!st.on || isTyping()) return;
+    // the page freed the mouse (chat, confession) and the browser would not lock it again by itself: the next key
+    // you press to play (W, A, S, D…) counts as a gesture, so lock it now
+    if (relockOnClick && !locked() && e.code !== 'Escape' && e.code !== 'KeyO') { relockOnClick = false; relock(); }
     if (play.onKey && play.onKey(e.code, true, e)) { e.preventDefault(); return; }
     if (MOVE_KEYS.includes(e.code)) { st.keys.add(e.code); e.preventDefault(); }
     if (e.code === 'Space') { st.jumpReq = true; e.preventDefault(); }
