@@ -1398,3 +1398,6 @@ button.world-ride { padding: 9px 10px 9px 14px; }
   border-radius: 18px; pointer-events: none; color: #fff; background: linear-gradient(135deg, #845ef7, #d6336c); box-shadow: 0 10px 40px rgba(132, 94, 247, 0.55); animation: cfsMerit 3.4s ease-out 0.5s both; }
 .cfs-levelup small { font-size: 12px; font-weight: 700; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; }
 .cfs-levelup b { font-size: 24px; font-weight: 900; }
+
+.cfs-key { margin-left: 6px; padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 800; background: rgba(255, 255, 255, 0.25); }
+@media (pointer: coarse) { .cfs-key { display: none; } }

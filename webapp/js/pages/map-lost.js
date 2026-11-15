@@ -142,9 +142,13 @@ export function ConfessionShow({ show, onClose }) {
       at(w + 26000, () => close.current());
     };
     Promise.resolve(show.photo).then(go, () => go(null));
-    const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close.current(); } };
+    // The mouse stays as it was: locked (looking around with the mouse) or free. While locked the show is closed
+    // from the keyboard (Enter, E or Space), so walking on afterwards needs no new click to lock it again.
+    const onKey = (e) => {
+      if (e.repeat || !['Escape', 'Enter', ' ', 'e', 'E'].includes(e.key)) return;
+      e.preventDefault(); e.stopPropagation(); close.current();
+    };
     addEventListener('keydown', onKey, true);
-    if (document.pointerLockElement) document.exitPointerLock();
     return () => { alive = false; timers.forEach(clearTimeout); removeEventListener('keydown', onKey, true); };
   }, []);
   const posted = stage === 'post';
@@ -171,7 +175,7 @@ export function ConfessionShow({ show, onClose }) {
       <div class="cfs-actions"><span>👍 Thích</span><span>💬 Bình luận</span><span>↗ Chia sẻ</span></div>
       <div class="cfs-comments">${comments.slice(0, nCom).map((c) => html`<div class="cfs-cmt pop-in" key=${c.n}>
         <span class="cfs-cmt-av">${c.n.split(' ').pop().charAt(0)}</span><span class="cfs-cmt-body"><b>${c.n}</b>${c.t}</span></div>`)}</div>
-      <button class="btn btn-primary cfs-close" onClick=${onClose}>Tiếp tục tìm đồ</button>
+      <button class="btn btn-primary cfs-close" onClick=${onClose}>Tiếp tục tìm đồ <span class="cfs-key">Enter</span></button>
     </div>`}
     ${posted && html`<div class="cfs-merit" aria-live="polite">🙏 Công đức +${show.pts}</div>`}
     ${posted && show.up && html`<div class="cfs-levelup" aria-live="polite"><small>Danh hiệu mới</small><b>${show.up.icon} ${show.up.name}</b></div>`}
