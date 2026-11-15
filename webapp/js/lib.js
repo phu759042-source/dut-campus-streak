@@ -321,7 +321,7 @@ export async function loadMyProfile() {
     supabase.from('profiles').select('display_name, avatar_url, banner_url').eq('id', user.id).maybeSingle(),
   ]);
   const profile = {
-    ...(u || {}), ...(p || {}),
+    ...(u || {}), ...(p || {}), id: user.id,
     email: u?.email || user.email || '',
     display_name: p?.display_name || u?.name || 'Sinh viên',
   };

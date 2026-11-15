@@ -10,7 +10,7 @@ import { LeaderboardPage } from './pages/leaderboard.js';
 import { SchedulePage } from './pages/schedule.js';
 import { DeadlinesPage } from './pages/deadlines.js';
 import { DocumentsPage } from './pages/documents.js';
-import { ProfilePage } from './pages/profile.js';
+import { ProfilePage, WelcomePage, AFTER_WELCOME } from './pages/profile.js';
 import { AchievementsPage, AboutPage } from './pages/misc.js';
 import { SharedLinkPage } from './pages/sharelink.js';
 import { AdminPage, useIsAdmin } from './pages/admin.js';
@@ -40,6 +40,7 @@ const ROUTES = [
   ['/deadlines', DeadlinesPage],
   ['/documents', DocumentsPage],
   ['/profile', ProfilePage],
+  ['/welcome', WelcomePage, { bare: true }],
   ['/about', AboutPage],
   ['/admin', AdminPage],
 ];
@@ -97,8 +98,16 @@ function App() {
     if (session === undefined) return;
     if (store.recovery && path !== '/reset') { navigate('/reset', { replace: true }); return; }
     if (!session && !PUBLIC.includes(path) && !path.startsWith('/s/')) navigate('/login', { replace: true });
-    if (session && ['/login', '/register', '/forgot'].includes(path)) navigate('/', { replace: true });
-  }, [session, path, store.recovery]);
+    if (session && ['/login', '/register', '/forgot'].includes(path)) { navigate('/', { replace: true }); return; }
+    // The class is required: a new account (right after confirming the email) and every older account without one
+    // goes to "complete your profile" first, then back to where it was heading.
+    const p = store.profile;
+    if (session && p && p.id === session.user.id && !String(p.class_name || '').trim() &&
+        path !== '/welcome' && path !== '/reset' && !path.startsWith('/s/')) {
+      try { sessionStorage.setItem(AFTER_WELCOME, path + location.search); } catch { /* storage off */ }
+      navigate('/welcome', { replace: true });
+    }
+  }, [session, path, store.recovery, store.profile]);
 
   // Public share links work without logging in.
   const shareParams = match('/s/:token', path);

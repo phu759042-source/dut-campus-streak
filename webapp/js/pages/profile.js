@@ -194,11 +194,10 @@ export async function logout() {
 // ------------------------------------------------------------------
 // Page
 // ------------------------------------------------------------------
-export function ProfilePage() {
-  const store = useStore();
-  const isAdmin = useIsAdmin();
-  const [myRate, setMyRate] = useState(null);
-  useEffect(() => { loadMyRating().then(setMyRate, () => {}); }, []);
+export const CLASS_MAX = 24;
+
+/** Editing state shared by the profile page and the "complete your profile" page: name, email, class, avatar, banner. */
+function useProfileEditor() {
   const [orig, setOrig] = useState(null);
   const [f, setF] = useState(null);
   const [avatar, setAvatar] = useState(null); // { blob, url }
@@ -214,11 +213,9 @@ export function ProfilePage() {
   useEffect(() => { load().catch((e) => toast(errMsg(e), 'error')); }, []);
   useEffect(() => () => { avatar && URL.revokeObjectURL(avatar.url); banner && URL.revokeObjectURL(banner.url); }, [avatar, banner]);
 
-  if (!f) return html`<div class="page narrow"><${PageHeader} title="Hồ sơ" /><${Skeleton} h=${220} r=${26} /><${Skeleton} h=${56} count=${4} /></div>`;
-
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const changed = f.name.trim() !== orig.name || f.email.trim().toLowerCase() !== orig.email.toLowerCase() ||
-    f.klass.trim() !== orig.klass || avatar || banner;
+  const changed = !!f && (f.name.trim() !== orig.name || f.email.trim().toLowerCase() !== orig.email.toLowerCase() ||
+    f.klass.trim() !== orig.klass || !!avatar || !!banner);
 
   async function chooseAvatar() {
     const file = await pickFile();
@@ -270,11 +267,15 @@ export function ProfilePage() {
     if (c === 'new') newBanner();
   }
 
-  async function save() {
+  /** Saves everything; resolves true when it worked. */
+  async function save({ quiet = false } = {}) {
     const user = currentUser();
-    const name = f.name.trim(), email = f.email.trim(), klass = f.klass.trim();
-    if (!name) return toast('Tên hiển thị không được để trống.', 'error');
+    const name = f.name.trim(), email = f.email.trim(), klass = f.klass.trim().replace(/\s+/g, ' ');
+    if (!name) { toast('Tên hiển thị không được để trống.', 'error'); return false; }
+    if (!klass) { toast('Hãy nhập lớp của bạn (VD: 23T_DT1).', 'error'); return false; }
+    if (klass.length > CLASS_MAX) { toast(`Tên lớp tối đa ${CLASS_MAX} ký tự.`, 'error'); return false; }
     setSaving(true);
+    let ok = false;
     try {
       let avatarUrl = orig.avatar_url, bannerUrl = orig.banner_url;
       if (avatar) {
@@ -305,13 +306,47 @@ export function ProfilePage() {
         const { error: e3 } = await supabase.auth.updateUser({ email }, { emailRedirectTo: `${location.origin}/` });
         if (e3) throw new Error('Không thể đổi email: ' + errMsg(e3));
       }
-      toast(emailChanged ? `Đã gửi email xác nhận đến ${email}. Hãy xác nhận để hoàn tất đổi email.` : 'Đã lưu thay đổi hồ sơ.', 'success', 5000);
+      if (emailChanged || !quiet) toast(emailChanged ? `Đã gửi email xác nhận đến ${email}. Hãy xác nhận để hoàn tất đổi email.` : 'Đã lưu thay đổi hồ sơ.', 'success', 5000);
       await load();
+      ok = true;
     } catch (e) {
       toast('Không thể lưu thay đổi: ' + errMsg(e), 'error', 5000);
     }
     setSaving(false);
+    return ok;
   }
+
+  return { f, set, changed, avatar, banner, saving, setSaving, chooseAvatar, chooseBanner, save };
+}
+
+/** Banner + avatar header; tapping either opens the picker / cropper. */
+function ProfileHero({ ed }) {
+  const { f, avatar, banner, saving, chooseAvatar, chooseBanner } = ed;
+  const bannerSrc = banner?.url || hideStorageUrl(f.banner_url);
+  return html`<section class="profile-hero pop-in">
+    <button class="profile-banner" style=${bannerSrc ? `background-image:url('${bannerSrc}')` : ''} onClick=${chooseBanner} disabled=${saving}>
+      <span class="banner-edit"><${Icon} name="image" size=${16} /> ${bannerSrc ? 'Sửa banner' : 'Thêm banner'}</span>
+    </button>
+    <button class="profile-avatar" onClick=${chooseAvatar} disabled=${saving} aria-label="Đổi ảnh đại diện">
+      <${Avatar} url=${avatar?.url || f.avatar_url} name=${f.name} size=${96} ring />
+      <span class="avatar-edit"><${Icon} name="camera" size=${16} /></span>
+    </button>
+    <div class="profile-id">
+      <div class="profile-name">${f.name || 'Hồ sơ sinh viên'}</div>
+      <div class="muted small">${f.klass.trim() || 'Chưa có lớp'}</div>
+    </div>
+  </section>`;
+}
+
+export function ProfilePage() {
+  const store = useStore();
+  const isAdmin = useIsAdmin();
+  const [myRate, setMyRate] = useState(null);
+  useEffect(() => { loadMyRating().then(setMyRate, () => {}); }, []);
+  const ed = useProfileEditor();
+  const { f, set, changed, saving, save } = ed;
+  if (!f) return html`<div class="page narrow"><${PageHeader} title="Hồ sơ" /><${Skeleton} h=${220} r=${26} /><${Skeleton} h=${56} count=${4} /></div>`;
+  const setSaving = ed.setSaving;
 
   async function changePassword() {
     if (await openSheet(ChangePassword, { title: 'Đổi mật khẩu', center: true })) toast('Đã đổi mật khẩu.', 'success');
@@ -331,29 +366,16 @@ export function ProfilePage() {
   }
 
   const dark = store.theme === 'dark';
-  const bannerSrc = banner?.url || hideStorageUrl(f.banner_url);
   return html`<div class="page narrow">
     <${PageHeader} title="Hồ sơ" />
-    <section class="profile-hero pop-in">
-      <button class="profile-banner" style=${bannerSrc ? `background-image:url('${bannerSrc}')` : ''} onClick=${chooseBanner} disabled=${saving}>
-        <span class="banner-edit"><${Icon} name="image" size=${16} /> Sửa banner</span>
-      </button>
-      <button class="profile-avatar" onClick=${chooseAvatar} disabled=${saving} aria-label="Đổi ảnh đại diện">
-        <${Avatar} url=${avatar?.url || f.avatar_url} name=${f.name} size=${96} ring />
-        <span class="avatar-edit"><${Icon} name="camera" size=${16} /></span>
-      </button>
-      <div class="profile-id">
-        <div class="profile-name">${f.name || 'Hồ sơ sinh viên'}</div>
-        <div class="muted small">${f.klass || 'Chưa có lớp'}</div>
-      </div>
-    </section>
+    <${ProfileHero} ed=${ed} />
 
     <section class="card stack">
       <h3 class="card-title">Thông tin cá nhân</h3>
       <${Field} label="Tên hiển thị"><input class="input" value=${f.name} onInput=${set('name')} /><//>
       <${Field} label="Email"><input class="input" type="email" value=${f.email} onInput=${set('email')} /><//>
-      <${Field} label="Lớp"><input class="input" value=${f.klass} onInput=${set('klass')} placeholder="VD: 23T_DT1" /><//>
-      <button class="btn btn-primary btn-block btn-lg" disabled=${!changed || saving} onClick=${save}>
+      <${Field} label="Lớp (bắt buộc)"><input class="input" value=${f.klass} onInput=${set('klass')} placeholder="VD: 23T_DT1" maxLength=${CLASS_MAX} /><//>
+      <button class="btn btn-primary btn-block btn-lg" disabled=${!changed || saving} onClick=${() => save()}>
         ${saving ? html`<${Spinner} size=${18} />` : 'Lưu thay đổi'}</button>
     </section>
 
@@ -374,5 +396,59 @@ export function ProfilePage() {
       <button class="setting" onClick=${logout}><span class="list-icon gray"><${Icon} name="logout" /></span><span class="grow"><b>Đăng xuất</b></span></button>
       <button class="setting danger" onClick=${deleteAccount} disabled=${saving}><span class="list-icon red"><${Icon} name="trash" /></span><span class="grow"><b>Xóa tài khoản</b></span></button>
     </section>
+  </div>`;
+}
+
+// ------------------------------------------------------------------
+// "Complete your profile": shown right after the first sign-in, and to every account without a class (the class is
+// required since this update). The app sends people here until the class is saved.
+// ------------------------------------------------------------------
+export const AFTER_WELCOME = 'cs-after-welcome';
+
+export function WelcomePage() {
+  const store = useStore();
+  const ed = useProfileEditor();
+  const { f, set, saving, save } = ed;
+  const user = currentUser();
+  const fresh = user?.created_at && Date.now() - new Date(user.created_at).getTime() < 3 * 86400e3;
+  if (!f) return html`<div class="page narrow welcome"><${Skeleton} h=${80} r=${20} /><${Skeleton} h=${220} r=${26} /><${Skeleton} h=${56} count=${3} /></div>`;
+
+  const dark = store.theme === 'dark';
+  const ready = !!f.klass.trim() && !!f.name.trim();
+  async function finish(e) {
+    e?.preventDefault();
+    if (!(await save({ quiet: true }))) return;
+    toast(fresh ? 'Xong rồi! Chào mừng bạn đến với Campus Streak 🎉' : 'Đã cập nhật hồ sơ. Cảm ơn bạn!', 'success', 4000);
+    let next = '/';
+    try { next = sessionStorage.getItem(AFTER_WELCOME) || '/'; sessionStorage.removeItem(AFTER_WELCOME); } catch { /* storage off */ }
+    navigate(next === '/welcome' ? '/' : next, { replace: true });
+  }
+
+  return html`<div class="page narrow welcome">
+    <div class="welcome-head pop-in">
+      <img src="/icon-96.png" alt="" width="52" height="52" />
+      <div>
+        <h1>${fresh ? 'Chào mừng bạn mới! 🎉' : 'Hoàn thiện hồ sơ của bạn ✨'}</h1>
+        <p class="muted">${fresh ? 'Cá nhân hoá hồ sơ một chút trước khi bắt đầu nhé.' : 'Bản cập nhật mới cần bạn bổ sung lớp đang học.'}${' '}Hãy cho các bạn khác biết bạn học lớp nào nha!</p>
+      </div>
+    </div>
+
+    <${ProfileHero} ed=${ed} />
+    <div class="muted small center welcome-tip">Bấm vào ảnh đại diện hoặc banner để đổi (không bắt buộc).</div>
+
+    <form class="card stack" onSubmit=${finish}>
+      <${Field} label="Lớp của bạn *"><input class="input" value=${f.klass} onInput=${set('klass')} placeholder="VD: 23T_DT1" maxLength=${CLASS_MAX} autofocus required /><//>
+      <${Field} label="Tên hiển thị"><input class="input" value=${f.name} onInput=${set('name')} placeholder="Tên mọi người sẽ thấy" /><//>
+      <div class="field">
+        <span class="field-label">Giao diện</span>
+        <div class="theme-pick">
+          <button type="button" class=${'theme-opt' + (!dark ? ' on' : '')} onClick=${() => saveTheme('light')}><${Icon} name="sun" size=${20} /> Sáng</button>
+          <button type="button" class=${'theme-opt' + (dark ? ' on' : '')} onClick=${() => saveTheme('dark')}><${Icon} name="moon" size=${20} /> Tối</button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block btn-lg" disabled=${!ready || saving}>
+        ${saving ? html`<${Spinner} size=${18} />` : fresh ? 'Bắt đầu thôi 🚀' : 'Lưu hồ sơ'}</button>
+      ${!f.klass.trim() && html`<div class="muted small center">Cần nhập lớp để tiếp tục.</div>`}
+    </form>
   </div>`;
 }

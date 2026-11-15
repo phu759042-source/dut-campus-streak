@@ -1407,3 +1407,29 @@ button.world-ride { padding: 9px 10px 9px 14px; }
 .school-mail-ok { color: var(--success); font-weight: 700; }
 .school-mail-err { color: var(--danger); font-weight: 600; margin-top: 6px; }
 .school-mail .btn-ghost { box-shadow: inset 0 0 0 1.5px currentColor; background: transparent; }
+/* "Complete your profile" page */
+.welcome { padding-top: calc(28px + var(--safe-t, 0px)); padding-bottom: 40px; }
+.welcome-head { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
+.welcome-head img { border-radius: 16px; flex-shrink: 0; }
+.welcome-head h1 { font-size: 24px; margin: 0 0 4px; line-height: 1.2; }
+.welcome-head p { margin: 0; line-height: 1.45; }
+.welcome-tip { margin: -6px 0 14px; }
+.theme-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.theme-opt { display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border-radius: 14px; font-weight: 700;
+  background: var(--surface-2, var(--primary-soft)); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--border); transition: box-shadow 0.2s, color 0.2s; }
+.theme-opt.on { color: var(--primary); box-shadow: inset 0 0 0 2px var(--primary); }
+/* player profile card on the online map */
+.wpc { margin: -12px -12px 4px; }
+.wpc-banner { position: relative; height: 92px; border-radius: 16px 16px 0 0; background: center / cover no-repeat; }
+.wpc-banner.noimg { background: linear-gradient(135deg, var(--primary), var(--primary-2)); }
+.wpc-close { position: absolute; top: 6px; right: 6px; background: rgba(0, 0, 0, 0.35); color: #fff; }
+.wpc-id { display: flex; gap: 10px; align-items: flex-start; padding: 0 12px; margin-top: -30px; }
+.wpc-avatar { flex-shrink: 0; border-radius: 50%; }
+.wpc-names { display: flex; flex-direction: column; min-width: 0; padding-top: 34px; }
+.wpc-name { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wpc-title { font-size: 12px; font-weight: 700; color: #b7791f; }
+:root[data-theme='dark'] .wpc-title { color: #f6c453; }
+.wpc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 12px 12px 0; }
+.wpc-stats div { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border-radius: 12px; background: var(--surface-2); }
+.wpc-stats b { font-size: 18px; }
+.wpc-stats span { font-size: 11.5px; color: var(--muted); font-weight: 600; white-space: nowrap; }

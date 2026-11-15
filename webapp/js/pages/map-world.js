@@ -2,8 +2,8 @@
 // player list, meetings with voice chat, emotes, the character customizer, football at the stadium
 // (game in ../soccer.js, its UI in map-soccer.js) and the lost-and-found event (../lost.js, map-lost.js).
 import { html, useState, useEffect, useLayoutEffect, useRef } from 'preact';
-import { supabase } from '../lib.js';
-import { Icon, toast, openSheet } from '../ui.js';
+import { supabase, hideStorageUrl } from '../lib.js';
+import { Icon, Avatar, toast, openSheet } from '../ui.js';
 import { connectWorld, EMOTES, devName } from '../world.js';
 import { SoccerHud, SoccerPanel, SoccerChip, TEAM_CSS, showBoard } from './map-soccer.js';
 import { shouldAskRating, snoozeRating, openRating, Stars } from '../rating.js';
@@ -553,7 +553,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
       onJoin=${(id) => world.current?.joinMeeting(id)} onLeave=${() => world.current?.leaveMeeting()} onClose=${() => setPanel(null)} />`}
 
     ${sel && html`<div class="world-card pop-in">
-      <div class="world-panel-head"><b>${sel.name}</b><button class="icon-btn" aria-label="Đóng" onClick=${() => setSelPlayer(null)}><${Icon} name="x" size=${18} /></button></div>
+      <${PlayerProfile} key=${sel.id} player=${sel} onClose=${() => setSelPlayer(null)} />
       ${sel.away && html`<div class="muted small">💤 Bạn này đang tạm vắng (để tab ở nền hoặc khoá màn hình), nên nhân vật đứng yên.</div>`}
       ${sel.m && html`<div class="muted small">🎙 Đang ở ${meetings.find((x) => x.id === sel.m)?.name || 'một phòng họp'}</div>`}
       <div class="world-card-actions">
@@ -635,5 +635,52 @@ function MeetingsPanel({ meetings, players, me, myMeeting, nameOf, onCreate, onJ
       <span class="grow"><b>${m.open ? '' : '🔒 '}${m.name}</b><span class="muted small world-block">${m.members.map(nameOf).join(', ')}</span></span>
       ${m.id === myMeeting ? html`<button class="btn btn-ghost btn-sm" onClick=${onLeave}>Rời</button>` : html`<button class="btn btn-primary btn-sm" onClick=${() => onJoin(m.id)}>Vào</button>`}
     </div>`) : !creating && html`<p class="muted small">Chưa có phòng họp nào. Tạo một phòng rồi mời bạn bè; mọi người trong phòng nói chuyện được với nhau bằng micro.</p>`}
+  </div>`;
+}
+
+// ------------------------------------------------------------------
+// Profile card of another player (tap a name tag or a row in the online list):
+// banner, avatar, name, class, verified check-ins, streak and merit points.
+// ------------------------------------------------------------------
+const profileCache = new Map(); // id -> { at, data }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function PlayerProfile({ player, onClose }) {
+  const hit = profileCache.get(player.id);
+  const [prof, setProf] = useState(hit?.data || null);
+  const [state, setState] = useState(hit ? 'ok' : 'loading');
+  useEffect(() => {
+    if (!UUID.test(player.id)) { setState('none'); return; }
+    if (hit && Date.now() - hit.at < 60e3) return;
+    let alive = true;
+    supabase.rpc('get_public_profile', { p_user_id: player.id }).then(({ data, error }) => {
+      if (!alive) return;
+      const row = !error && data?.[0];
+      if (row) { profileCache.set(player.id, { at: Date.now(), data: row }); setProf(row); setState('ok'); }
+      else if (!prof) setState('none');
+    }, () => { if (alive && !prof) setState('none'); });
+    return () => { alive = false; };
+  }, [player.id]);
+
+  const mp = player.mp || 0, title = titleOf(mp);
+  const banner = hideStorageUrl(prof?.banner_url);
+  const name = player.name || prof?.display_name || 'Người chơi';
+  return html`<div class="wpc">
+    <div class=${'wpc-banner' + (banner ? '' : ' noimg')} style=${banner ? `background-image:url('${banner}')` : ''}>
+      <button class="icon-btn wpc-close" aria-label="Đóng" onClick=${onClose}><${Icon} name="x" size=${18} /></button>
+    </div>
+    <div class="wpc-id">
+      <span class="wpc-avatar"><${Avatar} url=${prof?.avatar_url} name=${name} size=${64} ring /></span>
+      <div class="wpc-names">
+        <b class="wpc-name">${name}</b>
+        <span class="muted small">${state === 'loading' ? 'Đang tải hồ sơ…' : prof?.class_name ? `Lớp ${prof.class_name}` : 'Chưa có lớp'}</span>
+        ${title && html`<span class="wpc-title">${title.icon} ${title.name}</span>`}
+      </div>
+    </div>
+    <div class="wpc-stats">
+      <div><b>${state === 'ok' ? prof.current_streak : '–'}</b><span>🔥 Streak</span></div>
+      <div><b>${state === 'ok' ? prof.total_check_ins : '–'}</b><span>📸 Check-in</span></div>
+      <div><b>${mp.toLocaleString('vi-VN')}</b><span>🙏 Công đức</span></div>
+    </div>
   </div>`;
 }
