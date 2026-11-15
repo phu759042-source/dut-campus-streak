@@ -59,12 +59,12 @@ export const ITEM = Object.fromEntries(ITEMS.map((it) => [it.k, it]));
 
 // Titles by merit points: shown over the name in the server, in the event panel and on the leaderboard.
 export const TITLES = [
-  { at: 10, name: 'Người tốt việc tốt', icon: '🌱' },
-  { at: 50, name: 'Hiệp sĩ nhà xe', icon: '🛵' },
-  { at: 150, name: 'Thánh nhặt đồ', icon: '🔍' },
-  { at: 300, name: 'Đại sứ confession', icon: '📢' },
-  { at: 600, name: 'Bồ Tát nhà xe', icon: '🪷' },
-  { at: 1000, name: 'Phật sống Bách Khoa', icon: '🙏' },
+  { at: 100, name: 'Người tốt việc tốt', icon: '🌱' },
+  { at: 500, name: 'Hiệp sĩ nhà xe', icon: '🛵' },
+  { at: 1500, name: 'Thánh nhặt đồ', icon: '🔍' },
+  { at: 4000, name: 'Đại sứ confession', icon: '📢' },
+  { at: 10000, name: 'Bồ Tát nhà xe', icon: '🪷' },
+  { at: 25000, name: 'Phật sống Bách Khoa', icon: '🙏' },
 ];
 /** The title for this many points (null below the first one). */
 export const titleOf = (pts) => { let t = null; for (const x of TITLES) if ((pts || 0) >= x.at) t = x; return t; };
