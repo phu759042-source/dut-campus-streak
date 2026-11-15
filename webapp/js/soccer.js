@@ -185,7 +185,13 @@ function sfx(kind, k = 1) {
   if (kind === 'kick') { noise(a, t, 0.09, 'lowpass', 500, 0.25 + 0.3 * k); tone(a, t, 95, 0.09, 0.12 + 0.12 * k); }
   else if (kind === 'catch') noise(a, t, 0.12, 'lowpass', 900, 0.25);
   else if (kind === 'post') { tone(a, t, 880, 0.35, 0.08); tone(a, t, 1320, 0.25, 0.05); }
-  else if (kind === 'slide') noise(a, t, 0.3, 'bandpass', 1800, 0.08, 0.04);
+  else if (kind === 'slide') { // the slide tackle: a thud as you go down, then the grass scraping until you stop (1 s)
+    noise(a, t, 0.12, 'lowpass', 260, 0.22, 0.004);
+    noise(a, t + 0.02, 0.98, 'bandpass', 1300, 0.14, 0.05);
+    noise(a, t + 0.05, 0.85, 'highpass', 3200, 0.035, 0.08);
+  }
+  else if (kind === 'dash') noise(a, t, 0.3, 'bandpass', 1800, 0.08, 0.04); // dribble burst, bicycle kick take-off
+  else if (kind === 'trap') { noise(a, t, 0.1, 'lowpass', 420, 0.3); tone(a, t, 120, 0.08, 0.08); } // ball brought down on the body
   else if (kind === 'whistle') { tone(a, t, 2850, 0.16, 0.05, 140); tone(a, t + 0.22, 2850, 0.42, 0.05, 140); }
   else if (kind === 'final') { tone(a, t, 2850, 0.3, 0.05, 140); tone(a, t + 0.4, 2850, 0.3, 0.05, 140); tone(a, t + 0.8, 2850, 0.8, 0.05, 140); }
   else if (kind === 'goal') { noise(a, t, 2.6, 'bandpass', 900, 0.22, 0.35); noise(a, t + 0.1, 2.2, 'bandpass', 1500, 0.1, 0.3); }
@@ -412,8 +418,8 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   }
   function fireAir(kind, aim) {
     const b = sim.b, dir = onTarget(aimDir(aim), b.u, b.v);
-    if (kind === 'v') strike('v', dir, 27, 1.2);
-    else strike('h', dir, 16, b.y > 1.7 ? -1.5 : 0.8); // a header from high up goes down into the grass
+    if (kind === 'v') strike('v', dir, 31, 1.2);
+    else strike('h', dir, 19, b.y > 1.7 ? -1.5 : 0.8); // a header from high up goes down into the grass
   }
   // What each kick does: { dir, sp (m/s along the grass), lift (m/s up), k }. The preview draws the same thing.
   // Tap (quick press of pass): a short push ahead along the grass, just far enough to run onto it again. Standing it
@@ -422,7 +428,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   // Lofted pass: the power decides how far. Weakest about 14 m (2.5 m high), full power about 50 m, i.e. from
   // your own goal line it comes down at the halfway line (about 8.5 m high at the top, 2.6 s in the air).
   const highPlan = (aim, p) => ({ dir: aimDir(aim), sp: 11.3 + p * 16.2, lift: 7.2 + p * 7.5, k: 'l' });
-  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: 14 + p * 18, lift: 0.6 + p * p * 5.2, k: 's' }; };
+  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: 17 + p * 19, lift: 0.6 + p * p * 5.4, k: 's' }; };
   function shoot(p, aim) {
     if (!holding() && !grabNear()) return;
     const P = shotPlan(aim, p);
@@ -466,7 +472,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     if (!walker.bicycle(Math.atan2(wx, wz))) return false;
     bike = { dir, t0: performance.now(), done: false };
     hold.shoot = hold.pass = null; air = null;
-    sfx('slide');
+    sfx('dash');
     changed(true);
     return true;
   }
@@ -510,7 +516,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     }
     walker.lunge(hx, hz);
     send({ t: 'fx', p: [w.x + hx * 1.2, w.z + hz * 1.2], d: [hx, hz] }); // the slide (everyone sees it)
-    slideHit = { until: performance.now() + 950, sent: false };
+    slideHit = { until: performance.now() + 1250, sent: false };
     sfx('slide');
   }
   /** Dribble burst (Q / Lừa): a quick dash; with the ball, tackles miss you for a moment. */
@@ -522,7 +528,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     dribbleWait = performance.now() + RECOVER_MS;
     stamina = Math.max(0, stamina - 0.12);
     if (holding()) send({ t: 'fd' });
-    sfx('slide');
+    sfx('dash');
   }
   function onKey(code, down, e) {
     if (myTeam < 0) return false;
@@ -547,7 +553,9 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     if (hold.pass && downAt && !document.pointerLockElement && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 8) hold.pass.moved = true;
   };
   const mup = (e) => { if (e.button === 2) release('shoot'); else if (e.button === 0) { release('pass'); downAt = null; } };
-  const ctxmenu = (e) => { if (myTeam >= 0 && onView(e)) e.preventDefault(); };
+  // No browser menu on the right button anywhere on the map while in a team: on Windows it opens on release and
+  // swallows the keys held meanwhile (you stop) or their release (you keep running one way).
+  const ctxmenu = (e) => { if (myTeam >= 0 && !/^(INPUT|TEXTAREA)$/.test(e.target?.tagName || '')) e.preventDefault(); };
   window.addEventListener('touchstart', tstart, { passive: true });
   window.addEventListener('mousedown', mdown);
   window.addEventListener('mousemove', mmove);
@@ -561,8 +569,10 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   };
   function applyRules() {
     if (myTeam < 0) { walker.setPlay(null); return; }
-    walker.setPlay({ run: RUN, sprint: SPRINT, factor: holding() ? 0.88 : 1, frozen: ms.st === 'kick', bounds: IN_MATCH.includes(ms.st) ? bounds : null,
-      canSprint: !tired, walkOnly: true, onKey });
+    // charging a kick (with or without the ball) you keep moving, a bit slower; jumps go higher than on campus
+    const charging = !!(hold.shoot || hold.pass);
+    walker.setPlay({ run: RUN, sprint: SPRINT, factor: charging ? 0.78 : holding() ? 0.88 : 1, frozen: ms.st === 'kick', bounds: IN_MATCH.includes(ms.st) ? bounds : null,
+      canSprint: !tired, walkOnly: true, onKey, jumpV: 6.1 });
   }
   function applyKits() {
     for (const id of players.ids()) { const t = teamOf(id); players.setKit(id, t >= 0 ? KITS[t] : null); }
@@ -578,6 +588,17 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     if (myTeam >= 0 && have && w.on && canPlay() && sim.b.h == null && !pending && performance.now() > touchWait && !w.slide && !w.fall && !air && !bike && !w.bike) {
       const [mu, mv] = mine(), du = sim.b.u - mu, dv = sim.b.v - mv;
       if (du * du + dv * dv < 1.0 && sim.b.y < 1.4) { send({ t: 'ft', p: [w.x, w.z] }); pending = performance.now(); touchWait = pending + 300; }
+    }
+    // a high ball hitting your body (chest or head, standing or jumping): you bring it down and keep it
+    if (myTeam >= 0 && have && w.on && canPlay() && sim.b.h == null && !pending && performance.now() > touchWait && performance.now() - kickedAt > 600
+      && !w.slide && !w.fall && !air && !bike && !w.bike && sim.b.y >= 1.4) {
+      const [mu, mv] = mine(), du = sim.b.u - mu, dv = sim.b.v - mv, y = sim.b.y - w.y;
+      if (du * du + dv * dv < 0.6 * 0.6 && y > 0.5 && y < 2.3) {
+        send({ t: 'ft', p: [w.x, w.z], c: 1 }); pending = performance.now(); touchWait = pending + 300;
+        if (y > 1.6) walker.header();
+        sfx('trap');
+        flash = { text: 'Khống chế bóng!', until: performance.now() + 1000 }; changed(true);
+      }
     }
     // sliding into a free ball (or a ball flying into your feet): you take it
     if (myTeam >= 0 && have && w.slide > 0 && canPlay() && sim.b.h == null && !pending && performance.now() > touchWait) {
@@ -606,8 +627,8 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       const bt = performance.now() - bike.t0;
       if (bt > 650 || !canPlay()) bike = null;
       else if (bt > 160) {
-        if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 23, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
-        else if (inReach('b')) { bike.done = true; strike('b', onTarget(bike.dir, sim.b.u, sim.b.v), 25, 2); }
+        if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 26, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
+        else if (inReach('b')) { bike.done = true; strike('b', onTarget(bike.dir, sim.b.u, sim.b.v), 28, 2); }
       }
     } else if (bike && performance.now() - bike.t0 > 900) bike = null;
     // volley / header waiting in the air

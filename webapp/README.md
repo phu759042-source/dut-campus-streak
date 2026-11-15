@@ -221,8 +221,10 @@ Camera trên web cần HTTPS (hoặc `localhost`).
 - Vật lý bóng (`js/soccer-core.js`) theo bóng thật: trọng lực 9,81 m/s², cản không khí K·v² (K ≈ 0,012/m), lăn trên cỏ
   chậm dần 1,1 m/s² + 0,1/s × vận tốc (bóng 16 m/s lăn ~60 m), nảy giữ ~60 % vận tốc đứng và ~70 % vận tốc ngang.
 - Người giữ bóng có vòng tròn màu đội dưới chân (ai cũng thấy); người không đá còn thấy trái banh chỉ xuống đầu họ.
-  Xoạc (trượt ~4,8 m) chỉ cướp được bóng khi chân đi qua giữa vòng tròn (`fxh`, server kiểm tra lại); xoạc trúng bóng
-  tự do thì lấy luôn bóng. Người bị xoạc ngã sấp nằm 2 giây rồi chống tay, quỳ, đứng dậy (~2,9 giây không chạm bóng).
+  Xoạc (trượt ~6,7 m trong 1 giây, tiếng cỏ quẹt kéo dài đúng lúc trượt) chỉ cướp được bóng khi chân đi qua giữa vòng
+  tròn (`fxh`, server kiểm tra lại); cướp được thì bóng về luôn chân người xoạc; xoạc trúng bóng tự do thì lấy luôn bóng.
+  Bóng bổng chạm người (ngực, đầu, cả khi nhảy; nhảy trên sân cao ~1,2 m) thì khống chế được luôn (`ft` với `c: 1`).
+  Giữ nút sút / chuyền vẫn chạy được, chậm hơn ~22 %. Sút mạnh nhất 36 m/s, vô lê 31, đánh đầu 19. Người bị xoạc ngã sấp nằm 2 giây rồi chống tay, quỳ, đứng dậy (~2,9 giây không chạm bóng).
   Xoạc và lừa bóng hồi 2 giây; bấm khi chưa hồi xong có tiếng báo.
 - Vô lê / đánh đầu bấm lúc đang trên không thì chờ bóng 2 giây, kể cả sau khi đã chạm đất: trong 2 giây đó chạm bóng
   (bóng bay, lăn hay đứng yên) là đánh.

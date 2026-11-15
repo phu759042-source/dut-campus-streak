@@ -190,9 +190,9 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 // Football moves: how long each one lasts (s)
 // fall: knocked over by a slide tackle: face down on the grass for 2 s, then getting up (FALL_T in all)
-export const MOVE_T = { kick: 0.32, slide: 0.78, bike: 0.8, head: 0.35, dash: 0.35, fall: 2.9 };
+export const MOVE_T = { kick: 0.32, slide: 1.0, bike: 0.8, head: 0.35, dash: 0.35, fall: 2.9 };
 const KICK_T = MOVE_T.kick, SLIDE_T = MOVE_T.slide, BIKE_T = MOVE_T.bike, HEAD_T = MOVE_T.head, DASH_T = MOVE_T.dash, FALL_T = MOVE_T.fall;
-const SLIDE_V = 12.5; // slide tackle: starts at this speed (m/s) and slows to 0, about 4.9 m in all
+const SLIDE_V = 13.5; // slide tackle: starts at this speed (m/s) and slows to 0, about 6.75 m in all
 
 /** Walk / run cycle speed (radians of the step cycle per second). Football running takes long strides. */
 export function gaitRate(speed, football) {
@@ -249,7 +249,7 @@ export function limbPose(t, swing, air, run = 0, s = 0) {
 // Rules a game mode can put on the walk (football): frozen, its own run / sprint speeds, a speed factor, a
 // bounds function (x, z) -> [x, z], whether sprinting is allowed, walk only (no bikes), and a key handler
 // that can take keys over (it returns true for keys it used).
-const PLAY0 = { frozen: false, run: 0, sprint: 0, factor: 1, bounds: null, canSprint: true, walkOnly: false, onKey: null };
+const PLAY0 = { frozen: false, run: 0, sprint: 0, factor: 1, bounds: null, canSprint: true, walkOnly: false, onKey: null, jumpV: 0 };
 
 export function createWalker({ scene, camera, el, data, pickables, extraSolids = [], extraWalls = [], surfaces = [], indoor = [], posts = [], water = [], limits, onNear, onInteract, onExit, onView }) {
   let s = makeStudent();
@@ -443,9 +443,11 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     if (e.code === 'Escape' && !locked() && performance.now() - unlockedAt > 400) onExit?.();
   }
   function keyup(e) { st.keys.delete(e.code); play.onKey?.(e.code, false, e); }
-  const blur = () => st.keys.clear();
+  const blur = () => st.keys.clear(); // (also when the tab hides: a key let go meanwhile never sends its keyup)
   window.addEventListener('keydown', keydown);
   window.addEventListener('keyup', keyup);
+  const hide = () => { if (document.hidden) blur(); };
+  document.addEventListener('visibilitychange', hide);
   window.addEventListener('blur', blur);
 
   const emitView = () => onView?.({ fp: st.fp, locked: locked(), mode: st.mode });
@@ -694,7 +696,7 @@ export function createWalker({ scene, camera, el, data, pickables, extraSolids =
     const { g, lift = 0 } = ride ? { g: ride.y } : st.sit ? { g: st.y } : groundAt(st.x, st.z, st.y); // a seat holds you up
     st.ground = g;
     if (st.y < g) { st.y = g; st.vy = 0; st.air = false; } // stepped up (stairs)
-    if (st.jumpReq && !st.air && st.y <= g + 0.001 && !riding && !play.frozen) { st.vy = JUMP_V; st.air = true; }
+    if (st.jumpReq && !st.air && st.y <= g + 0.001 && !riding && !play.frozen) { st.vy = play.jumpV || JUMP_V; st.air = true; }
     st.jumpReq = false;
     if (st.y > g + 0.001 || st.vy > 0) {
       // walking down stairs: stay on the steps. Only while walking, never in the middle of a jump or a fall,

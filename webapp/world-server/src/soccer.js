@@ -265,7 +265,8 @@ export class Soccer {
     if (this.cooling(a.id, 'touch', now) || this.cooling(a.id, 'stun', now)) return;
     const me = this.local(a), p = Array.isArray(msg.p) ? toLocal(num(msg.p[0]), num(msg.p[1])) : null;
     if (!me || !p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return;
-    if (dist(p, me) > 4 || dist(p, [b.u, b.v]) > 2.4 || b.y > 1.6) return;
+    // c: the ball hit your body in the air (chest, head, jumping): you bring it down and keep it
+    if (dist(p, me) > 4 || dist(p, [b.u, b.v]) > 2.4 || b.y > (msg.c ? 3.4 : 1.6)) return;
     b.h = a.id; this.lt = a.id; this.ltName = a.name; this.lk = null;
     this.pushBall();
   }
@@ -304,7 +305,7 @@ export class Soccer {
     if (![u, v, y, vu, vv, vy].every(Number.isFinite)) return;
     const me = this.local(a);
     if (!me || dist([u, v], [b.u, b.v]) > 2.6 || Math.abs(y - b.y) > 1.5 || dist([u, v], me) > 4.5) return;
-    const max = { v: 30, h: 20, b: 28 }[k], sp = Math.sqrt(vu * vu + vv * vv);
+    const max = { v: 33, h: 22, b: 30 }[k], sp = Math.sqrt(vu * vu + vv * vv);
     if (sp > max) { vu *= max / sp; vv *= max / sp; }
     Object.assign(b, { u: clamp(u, -HL + 0.2, HL - 0.2), v: clamp(v, -HW + 0.2, HW - 0.2), y: clamp(y, BALL_R, 3), vu, vv, vy: clamp(vy, -4, 8), h: null });
     this.lt = a.id; this.ltName = a.name; this.lk = k;
@@ -332,7 +333,7 @@ export class Soccer {
 
   /**
    * The sliding feet went through the middle of the ring under the opponent with the ball (the tackler's browser
-   * sees it; checked here against where the server last saw both). The ball is won and that player goes down
+   * sees it; checked here against where the server last saw both). The tackler takes the ball and that player goes down
    * (2 s face down + getting up, no touching the ball meanwhile).
    */
   tackleHit(a, msg, now) {
@@ -343,10 +344,8 @@ export class Soccer {
     const me = this.local(a), them = this.local(this.info(h)), p = Array.isArray(msg.p) ? toLocal(num(msg.p[0]), num(msg.p[1])) : null;
     if (!me || !them || !p || !Number.isFinite(p[0]) || !Number.isFinite(p[1]) || dist(p, me) > 5 || dist(p, them) > 1.8) return;
     this.cooldown(a.id, 'slide', 0);
-    let du = 0, dv = 0;
-    if (Array.isArray(msg.d)) [du, dv] = dirLocal(num(msg.d[0]) || 0, num(msg.d[1]) || 0);
-    const L = Math.sqrt(du * du + dv * dv) || 1;
-    Object.assign(b, { h: null, vu: (du / L) * 4.5, vv: (dv / L) * 4.5, vy: 1.2 });
+    // the tackler comes out of the slide with the ball at their feet
+    Object.assign(b, { h: a.id, vu: 0, vv: 0, vy: 0 });
     this.cooldown(h, 'stun', now + 2900);
     this.lt = a.id; this.ltName = a.name; this.lk = null;
     this.pushBall();

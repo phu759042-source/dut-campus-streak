@@ -36,7 +36,7 @@ export const MATCH_MS = 5 * 60 * 1000;
 export const TEAM_NAMES = ['Xanh', 'Cam'];
 export const STEP = 1 / 60;                     // fixed physics step (s)
 export const STEP_MS = 1000 / 60;
-export const MAX_KICK = 32, MAX_LIFT = 16;      // fastest shot (m/s) and the most upward speed (a full lofted pass)
+export const MAX_KICK = 36, MAX_LIFT = 16;      // fastest shot (m/s, a real power shot is 30-35) and the most upward speed
 // Real ball (size 5: 0.43 kg, 22 cm): gravity 9.81 m/s², air drag K·v² (K = ρ·Cd·A / 2m ≈ 1.2·0.25·0.038 / 0.86
 // ≈ 0.012 per metre: a 30 m/s shot loses about 11 m/s² to the air, a slow pass almost nothing), rolling on
 // mown grass slows it by about 1.1 m/s² plus 0.1 per m/s of speed (a 16 m/s pass rolls ~60 m), and a bounce on grass keeps ~60 % of the
