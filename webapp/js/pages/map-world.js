@@ -12,7 +12,14 @@ import { ITEM, ZONES, SPOTS, placeOf, titleOf } from '../lost-core.js';
 
 const LOOK_LABELS = { skin: 'Màu da', hair: 'Kiểu tóc', hc: 'Màu tóc', shirt: 'Áo', pants: 'Quần', bag: 'Balo', glasses: 'Kính' };
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
-const fmtTime = (t) => new Date(t).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+// chat lines kept in the box (and by the server, CHAT_KEEP in world-server/src/index.js): all of them can be scrolled
+// back to; older ones are dropped to make room
+const CHAT_MAX = 50;
+/** Time of a chat line; lines from an earlier day (the history covers the last 24 h) also get the date. */
+const fmtTime = (t) => {
+  const d = new Date(t), hm = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? hm : `${hm} ${d.getDate()}/${d.getMonth() + 1}`;
+};
 
 /** Saved look of the logged-in student, or null if they never picked one. */
 export async function savedLook() {
@@ -187,7 +194,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
     const toSoccer = (m) => (soccer.current ? soccer.current.handle(m) : socQueue.push(m));
     // lost and found: the things are drawn by ../lost.js (loaded with three.js); until then the list is kept
     let lfList = [], sysN = 0;
-    const sys = (text) => setChat((c) => [...c.slice(-80), { id: 'sys', sys: true, name: '', text, at: Date.now() + (sysN++ % 1000) / 1000 }]);
+    // a system line in the chat; `drop` lines ("someone left X at...") replace the previous one instead of piling up
+    const sys = (text, drop = false) => setChat((c) => [...(drop ? c.filter((x) => !x.drop) : c), { id: 'sys', sys: true, drop, name: '', text, at: Date.now() + (sysN++ % 1000) / 1000 }].slice(-CHAT_MAX));
     const lfSet = (list) => { lfList = list; lost.current?.set(list); setLfItems(list); };
     let dead = false;
     const w = connectWorld({
@@ -199,7 +207,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
           case 'lf': lfSet(m.items || []); break;
           case 'lfnew':
             lfSet([...lfList.filter(([k]) => k !== m.k), [m.k, m.s]]);
-            if (ITEM[m.k] && SPOTS[m.s]) sys(`🔔 Có bạn vừa để quên ${ITEM[m.k].short} ở ${ZONES[SPOTS[m.s][4]]}…`);
+            if (ITEM[m.k] && SPOTS[m.s]) sys(`🔔 Có bạn vừa để quên ${ITEM[m.k].short} ở ${ZONES[SPOTS[m.s][4]]}…`, true);
             break;
           case 'lfgot': {
             lfSet(lfList.filter(([k]) => k !== m.k));
@@ -241,7 +249,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
             scene.ride(null); setMyRide(null);
             const all = {};
             for (const p of m.players) { all[p.id] = p; scene.players.add(p.id, p.look, p.p); if (p.r) scene.players.setRide(p.id, p.r); }
-            setPlayers(all); setMeetings(m.meetings || []); setChat(m.chat || []);
+            setPlayers(all); setMeetings(m.meetings || []); setChat((m.chat || []).slice(-CHAT_MAX));
             setMyMeeting(null); setMchat([]);
             st.current.me = m.me;
             soccer.current?.onWelcome();
@@ -287,8 +295,8 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
             break;
           case 'chat':
             bubble(m.id, m.text, 6500);
-            if (m.m) setMchat((c) => [...c.slice(-80), m]);
-            else setChat((c) => [...c.slice(-80), m]);
+            if (m.m) setMchat((c) => [...c, m].slice(-CHAT_MAX));
+            else setChat((c) => [...c, m].slice(-CHAT_MAX));
             if (m.id !== st.current.me?.id && document.activeElement !== input.current) setUnread((u) => u + 1);
             break;
           case 'meetings': {
@@ -588,7 +596,7 @@ export function WorldLayer({ scene, frameRef, pickRef, look, fp, mobile, onClose
         <button class=${chatTab === 'all' ? 'on' : ''} onClick=${() => setChatTab('all')}>Chung</button>
         <button class=${chatTab === 'meeting' ? 'on' : ''} onClick=${() => setChatTab('meeting')}>🎙 Phòng họp</button>
       </div>`}
-      <div class="world-msgs" ref=${msgsBox} onScroll=${(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30; }}>${messages.slice(-30).map((c) => html`<div class=${'world-msg' + (c.sys ? ' sys' : '')} key=${c.at + c.id}>
+      <div class="world-msgs" ref=${msgsBox} onScroll=${(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30; }}>${messages.map((c) => html`<div class=${'world-msg' + (c.sys ? ' sys' : '')} key=${c.at + c.id}>
         ${!c.sys && html`<b class=${c.id === me?.id ? 'me' : ''}>${c.name}</b> `}<span>${c.text}</span> <i>${fmtTime(c.at)}</i></div>`)}</div>
       <form class="world-input" onSubmit=${send}>
         <input ref=${input} value=${text} maxLength="300" placeholder=${mobile ? 'Nhắn gì đó…' : 'Nhấn / để chat, Enter để gửi và chơi tiếp…'} aria-label="Tin nhắn"

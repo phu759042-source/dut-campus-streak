@@ -3,7 +3,7 @@
 // is lost again on a random spot (Nhà xe khu E, Nhà xe khu B or a Khu H classroom).
 // Where things lie is kept in the object's storage (it survives hibernation); the points are kept per account in
 // the object's SQLite database (table merit), which also gives the leaderboard.
-import { ITEMS, ITEM, SPOTS, SERVER_R, RESPAWN_MS, PICK_GAP_MS, pickSpot } from '../../js/lost-core.js';
+import { ITEMS, ITEM, SPOTS, SERVER_R, RESPAWN_MS, PICK_GAP_MS, pickSpot, placeOf, titleOf } from '../../js/lost-core.js';
 
 const TOP_N = 30;
 
@@ -105,6 +105,11 @@ export class Lost {
     a.mp = me.pts; ws.serializeAttachment(a); // the finder's new total: everyone updates the title over their name
     this.w.broadcast({ t: 'lfgot', k: msg.k, s, id: a.id, name: a.name, pts: it.pts, total: me.pts, cfs });
     this.w.send(ws, me);
+    // the same lines the browsers write in the chat, kept in its history so rejoining shows them
+    await this.w.addChat({ t: 'chat', id: 'sys', sys: true, name: '', at: now,
+      text: `🙏 ${a.name} nhặt được ${it.short} ở ${placeOf(s)} và đăng confession tìm chủ #cfs${cfs} (+${it.pts} công đức)` });
+    const up = titleOf(me.pts);
+    if (up && up !== titleOf(me.pts - it.pts)) await this.w.addChat({ t: 'chat', id: 'sys', sys: true, name: '', at: now + 1, text: `🎉 ${a.name} vừa đạt danh hiệu ${up.icon} ${up.name}!` });
     await this.w.ctx.storage.put('cfs', this.cfs);
     await this.save();
   }

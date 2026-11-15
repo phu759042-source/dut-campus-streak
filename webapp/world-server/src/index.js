@@ -12,7 +12,10 @@ import { Lost } from './lost.js';
 
 const LOOK_RANGES = { skin: 5, hair: 5, hc: 6, shirt: 8, pants: 6, bag: 6, glasses: 2 };
 const MAX_MEETING = 8;          // voice is a mesh (everyone connects to everyone), so keep meetings small
-const CHAT_KEEP = 40;           // last messages of the shared chat sent to newcomers
+// The shared chat keeps the last CHAT_KEEP lines of the last day (messages and the lost-and-found finds), the same
+// number the chat box in the browser holds (CHAT_MAX in js/pages/map-world.js): rejoining shows exactly what was there.
+const CHAT_KEEP = 50;
+const CHAT_AGE = 24 * 3600 * 1000;
 // A player whose browser goes quiet is removed, so nobody is left standing frozen on the map
 // (phones that lock or switch app often never send a proper "close"). Open tabs send something every 10 s;
 // a tab in the background ("away") is throttled by the browser, so it gets longer.
@@ -59,6 +62,15 @@ export class World {
     this.chat = null;
     this.soccer = new Soccer(this); // in memory only: a match keeps the object awake
     this.lost = new Lost(this);
+  }
+
+  /** Lines of the shared chat newer than a day (older ones are not shown again). */
+  recentChat(now = Date.now()) { return this.chat.filter((c) => now - c.at < CHAT_AGE); }
+  /** Adds a line to the shared chat history (already sent to everyone) and stores it. */
+  async addChat(line) {
+    this.chat.push(line);
+    this.chat = this.recentChat(line.at).slice(-CHAT_KEEP);
+    await this.ctx.storage.put('chat', this.chat);
   }
 
   async load() {
@@ -151,7 +163,7 @@ export class World {
     this.send(ws, {
       t: 'welcome', me: this.pub(a),
       players: this.players().filter((p) => p.id !== a.id).map((p) => this.pub(p)),
-      meetings: this.meetingList(), chat: this.chat, ice: await this.iceServers(),
+      meetings: this.meetingList(), chat: this.recentChat(), ice: await this.iceServers(),
     });
     this.send(ws, this.soccer.state());
     this.send(ws, this.soccer.ball());
@@ -257,8 +269,7 @@ export class World {
         const out = { t: 'chat', id: a.id, name: a.name, text, m, at: now };
         if (m) { this.toMeeting(m, out); return; }
         this.broadcast(out);
-        this.chat.push(out); if (this.chat.length > CHAT_KEEP) this.chat.splice(0, this.chat.length - CHAT_KEEP);
-        await this.ctx.storage.put('chat', this.chat);
+        await this.addChat(out);
         return;
       }
       case 'mnew': {
