@@ -36,18 +36,21 @@ export const MATCH_MS = 5 * 60 * 1000;
 export const TEAM_NAMES = ['Xanh', 'Cam'];
 export const STEP = 1 / 60;                     // fixed physics step (s)
 export const STEP_MS = 1000 / 60;
-export const MAX_KICK = 36, MAX_LIFT = 16;      // fastest shot (m/s, a real power shot is 30-35) and the most upward speed
-// Real ball (size 5: 0.43 kg, 22 cm): gravity 9.81 m/s², air drag K·v² (K = ρ·Cd·A / 2m ≈ 1.2·0.25·0.038 / 0.86
-// ≈ 0.012 per metre: a 30 m/s shot loses about 11 m/s² to the air, a slow pass almost nothing), rolling on
-// mown grass slows it by about 1.1 m/s² plus 0.1 per m/s of speed (a 16 m/s pass rolls ~60 m), and a bounce on grass keeps ~60 % of the
-// vertical speed and ~70 % of the speed along the ground.
-const GRAVITY = 9.81, AIR_K = 0.012;
-const BOUNCE_UP = 0.6, BOUNCE_GROUND = 0.7, BOUNCE_MIN = 1.2;
-const ROLL_A = 1.1, ROLL_C = 0.1;  // rolling on grass slows the ball by ROLL_A + ROLL_C * speed (m/s²)
+export const MAX_KICK = 38, MAX_LIFT = 16;      // fastest shot (m/s = 137 km/h; a real power shot is 30-38) and the most upward speed
+// Real ball (size 5: 0.43 kg, 22 cm): gravity 9.81 m/s², air drag K·v² (K = ρ·Cd·A / 2m ≈ 1.2·0.2·0.038 / 0.86
+// ≈ 0.0106 per metre, Cd ≈ 0.2 above the drag crisis: a 30 m/s shot loses about 9.5 m/s² to the air, a slow pass
+// almost nothing). The air slows a rolling ball the same way, and the grass adds a rolling resistance of about
+// 0.8 m/s² (a well-mown pitch: FIFA's ramp test, a ball let go at 3.7 m/s rolls 4-10 m; here ~8 m).
+// A bounce keeps ~60 % of the vertical speed. Along the ground the grass rubs the ball only while it presses on it
+// (Coulomb friction, μ ≈ 0.55), so a low, skimming ball keeps almost all its speed and a steep one loses up to
+// 2/7 of it (the most friction can take before the ball rolls).
+const GRAVITY = 9.81, AIR_K = 0.0106;
+const BOUNCE_UP = 0.6, BOUNCE_MIN = 1.2, GRASS_MU = 0.55;
+const ROLL_A = 0.8;                 // rolling resistance of the grass (m/s²), on top of the air drag
 
-/** How far a ball rolls on the grass while slowing from v0 to v1 (m/s). Used to aim passes. */
+/** How far a ball rolls on the grass while slowing from v0 to v1 (m/s): dv/dx = -(ROLL_A + K v²) / v. */
 export function rollDistance(v0, v1) {
-  return (v0 - v1) / ROLL_C - (ROLL_A / (ROLL_C * ROLL_C)) * Math.log((ROLL_A + ROLL_C * v0) / (ROLL_A + ROLL_C * v1));
+  return Math.log((ROLL_A + AIR_K * v0 * v0) / (ROLL_A + AIR_K * v1 * v1)) / (2 * AIR_K);
 }
 /** Speed to kick a ball along the ground so it still has speed v1 after d metres. */
 export function passSpeed(d, v1) {
@@ -133,11 +136,19 @@ export function step(S, dt, ev) {
     b.y += b.vy * dt;
     if (b.y <= BALL_R) {
       b.y = BALL_R;
-      if (b.vy < -BOUNCE_MIN) { b.vy = -b.vy * BOUNCE_UP; b.vu *= BOUNCE_GROUND; b.vv *= BOUNCE_GROUND; ev.push({ e: 'bounce' }); } else b.vy = 0;
+      if (b.vy < -BOUNCE_MIN) {
+        const vn = -b.vy, sh = Math.sqrt(b.vu * b.vu + b.vv * b.vv);
+        b.vy = vn * BOUNCE_UP;
+        if (sh > 0) { // friction impulse: μ times the normal one, at most what makes the ball roll
+          const loss = Math.min(GRASS_MU * (1 + BOUNCE_UP) * vn, sh * (2 / 7)), f = (sh - loss) / sh;
+          b.vu *= f; b.vv *= f;
+        }
+        ev.push({ e: 'bounce' });
+      } else b.vy = 0;
     }
   } else {
     const sp = Math.sqrt(b.vu * b.vu + b.vv * b.vv);
-    if (sp > 0) { const f = Math.max(0, sp - (ROLL_A + ROLL_C * sp) * dt) / sp; b.vu *= f; b.vv *= f; }
+    if (sp > 0) { const f = Math.max(0, sp - (ROLL_A + AIR_K * sp * sp) * dt) / sp; b.vu *= f; b.vv *= f; }
   }
   const pu = b.u, pv = b.v;
   b.u += b.vu * dt; b.v += b.vv * dt;
@@ -180,9 +191,9 @@ function keeper(S, i, dt, ev) {
   if (b.h === 'k' + i) {
     k.hold -= dt;
     if (k.hold <= 0) { // long kick up the pitch, a little to one side
-      const tv = (rand(S) * 2 - 1) * 16, du = -side * 32, dv = tv - k.v, L = Math.sqrt(du * du + dv * dv), sp = 19 + rand(S) * 4;
+      const tv = (rand(S) * 2 - 1) * 16, du = -side * 32, dv = tv - k.v, L = Math.sqrt(du * du + dv * dv), sp = 22 + rand(S) * 4;
       b.h = null; b.u = ku - side * 1.1; b.v = k.v; b.y = 0.7;
-      b.vu = (du / L) * sp; b.vv = (dv / L) * sp; b.vy = 9;
+      b.vu = (du / L) * sp; b.vv = (dv / L) * sp; b.vy = 10.5;
       k.cd = 0.9;
       ev.push({ e: 'punt', k: i });
     }
@@ -206,7 +217,7 @@ function keeper(S, i, dt, ev) {
     const d = Math.abs(b.v - k.v), av = Math.abs(b.v);
     if (b.y < 2.45 && d < 2.2 && av < GOAL_W + 0.3) {
       const sp = Math.sqrt(b.vu * b.vu + b.vv * b.vv + b.vy * b.vy);
-      const pace = clamp(1.25 - sp / 32, 0.25, 0.95);
+      const pace = clamp(1.25 - sp / 35, 0.25, 0.95);
       const place = 1 - 0.55 * Math.min(1, (av / GOAL_W) * (av / GOAL_W));
       const reach = d < 1 ? 1 : 1 - (d - 1) * 0.35;
       if (rand(S) < pace * place * reach) { save(S, i, sp, ev); return; }
@@ -221,7 +232,7 @@ function keeper(S, i, dt, ev) {
 
 function save(S, i, sp, ev) {
   const b = S.b, k = S.k[i], side = i ? 1 : -1;
-  if (sp < 18) {
+  if (sp < 20) {
     b.h = 'k' + i; k.hold = 1.2; b.vu = b.vv = b.vy = 0;
     ev.push({ e: 'catch', k: i });
   } else { // too hard to hold: pushed away to one side

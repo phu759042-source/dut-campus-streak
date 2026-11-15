@@ -173,6 +173,17 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   không vẽ trên mặt nước). Nhấn E / nút ghế để ngồi trên thành hồ (quay ra nước) hoặc mép trong vòng đi bộ (quay
   vào đài). Không đi / chạy xe xuống nước được (`water` trong `js/walk.js`, mọi vùng nước OSM): chỉ qua cầu, cầu tàu,
   thành hồ; đứng sát mép thì trượt dọc theo mép.
+- Chi tiết theo ảnh (`js/landmarks.js`), đặt theo đường viền OSM và đối chiếu ảnh vệ tinh Esri World Imagery. Ảnh:
+  Wikimedia Commons (Khu A.jpg, Kvhbbk.jpg, Khu b.jpg, Tthl.jpg, Bkdn.jpg, 2007–2008, CC BY-SA 3.0) và ảnh trên trang
+  Google Maps của trường. **Khu A**: sảnh giữa mặt tiền (chỗ đường viền nhô ra 4 m) màu xám xanh, lưới kính tầng trên,
+  chữ "TRƯỜNG ĐẠI HỌC BÁCH KHOA" xanh (sáng ban đêm), mái hiên quanh sảnh và mái thấp 4 mái đầu đao, cờ trên đỉnh; gạch
+  hoa thông gió ở đầu hồi hai cánh; hai hồ cá trong sân có thành ốp gạch xanh và giàn hoa giấy cột tròn màu cam; cột
+  đèn đôi kiểu cổ; hai tượng trắng trên bãi cỏ bên kia đường (thiếu nữ vác bình, người ném đĩa trên bệ đá đen).
+  **Khu B**: tháp lối vào giữa mặt dài có vương miện vây bê tông răng cưa, chân ốp đá chẻ với hai cửa sổ tròn, gạch
+  hoa tầng 2. **Trung tâm Học liệu**: 3 tầng (OSM đoán 4), tấm mái đua rộng, mái 4 mái trắng có giếng trời kính ở
+  giữa, mái sảnh nửa tròn trên 2 cột, 3 cột cờ, bia đá đỏ "Trung tâm Học liệu và Truyền thông", hàng cau. Màu và
+  kiểu mái từng toà lấy theo ảnh vệ tinh (`ROOFS`, theo id OSM): mái tôn xanh nhạt (A, I, K, N), xám nhạt (D), ngói
+  đỏ (E2, Khu C), tôn nâu (KTX Nhà 1, 2), xanh lá nhạt (KTX Nhà 5, nhà thi đấu); văn phòng KTX 1 tầng mái đỏ.
 
 ### Chế độ server (nhiều người chơi)
 
@@ -218,13 +229,15 @@ Camera trên web cần HTTPS (hoặc `localhost`).
 - Khi giữ bóng: đường chấm trắng là đường chuyền thấp; giữ chuyền thì hiện đường chấm vàng của chuyền cao và vòng chỗ
   bóng rơi (giữ càng lâu càng xa: yếu nhất ~14 m, hết lực ~50 m, tức là từ vạch cầu môn rơi đúng giữa sân, cao ~8,5 m);
   giữ sút thì hiện đường chấm đỏ của cú sút theo lực.
-- Vật lý bóng (`js/soccer-core.js`) theo bóng thật: trọng lực 9,81 m/s², cản không khí K·v² (K ≈ 0,012/m), lăn trên cỏ
-  chậm dần 1,1 m/s² + 0,1/s × vận tốc (bóng 16 m/s lăn ~60 m), nảy giữ ~60 % vận tốc đứng và ~70 % vận tốc ngang.
+- Vật lý bóng (`js/soccer-core.js`) theo bóng thật: trọng lực 9,81 m/s², cản không khí K·v² (K ≈ 0,0106/m, Cd ≈ 0,2) cả khi
+  bay lẫn khi lăn, cỏ cản lăn thêm 0,8 m/s² (bài thử dốc FIFA: bóng 3,7 m/s lăn ~8 m). Nảy giữ ~60 % vận tốc đứng; theo
+  phương ngang cỏ chỉ ma sát khi bóng ép xuống (μ ≈ 0,55), nên bóng sệt/nảy thấp gần như không mất tốc, bóng rơi dốc mất tối đa 2/7.
+  Bóng bay nhanh (> 13 m/s) có vệt mờ phía sau.
 - Người giữ bóng có vòng tròn màu đội dưới chân (ai cũng thấy); người không đá còn thấy trái banh chỉ xuống đầu họ.
   Xoạc (trượt ~6,7 m trong 1 giây, tiếng cỏ quẹt kéo dài đúng lúc trượt) chỉ cướp được bóng khi chân đi qua giữa vòng
   tròn (`fxh`, server kiểm tra lại); cướp được thì bóng về luôn chân người xoạc; xoạc trúng bóng tự do thì lấy luôn bóng.
   Bóng bổng chạm người (ngực, đầu, cả khi nhảy; nhảy trên sân cao ~1,2 m) thì khống chế được luôn (`ft` với `c: 1`).
-  Giữ nút sút / chuyền vẫn chạy được, chậm hơn ~22 %. Sút mạnh nhất 36 m/s, vô lê 31, đánh đầu 19. Người bị xoạc ngã sấp nằm 2 giây rồi chống tay, quỳ, đứng dậy (~2,9 giây không chạm bóng).
+  Giữ nút sút / chuyền vẫn chạy được, chậm hơn ~22 %. Sút 21–38 m/s (giữ nút 0,7 s là tối đa), vô lê 34, đánh đầu 21, xe đạp chổng ngược 29–31. Người bị xoạc ngã sấp nằm 2 giây rồi chống tay, quỳ, đứng dậy (~2,9 giây không chạm bóng).
   Xoạc và lừa bóng hồi 2 giây; bấm khi chưa hồi xong có tiếng báo.
 - Vô lê / đánh đầu bấm lúc đang trên không thì chờ bóng 2 giây, kể cả sau khi đã chạm đất: trong 2 giây đó chạm bóng
   (bóng bay, lăn hay đứng yên) là đánh.

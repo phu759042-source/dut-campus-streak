@@ -25,9 +25,9 @@ const KEEPER_KITS = [
   { shirt: 0xfacc15, pants: 0x3f3f46, socks: 0xfacc15, gloves: 0x16a34a },
 ];
 const TURF = 0;               // the pitch lies flat on the ground (y = 0)
-const BALL_LOOK = 1.45;       // the ball is drawn bigger than its physics size so it reads on a phone
+const BALL_LOOK = 1.3;        // the ball is drawn a bit bigger than its physics size so it reads on a phone
 const RUN = 6.6, SPRINT = 9.2; // m/s in a match
-const CHARGE_MS = 900;        // holding the shoot button this long = full power
+const CHARGE_MS = 700;        // holding the shoot button this long = full power
 const PLAYING = ['warm', 'count', 'play', 'wait'];
 const IN_MATCH = ['kick', 'play', 'goal', 'wait'];
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -52,7 +52,30 @@ function makeBall() {
   const blob = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * BALL_LOOK * 1.3, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
   blob.rotation.x = -Math.PI / 2;
   blob.renderOrder = 1;
-  return { mesh, blob };
+  // motion trail: faded copies at the last few positions, shown only when the ball flies fast (like the blur
+  // a real shot leaves on TV), so the speed reads even from far away
+  const ghosts = [], gGeo = new THREE.SphereGeometry(BALL_R * BALL_LOOK * 0.9, 10, 8);
+  for (let i = 0; i < 6; i++) {
+    const g = new THREE.Mesh(gGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+    g.visible = false; g.renderOrder = 2; ghosts.push(g);
+  }
+  return { mesh, blob, ghosts, trail: [] };
+}
+
+/** Moves the trail behind the ball; speed in m/s. */
+function updateTrail(ball, x, y, z, speed) {
+  const tr = ball.trail;
+  tr.unshift([x, y, z]);
+  if (tr.length > ball.ghosts.length * 2 + 1) tr.length = ball.ghosts.length * 2 + 1;
+  const s = Math.max(0, Math.min(1, (speed - 13) / 17));
+  ball.ghosts.forEach((g, i) => {
+    const p = tr[(i + 1) * 2];
+    g.visible = s > 0 && !!p;
+    if (!g.visible) return;
+    g.position.set(p[0], p[1], p[2]);
+    g.scale.setScalar(1 - i * 0.11);
+    g.material.opacity = s * 0.32 * (1 - i / ball.ghosts.length);
+  });
 }
 
 function makeKeeper(i, root) {
@@ -209,12 +232,12 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   root.name = 'soccer';
   scene.add(root);
   const ball = makeBall();
-  root.add(ball.mesh, ball.blob);
+  root.add(ball.mesh, ball.blob, ...ball.ghosts);
   const keepers = [makeKeeper(0, root), makeKeeper(1, root)];
   const marks = makeMarkers(root);
 
   let ms = { st: 'idle', teams: [[], []], score: [0, 0], goals: [], until: 0, endsAt: 0, rem: MATCH_MS, ko: 0, n: 0 };
-  let sim = newSim(1), simAt = 0, have = false;
+  let sim = newSim(1), simAt = 0, have = false, lastY = null;
   let myTeam = -1, wantTeam = null;
   let stamina = 1, tired = false;
   let pending = 0, touchWait = 0, tackleWait = 0, kickedAt = -1e9;
@@ -418,17 +441,17 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   }
   function fireAir(kind, aim) {
     const b = sim.b, dir = onTarget(aimDir(aim), b.u, b.v);
-    if (kind === 'v') strike('v', dir, 31, 1.2);
-    else strike('h', dir, 19, b.y > 1.7 ? -1.5 : 0.8); // a header from high up goes down into the grass
+    if (kind === 'v') strike('v', dir, 34, 1.2);
+    else strike('h', dir, 21, b.y > 1.7 ? -1.5 : 0.8); // a header from high up goes down into the grass
   }
   // What each kick does: { dir, sp (m/s along the grass), lift (m/s up), k }. The preview draws the same thing.
   // Tap (quick press of pass): a short push ahead along the grass, just far enough to run onto it again. Standing it
   // rolls about 4.6 m; running it stays a couple of metres in front of you (dribbling by touches).
-  const lowPlan = (aim) => ({ dir: aimDir(aim), sp: 3.5 + walker.state.speed * 0.9, lift: 0, k: 'p' });
+  const lowPlan = (aim) => ({ dir: aimDir(aim), sp: 2.8 + walker.state.speed * 0.9, lift: 0, k: 'p' });
   // Lofted pass: the power decides how far. Weakest about 14 m (2.5 m high), full power about 50 m, i.e. from
   // your own goal line it comes down at the halfway line (about 8.5 m high at the top, 2.6 s in the air).
   const highPlan = (aim, p) => ({ dir: aimDir(aim), sp: 11.3 + p * 16.2, lift: 7.2 + p * 7.5, k: 'l' });
-  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: 17 + p * 19, lift: 0.6 + p * p * 5.4, k: 's' }; };
+  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: 21 + p * 17, lift: 0.6 + p * p * 5.4, k: 's' }; };
   function shoot(p, aim) {
     if (!holding() && !grabNear()) return;
     const P = shotPlan(aim, p);
@@ -627,8 +650,8 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       const bt = performance.now() - bike.t0;
       if (bt > 650 || !canPlay()) bike = null;
       else if (bt > 160) {
-        if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 26, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
-        else if (inReach('b')) { bike.done = true; strike('b', onTarget(bike.dir, sim.b.u, sim.b.v), 28, 2); }
+        if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 29, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
+        else if (inReach('b')) { bike.done = true; strike('b', onTarget(bike.dir, sim.b.u, sim.b.v), 31, 2); }
       }
     } else if (bike && performance.now() - bike.t0 > 900) bike = null;
     // volley / header waiting in the air
@@ -684,6 +707,9 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     }
     marks.path(plan ? passPath(plan) : null, plan?.k);
     ball.mesh.position.set(x, TURF + pos[2] + BALL_R * (BALL_LOOK - 1), z);
+    const fly = holder ? 0 : Math.hypot(moved, pos[2] - (lastY ?? pos[2])) / Math.max(dt, 1e-3);
+    lastY = pos[2];
+    updateTrail(ball, x, ball.mesh.position.y, z, moved < 3 ? fly : 0);
     ball.blob.position.set(x, TURF + 0.02, z);
     ball.blob.scale.setScalar(Math.max(0.4, 1 - pos[2] * 0.25));
 

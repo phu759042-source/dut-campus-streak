@@ -11,6 +11,7 @@ import { buildStadium } from './stadium.js';
 import { buildBillboards } from './billboards.js';
 import { buildBridge } from './bridge.js';
 import { buildFountain } from './fountain.js';
+import { prepareLandmarks, buildLandmarks } from './landmarks.js';
 import { styleOf, wallMaterials, buildBuildingDetails, buildWalls, buildGates, buildCanopies, buildLamps, avenueTreeSpots } from './campus-details.js';
 
 export const FLOOR_H = 3.4;
@@ -204,6 +205,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const buildings = [];
   const pickables = [];
   prepareInteriors(data); // canteen becomes walk-in, E1 gets its corridor
+  prepareLandmarks(data); // main doors and roof colours from photos (landmarks.js)
   for (const b of data.buildings) {
     const h = b.height || b.levels * FLOOR_H + 0.8; // real height when known (e.g. Nhà S 42 m)
     if (b.hollow) {
@@ -255,6 +257,9 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   // donate + Mì Quảng Bách Khoa billboards just inside the main gate
   const billboards = buildBillboards(data.pois);
   scene.add(billboards.group);
+  // details from photos: Khu A pavilion, statues, fish-pond pergolas, Khu B tower, Trung tâm Học liệu
+  const landmarks = buildLandmarks(data);
+  scene.add(landmarks.group);
   scene.add(gates.group);
   const canopies = buildCanopies(data.areas, data.boundary);
   if (canopies.group) scene.add(canopies.group);
@@ -308,7 +313,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   const wallSegs = [];
   for (const w of data.walls || []) for (let i = 0; i < w.length - 1; i++) wallSegs.push([w[i], w[i + 1]]);
   const clearOfWalls = (x, z, m) => !wallSegs.some(([a, b]) => Math.abs(a[0] - x) < 40 && Math.abs(a[1] - z) < 40 && segDist(x, z, a, b) < m);
-  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear, ...(bridge ? bridge.clear : []), ...(fountain ? fountain.clear : []), ...inter.clear].map((p) => [p, bbox([p])]);
+  const blockedAreas = [...byKind('water'), ...byKind('pitch'), ...byKind('track'), ...byKind('parking'), ...byKind('dirt'), ...(stadium ? [stadium.outer, ...stadium.clear] : []), ...billboards.clear, ...landmarks.clear, ...(bridge ? bridge.clear : []), ...(fountain ? fountain.clear : []), ...inter.clear].map((p) => [p, bbox([p])]);
   const inArea = (x, z, m) => blockedAreas.some(([p, b]) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m && (inside(p, x, z) || edgeDist(p, x, z) < m));
   const groundRoads = data.roads.filter((r) => !r.bridge && !r.footbridge);
   const lamps = buildLamps(groundRoads, data.boundary, (x, z) => !clearOfSolids(x, z, 1.0) || !clearOfRoads(x, z, 0.35) || !clearOfWalls(x, z, 0.6) || inArea(x, z, 0.3));
@@ -423,6 +428,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     walls.setNight(isDark, P.wall);
     lamps.setNight(isDark);
     details.setNight(isDark);
+    landmarks.setNight(isDark);
     inter.setNight(isDark);
     hemi.color.set(P.hemiSky); hemi.groundColor.set(P.hemiGround); hemi.intensity = P.hemi;
     sun.intensity = P.sun;
@@ -475,8 +481,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   });
 
   // ---------- walk mode ----------
-  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids],
-    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...billboards.posts, ...(stadium ? stadium.posts : []), ...(bridge ? bridge.posts : [])],
+  const walker = createWalker({ scene, camera, el: renderer.domElement, data, pickables, extraSolids: [...gates.solids, ...inter.solids, ...pillarSolids, ...landmarks.solids],
+    posts: [...treeSpots.map(([x, z, sc]) => [x, z, 0.32 * sc]), ...(lamps.spots || []).map(([x, z]) => [x, z, 0.14]), ...canopies.posts, ...billboards.posts, ...landmarks.posts, ...(stadium ? stadium.posts : []), ...(bridge ? bridge.posts : [])],
     extraWalls: [...inter.walls, ...(stadium ? stadium.walls : []), ...(bridge ? bridge.walls : []), ...(fountain ? fountain.walls : [])], water: byKind('water'),
     surfaces: [...inter.surfaces, ...(stadium ? stadium.surfaces : []), ...(bridge ? bridge.surfaces : []), ...(fountain ? fountain.surfaces : [])], indoor: [...inter.hideWhenInside.map((r) => r.pts), ...inter.indoor], limits: LIM, onNear,
     onInteract: (b) => { if (interact?.()) return; if (!toggleSit()) onInteract?.(b); }, onExit: onExitWalk, onView });

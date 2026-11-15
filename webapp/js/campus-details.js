@@ -241,7 +241,7 @@ const SERIF = '"Times New Roman", "Noto Serif", Georgia, serif';
  * School name as raised blue serif letters (as on the Nhà S facade): transparent background so it sits
  * on whatever is behind it; `band` adds the white band. The letters glow blue at night.
  */
-function nameSign(w, h, band = false) {
+export function nameSign(w, h, band = false) {
   const W = 2048, H = Math.max(96, Math.round((W * h) / w));
   const draw = (g, color, glow) => {
     g.clearRect(0, 0, W, H);
@@ -421,7 +421,7 @@ export function buildBuildingDetails(buildings) {
       }
     }
     // entrance canopy on the "front" (bottom of the map) of large zone buildings
-    if (b.zone && !b.corridor && Math.abs(signedArea(b.pts)) > 700) {
+    if (b.zone && !b.corridor && !b.noCanopy && Math.abs(signedArea(b.pts)) > 700) {
       let best = null;
       if (b.entrance_edge != null) { const e = outEdge(b.pts, b.entrance_edge); best = { a: e.a, c: e.c, L: e.L, mz: e.mz }; }
       for (let i = 0; i < b.pts.length && b.entrance_edge == null; i++) {
@@ -481,7 +481,7 @@ export function buildWalls(walls, posts = [], heights = []) {
 
 // ---------------- gates ----------------
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
-function canvasTex(w, h, draw) {
+export function canvasTex(w, h, draw) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   draw(c.getContext('2d'), w, h);
@@ -562,7 +562,7 @@ const billboardTex = () => canvasTexWithLogo(512, 640, (g, w, h) => {
   fitText(g, 'BÁCH KHOA', w / 2, 366, w - 60, 900, 52);
   g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(40, 420, w - 80, 4);
 });
-const flagTex = () => canvasTex(300, 200, (g, w, h) => {
+export const flagTex = () => canvasTex(300, 200, (g, w, h) => {
   g.fillStyle = '#da251d'; g.fillRect(0, 0, w, h);
   g.fillStyle = '#ffde00'; g.beginPath();
   for (let i = 0; i < 10; i++) {

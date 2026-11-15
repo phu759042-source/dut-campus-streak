@@ -305,7 +305,7 @@ export class Soccer {
     if (![u, v, y, vu, vv, vy].every(Number.isFinite)) return;
     const me = this.local(a);
     if (!me || dist([u, v], [b.u, b.v]) > 2.6 || Math.abs(y - b.y) > 1.5 || dist([u, v], me) > 4.5) return;
-    const max = { v: 33, h: 22, b: 30 }[k], sp = Math.sqrt(vu * vu + vv * vv);
+    const max = { v: 36, h: 24, b: 33 }[k], sp = Math.sqrt(vu * vu + vv * vv);
     if (sp > max) { vu *= max / sp; vv *= max / sp; }
     Object.assign(b, { u: clamp(u, -HL + 0.2, HL - 0.2), v: clamp(v, -HW + 0.2, HW - 0.2), y: clamp(y, BALL_R, 3), vu, vv, vy: clamp(vy, -4, 8), h: null });
     this.lt = a.id; this.ltName = a.name; this.lk = k;
