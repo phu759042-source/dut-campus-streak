@@ -1,7 +1,7 @@
 // /admin: usage statistics for the site owner (accounts listed in the app_admins table). Everything comes from one
 // RPC, admin_stats(p_days), which refuses anyone else. Charts are plain SVG bars with a hover tooltip.
 import { html, useState, useEffect, useRef } from 'preact';
-import { supabase, errMsg } from '../lib.js';
+import { supabase, errMsg, getUserCount, watchUserCount } from '../lib.js';
 import { Icon, Skeleton, ErrorBox, Segmented } from '../ui.js';
 import { PageHeader } from './shared.js';
 import { Stars, STAR_LABELS } from '../rating.js';
@@ -182,14 +182,21 @@ export function AdminPage() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function load() {
-    setBusy(true); setErr('');
+  async function load(quiet = false) {
+    if (!quiet) { setBusy(true); setErr(''); }
     const { data: d, error } = await supabase.rpc('admin_stats', { p_days: days });
-    setBusy(false);
-    if (error) { setErr(errMsg(error)); return; }
+    if (!quiet) setBusy(false);
+    if (error) { if (!quiet) setErr(errMsg(error)); return; }
     setData(d);
   }
   useEffect(() => { if (isAdmin) load(); }, [isAdmin, days]);
+  // a new account anywhere (or the shared count moved): reload the numbers quietly
+  const seen = useRef(null);
+  const [live, setLive] = useState(getUserCount);
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    return watchUserCount((n) => { setLive(n); if (seen.current != null && n !== seen.current) load(true); seen.current = n; });
+  }, [isAdmin, days]);
 
   if (isAdmin === false) return html`<div class="page narrow"><${PageHeader} title="Quản trị" />
     <div class="card"><b>Trang này chỉ dành cho quản trị viên.</b></div></div>`;
@@ -197,7 +204,7 @@ export function AdminPage() {
   const T = data?.totals, R = data?.retention, F = data?.features;
   const daily = data?.daily || [];
   const every = daily.length > 45 ? 7 : daily.length > 20 ? 3 : 1;
-  const acc = T?.accounts || 0;
+  const acc = live || T?.accounts || 0; // the live count shown on the home screen and the map
   const DEPTH = ['1 ngày', '2 ngày', '3–5 ngày', '6–10 ngày', '11+ ngày'];
   const depth = DEPTH.map((label, i) => ({ label, values: [(data?.depth || []).find((b) => b.k === i + 1)?.n || 0] }));
   const hours = Array.from({ length: 24 }, (_, hh) => ({ label: String(hh), tip: `${hh}:00 – ${hh}:59`, values: [(data?.hours || []).find((x) => x.hour === hh)?.n || 0] }));

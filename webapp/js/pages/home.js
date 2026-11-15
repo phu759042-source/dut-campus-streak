@@ -2,7 +2,7 @@ import { html, useState, useEffect } from 'preact';
 import { RatePrompt } from '../rating.js';
 import {
   appStore, loadTodayClasses, loadMyLeaderboardRow, loadMyProfile, vnNow, fmtRange, fmtDateIso, timeToMinutes,
-  isAbsenceReported, isCheckInExcluded, isTodayStreakComplete, checkInWindow, fmtDuration, errMsg, DAY_NAMES, supabase,
+  isAbsenceReported, isCheckInExcluded, isTodayStreakComplete, checkInWindow, fmtDuration, errMsg, DAY_NAMES, supabase, getUserCount, watchUserCount,
 } from '../lib.js';
 import { Icon, Avatar, Flame, Skeleton, ErrorBox, Empty, openSheet, useTick } from '../ui.js';
 import { navigate } from '../router.js';
@@ -22,22 +22,10 @@ export function useStore() {
   return s;
 }
 
-/** How many accounts are registered (shown above the avatar). Kept for 10 minutes in this tab. */
+/** How many accounts are registered (shown above the avatar): the same live number as the map and admin page. */
 function useUserCount() {
-  const [n, setN] = useState(() => {
-    try { const c = JSON.parse(sessionStorage.getItem('cs-users') || 'null'); return c && Date.now() - c.at < 600000 ? c.n : null; } catch { return null; }
-  });
-  useEffect(() => {
-    if (n != null) return undefined;
-    let alive = true;
-    // hit_page_view with p_count = false only reads the totals (no visit is counted); it includes the account count
-    supabase.rpc('hit_page_view', { p_page: 'map', p_count: false }).then(({ data }) => {
-      if (!alive || !(data?.users > 0)) return;
-      setN(data.users);
-      try { sessionStorage.setItem('cs-users', JSON.stringify({ n: data.users, at: Date.now() })); } catch { /* storage off */ }
-    }, () => {});
-    return () => { alive = false; };
-  }, []);
+  const [n, setN] = useState(getUserCount);
+  useEffect(() => watchUserCount(setN), []);
   return n;
 }
 

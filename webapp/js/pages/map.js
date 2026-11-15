@@ -1,7 +1,7 @@
 // /map: 3D map of the DUT campus. Public (no login needed) so new students can explore it.
 // Three.js is loaded only when this page opens.
 import { html, useState, useEffect, useRef } from 'preact';
-import { appStore, loadTodayClasses, fmtTime, readLocal, writeLocal, supabase } from '../lib.js';
+import { appStore, loadTodayClasses, fmtTime, readLocal, writeLocal, supabase, setUserCount, getUserCount, watchUserCount } from '../lib.js';
 import { Icon, Spinner, toast, openSheet } from '../ui.js';
 import { back, navigate } from '../router.js';
 import { WorldLayer, editLook, savedLook } from './map-world.js';
@@ -220,6 +220,7 @@ function useMapStats() {
     const load = (count) => supabase.rpc('hit_page_view', { p_page: 'map', p_count: count }).then(({ data, error }) => {
       if (!alive || error || !data) return;
       if (count) { counted = true; try { sessionStorage.setItem('cs-map-visit', '1'); } catch { /* storage off */ } }
+      setUserCount(data.users);
       setVisits(data);
     }, () => {});
     load(!counted);
@@ -230,7 +231,10 @@ function useMapStats() {
       .subscribe((status) => { if (status === 'SUBSCRIBED') ch.track({ at: Date.now() }); });
     return () => { alive = false; clearInterval(timer); supabase.removeChannel(ch); };
   }, []);
-  return { online, visits };
+  // registered accounts: the live number shared with the home screen and admin page (lib.js)
+  const [users, setUsers] = useState(getUserCount);
+  useEffect(() => watchUserCount(setUsers), []);
+  return { online, visits: visits && { ...visits, users: users || visits.users } };
 }
 const fmtCount = (n) => Number(n || 0).toLocaleString('vi-VN');
 

@@ -255,7 +255,62 @@ export async function ensureCurrentUserData(displayName) {
   if (!prof) {
     const { error } = await supabase.from('profiles').insert({ id: user.id, display_name: fallbackName });
     if (error) throw error;
+    announceSignup(); // a new account: every open screen shows the new count right away
   }
+}
+
+// ---------- registered accounts (shown on the home screen, the map and the admin page) ----------
+// An account counts once its email is confirmed: its profile is created at the first sign-in after that, and the
+// count is the number of profiles. Every screen reads the same number from here. It is refreshed when a new
+// account is created in any open browser (Realtime broadcast "signup"), every 20 s while the tab is visible, and
+// when the tab or app comes back to the front.
+let userCount = null, countTimer = 0, countCh = null, countBusy = null;
+const countSubs = new Set();
+export const getUserCount = () => userCount;
+export function setUserCount(n) {
+  n = Number(n);
+  if (!(n > 0) || n === userCount) return;
+  userCount = n;
+  for (const f of countSubs) f(n);
+}
+export function refreshUserCount() {
+  if (countBusy) return countBusy;
+  countBusy = supabase.rpc('hit_page_view', { p_page: 'map', p_count: false }).then(({ data }) => {
+    if (data?.users > 0) setUserCount(data.users);
+    return data || null;
+  }, () => null).finally(() => { countBusy = null; });
+  return countBusy;
+}
+const onCountFront = () => { if (!document.hidden) refreshUserCount(); };
+/** Calls f(count) now (when known) and on every change. Returns the unsubscribe function. */
+export function watchUserCount(f) {
+  countSubs.add(f);
+  if (userCount != null) f(userCount);
+  if (countSubs.size === 1) {
+    refreshUserCount();
+    countTimer = setInterval(onCountFront, 20000);
+    document.addEventListener('visibilitychange', onCountFront);
+    window.addEventListener('focus', onCountFront);
+    countCh = supabase.channel('site-stats').on('broadcast', { event: 'signup' }, () => refreshUserCount()).subscribe();
+  }
+  return () => {
+    countSubs.delete(f);
+    if (countSubs.size) return;
+    clearInterval(countTimer);
+    document.removeEventListener('visibilitychange', onCountFront);
+    window.removeEventListener('focus', onCountFront);
+    if (countCh) { supabase.removeChannel(countCh); countCh = null; }
+  };
+}
+function announceSignup() {
+  refreshUserCount();
+  try {
+    const ch = supabase.channel('site-stats');
+    ch.subscribe((status) => {
+      if (status !== 'SUBSCRIBED') return;
+      ch.send({ type: 'broadcast', event: 'signup', payload: {} }).finally(() => setTimeout(() => supabase.removeChannel(ch), 1000));
+    });
+  } catch { /* Realtime unavailable: the others catch up within 20 s */ }
 }
 
 export async function loadMyProfile() {
