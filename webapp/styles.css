@@ -1423,7 +1423,7 @@ button.world-ride { padding: 9px 10px 9px 14px; }
 .wpc-banner { position: relative; height: 92px; border-radius: 16px 16px 0 0; background: center / cover no-repeat; }
 .wpc-banner.noimg { background: linear-gradient(135deg, var(--primary), var(--primary-2)); }
 .wpc-close { position: absolute; top: 6px; right: 6px; background: rgba(0, 0, 0, 0.35); color: #fff; }
-.wpc-id { display: flex; gap: 10px; align-items: flex-start; padding: 0 12px; margin-top: -30px; }
+.wpc-id { position: relative; z-index: 1; display: flex; gap: 10px; align-items: flex-start; padding: 0 12px; margin-top: -30px; } /* above the banner, which is positioned */
 .wpc-avatar { flex-shrink: 0; border-radius: 50%; }
 .wpc-names { display: flex; flex-direction: column; min-width: 0; padding-top: 34px; }
 .wpc-name { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
