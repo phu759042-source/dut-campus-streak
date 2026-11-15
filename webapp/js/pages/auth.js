@@ -26,8 +26,41 @@ function AuthShell({ title, subtitle, children }) {
   </div>`;
 }
 
+// school student mail (Outlook on the university's own domain) often files our confirmation mail as junk
+const SCHOOL_MAIL = /@sv1\.dut\.udn\.vn$/i;
+const SIGNUP_KEY = 'cs-signup-email';
+
+function takeSignupEmail() {
+  try { const v = sessionStorage.getItem(SIGNUP_KEY) || ''; sessionStorage.removeItem(SIGNUP_KEY); return v; } catch { return ''; }
+}
+
+function SchoolMailNote({ email }) {
+  const [state, setState] = useState('idle'); // idle | busy | sent | error
+  const [msg, setMsg] = useState('');
+  async function resend() {
+    setState('busy');
+    const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: `${location.origin}/` } });
+    if (error) { setState('error'); setMsg(errMsg(error)); return; }
+    setState('sent');
+  }
+  return html`<div class="note school-mail pop-in">
+    <${Icon} name="info" />
+    <div class="stack-sm">
+      <b>Lưu ý cho email sinh viên @sv1.dut.udn.vn</b>
+      <span>Đây là email sinh viên thuộc tên miền riêng của trường, có thể chịu chính sách lọc thư khác với tài khoản Outlook cá nhân thông thường. Nếu chưa thấy thư xác nhận ở Hộp thư đến, hãy kiểm tra thư mục <b>Rác (Junk Email)</b>.</span>
+      <span>Trường hợp vẫn không nhận được email, hãy kiểm tra lại địa chỉ <b>${email}</b> đã đúng chưa, hoặc thử gửi lại.</span>
+      <div>
+        ${state === 'sent' ? html`<span class="school-mail-ok">Đã gửi lại email xác nhận ✓</span>`
+          : html`<button type="button" class="btn btn-sm btn-ghost" disabled=${state === 'busy'} onClick=${resend}>${state === 'busy' ? html`<${Spinner} size=${14} />` : 'Gửi lại email xác nhận'}</button>`}
+        ${state === 'error' && html`<div class="school-mail-err">${msg}</div>`}
+      </div>
+    </div>
+  </div>`;
+}
+
 export function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [signupEmail] = useState(takeSignupEmail);
+  const [email, setEmail] = useState(signupEmail);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -44,6 +77,7 @@ export function LoginPage() {
   }
 
   return html`<${AuthShell} title="Chào mừng trở lại 👋" subtitle="Đăng nhập để tiếp tục chuỗi check-in của bạn.">
+    ${SCHOOL_MAIL.test(signupEmail) && html`<${SchoolMailNote} email=${signupEmail} />`}
     <form class="stack" onSubmit=${submit}>
       <${IconInput} icon="mail" type="email" autocomplete="email" placeholder="Email" value=${email}
         onInput=${(e) => setEmail(e.target.value)} />
@@ -79,6 +113,7 @@ export function RegisterPage() {
     if (err) { setLoading(false); return setError(errMsg(err)); }
     if (!data.session) {
       toast('Tài khoản đã tạo. Hãy kiểm tra email để xác nhận, sau đó đăng nhập.', 'success', 6000);
+      try { sessionStorage.setItem(SIGNUP_KEY, f.email.trim()); } catch { /* storage off */ }
       return navigate('/login', { replace: true });
     }
     try { await ensureCurrentUserData(f.name.trim()); } catch (e2) { console.warn(e2); }
