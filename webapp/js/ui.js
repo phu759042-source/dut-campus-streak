@@ -331,3 +331,26 @@ export function mountHosts() {
   document.body.appendChild(el);
   render(html`<${DialogHost} /><${ToastHost} />`, el);
 }
+
+/**
+ * Full-screen view of one picture (an avatar or a banner): the whole image, nothing cropped. Tap anywhere, the ✕ or
+ * Esc closes it. Pinch zoom works as on any page picture.
+ */
+export function openImage(src, alt = '') {
+  if (!src) return;
+  if (document.pointerLockElement) document.exitPointerLock();
+  const box = document.createElement('div');
+  box.className = 'img-view';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-label', alt || 'Ảnh');
+  const img = document.createElement('img');
+  img.src = hideStorageUrl(src); img.alt = alt;
+  const x = document.createElement('button');
+  x.className = 'img-view-x'; x.type = 'button'; x.setAttribute('aria-label', 'Đóng'); x.textContent = '✕';
+  box.append(img, x);
+  const close = () => { box.remove(); window.removeEventListener('keydown', onKey, true); };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+  box.addEventListener('click', close);
+  window.addEventListener('keydown', onKey, true);
+  document.body.appendChild(box);
+}

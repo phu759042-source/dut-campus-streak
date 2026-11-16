@@ -3,7 +3,7 @@
 // (game in ../soccer.js, its UI in map-soccer.js) and the lost-and-found event (../lost.js, map-lost.js).
 import { html, useState, useEffect, useLayoutEffect, useRef } from 'preact';
 import { supabase, hideStorageUrl } from '../lib.js';
-import { Icon, Avatar, toast, openSheet } from '../ui.js';
+import { Icon, Avatar, toast, openSheet, openImage } from '../ui.js';
 import { connectWorld, EMOTES, devName } from '../world.js';
 import { SoccerHud, SoccerPanel, SoccerChip, TEAM_CSS, showBoard } from './map-soccer.js';
 import { shouldAskRating, snoozeRating, openRating, Stars } from '../rating.js';
@@ -674,11 +674,12 @@ export function PlayerProfile({ player, onClose }) {
   const banner = hideStorageUrl(prof?.banner_url);
   const name = player.name || prof?.display_name || 'Người chơi';
   return html`<div class="wpc">
-    <div class=${'wpc-banner' + (banner ? '' : ' noimg')} style=${banner ? `background-image:url('${banner}')` : ''}>
-      <button class="icon-btn wpc-close" aria-label="Đóng" onClick=${onClose}><${Icon} name="x" size=${18} /></button>
+    <div class=${'wpc-banner' + (banner ? ' zoomable' : ' noimg')} style=${banner ? `background-image:url('${banner}')` : ''}
+      onClick=${() => banner && openImage(banner, `Banner của ${name}`)} title=${banner ? 'Xem ảnh banner' : ''}>
+      <button class="icon-btn wpc-close" aria-label="Đóng" onClick=${(e) => { e.stopPropagation(); onClose(); }}><${Icon} name="x" size=${18} /></button>
     </div>
     <div class="wpc-id">
-      <span class="wpc-avatar"><${Avatar} url=${prof?.avatar_url} name=${name} size=${64} ring /></span>
+      <span class=${'wpc-avatar' + (prof?.avatar_url ? ' zoomable' : '')} onClick=${() => prof?.avatar_url && openImage(prof.avatar_url, `Ảnh đại diện của ${name}`)}><${Avatar} url=${prof?.avatar_url} name=${name} size=${64} ring /></span>
       <div class="wpc-names">
         <b class="wpc-name">${name}</b>
         <span class="muted small">${state === 'loading' ? 'Đang tải hồ sơ…' : prof?.class_name ? `Lớp ${prof.class_name}` : 'Chưa có lớp'}</span>

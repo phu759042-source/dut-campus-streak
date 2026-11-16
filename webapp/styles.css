@@ -1420,7 +1420,7 @@ button.world-ride { padding: 9px 10px 9px 14px; }
 .theme-opt.on { color: var(--primary); box-shadow: inset 0 0 0 2px var(--primary); }
 /* player profile card on the online map */
 .wpc { margin: -12px -12px 4px; }
-.wpc-banner { position: relative; height: 92px; border-radius: 16px 16px 0 0; background: center / cover no-repeat; }
+.wpc-banner { position: relative; aspect-ratio: 2; /* same shape as everywhere else (BANNER_ASPECT) */ border-radius: 16px 16px 0 0; background: center / cover no-repeat; }
 .wpc-banner.noimg { background: linear-gradient(135deg, var(--primary), var(--primary-2)); }
 .wpc-close { position: absolute; top: 6px; right: 6px; background: rgba(0, 0, 0, 0.35); color: #fff; }
 .wpc-id { position: relative; z-index: 1; display: flex; gap: 10px; align-items: flex-start; padding: 0 12px; margin-top: -30px; } /* above the banner, which is positioned */
@@ -1453,3 +1453,10 @@ button.world-ride { padding: 9px 10px 9px 14px; }
 .intro-faq summary::before { content: '▸ '; color: var(--primary); }
 .intro-faq[open] summary::before { content: '▾ '; }
 .intro-faq p { margin: 10px 0 0; line-height: 1.6; }
+/* full-screen picture (avatar / banner) */
+.img-view { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(6, 10, 20, 0.92); cursor: zoom-out; animation: fadeIn 0.2s ease both; }
+.img-view img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+.img-view-x { position: absolute; top: calc(12px + var(--safe-t, 0px)); right: 12px; width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14); color: #fff; font-size: 18px; }
+.zoomable { cursor: zoom-in; }

@@ -1,6 +1,6 @@
 import { html, useState, useEffect, useRef } from 'preact';
 import { supabase, currentUser, errMsg, hideStorageUrl } from '../lib.js';
-import { Icon, Avatar, Skeleton, ErrorBox, Empty, Segmented, openSheet } from '../ui.js';
+import { Icon, Avatar, Skeleton, ErrorBox, Empty, Segmented, openSheet, openImage } from '../ui.js';
 import { PageHeader } from './shared.js';
 import { WORLD_HTTP } from '../world.js';
 import { navigate } from '../router.js';
@@ -14,7 +14,7 @@ const num = (v) => Number(v) || 0;
 const SCORE = {
   daily: (r) => html`<b>${num(r.current_streak)}</b><small>ngày</small>`,
   weekly: (r) => html`<b>${num(r.weekly_streak)}</b><small>tuần</small>`,
-  merit: (r) => html`<b>${num(r.pts)}</b><small>công đức</small>`,
+  merit: (r) => html`<b>${num(r.pts)}</b><small>công đức · ${num(r.n)} món</small>`,
 };
 const RANK_LABEL = { daily: 'Hạng ngày', weekly: 'Hạng tuần', merit: 'Hạng công đức' };
 
@@ -31,14 +31,16 @@ async function loadMerit() {
 function ProfileSheet({ row, rank, metric }) {
   const me = row.user_id === currentUser()?.id;
   return html`<div class="pcard">
-    <div class="pcard-banner" style=${row.banner_url ? `background-image:url('${row.banner_url}')` : ''}></div>
-    <div class="pcard-avatar"><${Avatar} url=${row.avatar_url} name=${name(row)} size=${88} ring /></div>
+    <div class=${'pcard-banner' + (row.banner_url ? ' zoomable' : '')} style=${row.banner_url ? `background-image:url('${row.banner_url}')` : ''}
+      onClick=${() => row.banner_url && openImage(row.banner_url, `Banner của ${name(row)}`)}></div>
+    <div class=${'pcard-avatar' + (row.avatar_url ? ' zoomable' : '')} onClick=${() => row.avatar_url && openImage(row.avatar_url, `Ảnh đại diện của ${name(row)}`)}><${Avatar} url=${row.avatar_url} name=${name(row)} size=${88} ring /></div>
     <div class="pcard-body">
       <div class="pcard-name">${name(row)} ${me && html`<span class="chip chip-blue">Bạn</span>`}</div>
       <div class="muted">${cls(row)}</div>
       <div class="pcard-stats">
         <div><b>#${rank}</b><span>${RANK_LABEL[metric]}</span></div>
         ${metric === 'merit' && html`<div><b>🙏 ${num(row.pts)}</b><span>Công đức</span></div>`}
+        ${metric === 'merit' && html`<div><b>🎒 ${num(row.n)}</b><span>Món đồ nhặt được</span></div>`}
         <div><b>🔥 ${num(row.current_streak)}</b><span>Streak ngày</span></div>
         <div><b>📅 ${num(row.weekly_streak)}</b><span>Streak tuần</span></div>
         <div><b>${num(row.total_check_ins)}</b><span>Check-in</span></div>
@@ -56,7 +58,7 @@ function Podium({ rows, metric, onOpen }) {
       <div class="podium-avatar"><${Avatar} url=${r.avatar_url} name=${name(r)} size=${place[i] === 1 ? 76 : 60} ring />
         <span class="podium-medal">${medal[i]}</span></div>
       <div class="podium-name">${name(r)}</div>
-      <div class="podium-score">${metric === 'merit' ? `🙏 ${num(r.pts)} công đức` : metric === 'weekly' ? `📅 ${num(r.weekly_streak)} tuần` : `🔥 ${num(r.current_streak)} ngày`}</div>
+      <div class="podium-score">${metric === 'merit' ? `🙏 ${num(r.pts)} công đức · ${num(r.n)} món` : metric === 'weekly' ? `📅 ${num(r.weekly_streak)} tuần` : `🔥 ${num(r.current_streak)} ngày`}</div>
       <div class="podium-block" style=${r.banner_url ? `background-image:linear-gradient(180deg,transparent,rgba(0,0,0,.45)),url('${r.banner_url}')` : ''}>
         <span>${r.rank ?? place[i]}</span></div>
     </button>` : html`<div class="podium-col empty-col"></div>`)}
