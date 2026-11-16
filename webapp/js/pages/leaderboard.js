@@ -18,6 +18,15 @@ const SCORE = {
 };
 const RANK_LABEL = { daily: 'Hạng ngày', weekly: 'Hạng tuần', merit: 'Hạng công đức' };
 
+/** Adds each student's banner (shown on the podium and in the profile card), for any board. */
+async function addBanners(list) {
+  const ids = list.map((r) => r.user_id).filter(Boolean);
+  if (!ids.length) return;
+  const { data: banners } = await supabase.rpc('get_public_profile_banners', { p_user_ids: ids });
+  const byId = Object.fromEntries((banners || []).filter((b) => b.banner_url).map((b) => [b.user_id, b.banner_url]));
+  list.forEach((r) => { r.banner_url = hideStorageUrl(byId[r.user_id] || null); });
+}
+
 /** Merit leaderboard (from the world server), with the profile details of each student from Supabase. */
 async function loadMerit() {
   const r = await fetch(`${WORLD_HTTP}/merit`, { cache: 'no-store' });
@@ -101,6 +110,7 @@ export function LeaderboardPage() {
       if (scope === 'class') list = list.filter((r) => cls(r) === klass);
       list.sort((a, b) => num(b.pts) - num(a.pts));
       list.forEach((r, i) => { r.rank = i && num(list[i - 1].pts) === num(r.pts) ? list[i - 1].rank : i + 1; });
+      await addBanners(list).catch(() => {});
       setRows(list); setPage(1);
       return;
     }
@@ -109,12 +119,7 @@ export function LeaderboardPage() {
     });
     if (err) return setError(errMsg(err));
     const list = (data || []).map((r) => ({ ...r }));
-    const ids = list.map((r) => r.user_id).filter(Boolean);
-    if (ids.length) {
-      const { data: banners } = await supabase.rpc('get_public_profile_banners', { p_user_ids: ids });
-      const byId = Object.fromEntries((banners || []).filter((b) => b.banner_url).map((b) => [b.user_id, b.banner_url]));
-      list.forEach((r) => { r.banner_url = hideStorageUrl(byId[r.user_id] || null); });
-    }
+    await addBanners(list).catch(() => {});
     const val = (r) => num(metric === 'weekly' ? r.weekly_streak : r.current_streak);
     list.sort((a, b) => (num(a.rank) - num(b.rank)) || (val(b) - val(a)) || (num(b.total_check_ins) - num(a.total_check_ins)) || name(a).localeCompare(name(b)));
     list.forEach((r, i) => { if (!r.rank) r.rank = i + 1; });
