@@ -1271,7 +1271,16 @@ button.world-ride { padding: 9px 10px 9px 14px; }
 .adm-note.adm-after { margin: 14px 0 0; }
 .adm-grid2 { display: grid; gap: 0 14px; }
 @media (min-width: 960px) { .adm-grid2 { grid-template-columns: 1fr 1fr; } }
-.adm-chart { position: relative; width: 100%; }
+.adm-chart { position: relative; width: 100%; touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; cursor: crosshair; border-radius: 8px; }
+.adm-chart:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.adm-cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+/* phones: a stepper and slider under the chart to move between columns precisely */
+.adm-scrub { display: none; align-items: center; gap: 8px; margin-top: 10px; }
+.adm-scrub input { flex: 1; min-width: 0; accent-color: var(--primary); height: 28px; }
+.adm-step { width: 40px; height: 40px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); color: var(--text);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.adm-step:disabled { opacity: 0.4; }
+@media (pointer: coarse) { .adm-scrub { display: flex; } }
 .adm-chart svg { display: block; overflow: visible; }
 .adm-grid { stroke: var(--border); stroke-width: 1; }
 .adm-axis { stroke: var(--muted); stroke-width: 1; opacity: 0.6; }

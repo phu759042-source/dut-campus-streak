@@ -28,9 +28,11 @@ export function useIsAdmin() {
 
 /**
  * Vertical bar chart. rows: [{ label, tip, values: [v1, v2?] }]; series: [{ name, color }] (stacked when 2).
- * Bars start at zero; a few light grid lines; hover (or tap) a column for its numbers.
+ * Bars start at zero; a few light grid lines; hover a column for its numbers. On a phone, slide a finger sideways
+ * across the chart (vertical swipes still scroll the page) or use the ‹ › stepper and slider under it; arrow keys
+ * step through the columns when the chart has focus.
  */
-function BarChart({ rows, series, height = 220, every = 1, unit = '' }) {
+export function BarChart({ rows, series, height = 220, every = 1, unit = '' }) {
   const box = useRef();
   const [w, setW] = useState(640);
   const [hover, setHover] = useState(-1);
@@ -52,7 +54,25 @@ function BarChart({ rows, series, height = 220, every = 1, unit = '' }) {
   const ticks = [];
   for (let v = 0; v <= top + 1e-9; v += step) ticks.push(v);
   const h = hover >= 0 ? rows[hover] : null;
-  return html`<div class="adm-chart" ref=${box} onMouseLeave=${() => setHover(-1)}>
+  const last = rows.length - 1;
+  const at = (e) => {
+    const b = box.current.getBoundingClientRect();
+    return Math.max(0, Math.min(last, Math.floor((e.clientX - b.left - padL) / slot)));
+  };
+  const onDown = (e) => {
+    if (e.pointerType !== 'mouse') { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ } }
+    setHover(at(e));
+  };
+  const onMove = (e) => { if (e.pointerType === 'mouse' || e.buttons || e.pressure > 0) setHover(at(e)); };
+  const stepBy = (d) => setHover((i) => Math.max(0, Math.min(last, (i < 0 ? last : i + d))));
+  const onKey = (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); stepBy(e.key === 'ArrowLeft' ? -1 : 1); }
+    else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); setHover(e.key === 'Home' ? 0 : last); }
+    else if (e.key === 'Escape') setHover(-1);
+  };
+  const scrub = rows.length > 6;
+  return html`<div class="adm-chart-wrap"><div class="adm-chart" ref=${box} tabIndex="0" onKeyDown=${onKey}
+    onPointerDown=${onDown} onPointerMove=${onMove} onMouseLeave=${() => setHover(-1)}>
     <svg width=${w} height=${height} role="img" aria-label=${series.map((s) => s.name).join(', ')}>
       ${ticks.map((v) => html`<g>
         <line x1=${padL} x2=${w - padR} y1=${y(v)} y2=${y(v)} class=${v === 0 ? 'adm-axis' : 'adm-grid'} />
@@ -72,16 +92,23 @@ function BarChart({ rows, series, height = 220, every = 1, unit = '' }) {
         });
         return html`<g>
           ${parts}
-          <rect x=${padL + slot * i} y=${padT} width=${slot} height=${plotH} fill="transparent" onMouseEnter=${() => setHover(i)} onClick=${() => setHover(i)} />
           ${(rows.length - 1 - i) % ev === 0 && html`<text x=${cx} y=${height - 8} class="adm-tick" text-anchor="middle">${r.label}</text>`}
         </g>`;
       })}
+      ${h && html`<line class="adm-cross" x1=${padL + slot * hover + slot / 2} x2=${padL + slot * hover + slot / 2} y1=${padT} y2=${padT + plotH} />`}
     </svg>
     ${h && html`<div class="adm-tip" style=${`left:${Math.min(w - 150, Math.max(0, padL + slot * hover + slot / 2 - 75))}px`}>
       <b>${h.tip || h.label}</b>
       ${series.map((s, k) => html`<div><span class="adm-dot" style=${`background:${s.color}`}></span>${s.name}: <b>${n(h.values[k])}${unit}</b></div>`)}
       ${series.length > 1 && html`<div class="muted">Tổng: <b>${n(h.values.reduce((a, b) => a + (+b || 0), 0))}${unit}</b></div>`}
     </div>`}
+  </div>
+  ${scrub && html`<div class="adm-scrub">
+    <button class="adm-step" aria-label="Cột trước" disabled=${hover === 0} onClick=${() => stepBy(-1)}><${Icon} name="back" size=${18} /></button>
+    <input type="range" min="0" max=${last} step="1" value=${hover < 0 ? last : hover} aria-label="Chọn mốc trên biểu đồ"
+      onInput=${(e) => setHover(+e.currentTarget.value)} />
+    <button class="adm-step" aria-label="Cột sau" disabled=${hover === last} onClick=${() => stepBy(1)}><${Icon} name="chevron" size=${18} /></button>
+  </div>`}
   </div>`;
 }
 function niceStep(raw) {
