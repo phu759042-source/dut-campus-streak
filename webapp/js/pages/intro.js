@@ -3,7 +3,7 @@
 import { html, useState, useEffect } from 'preact';
 import { Skeleton } from '../ui.js';
 import { navigate } from '../router.js';
-import { appStore, applyTheme } from '../lib.js';
+import { appStore } from '../lib.js';
 
 export function IntroPage() {
   const [d, setD] = useState(null);
@@ -12,8 +12,7 @@ export function IntroPage() {
     const before = document.title;
     document.title = 'Giới thiệu DUT Campus Streak – App check-in lớp học sinh viên Bách khoa Đà Nẵng';
     fetch('/data/faq.json').then((r) => r.json()).then(setD, () => setFailed(true));
-    applyTheme(appStore.get().theme); // dark here (FORCED_DARK); back to the saved theme on the way out
-    return () => { document.title = before; applyTheme(appStore.get().theme); };
+    return () => { document.title = before; };
   }, []);
   const go = (p) => (e) => { e.preventDefault(); navigate(p); };
   const loggedIn = !!appStore.get().session;

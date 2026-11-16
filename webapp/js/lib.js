@@ -68,8 +68,9 @@ export function currentUser() {
 // ------------------------------------------------------------------
 // Theme
 // ------------------------------------------------------------------
-// The public about page (/gioi-thieu) is always dark, whatever the saved choice; the choice itself is kept.
-export const FORCED_DARK = new Set(['/gioi-thieu']);
+// The about page and the account pages (login, sign-up, password) are always dark, whatever the saved choice;
+// the choice itself is kept. index.html has the same list for the first paint.
+export const FORCED_DARK = new Set(['/gioi-thieu', '/login', '/register', '/forgot', '/reset']);
 export function applyTheme(mode) {
   const theme = mode === 'dark' ? 'dark' : 'light';
   const shown = FORCED_DARK.has(location.pathname) ? 'dark' : theme;

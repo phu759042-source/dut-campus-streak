@@ -95,6 +95,9 @@ function App() {
   const path = usePath();
   const session = store.session;
 
+  // some pages are always dark (FORCED_DARK in lib.js): re-apply the saved theme on every page change
+  useEffect(() => { applyTheme(appStore.get().theme); }, [path]);
+
   useEffect(() => {
     if (session === undefined) return;
     if (store.recovery && path !== '/reset') { navigate('/reset', { replace: true }); return; }
