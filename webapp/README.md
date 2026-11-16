@@ -185,6 +185,17 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   kiểu mái từng toà lấy theo ảnh vệ tinh (`ROOFS`, theo id OSM): mái tôn xanh nhạt (A, I, K, N), xám nhạt (D), ngói
   đỏ (E2, Khu C), tôn nâu (KTX Nhà 1, 2), xanh lá nhạt (KTX Nhà 5, nhà thi đấu); văn phòng KTX 1 tầng mái đỏ.
 
+### Nhạc nền
+
+- `js/music.js`: 14 bài piano không lời tự sáng tác, tạo bằng Web Audio ngay trong trình duyệt (không tải file). Mỗi bài
+  là một "bản nhạc" ngắn (giọng, điệu thức, nhịp độ, vòng hợp âm, kiểu đệm: rải hợp âm / hợp âm khối / valse / ambient)
+  mà bộ soạn có seed biến thành 3:50–5:20 phút: mở bài thưa, giai điệu theo motif 2 ô nhịp (A A' B A), đoạn giữa dùng
+  vòng hợp âm khác, kết về chủ âm. Nhạc cụ: piano dịu (sóng tự định nghĩa + lọc thấp tắt dần), pad ấm, celesta, qua
+  reverb dài 4 s và echo nhẹ. Phát ngẫu nhiên (không lặp bài vừa nghe), nghỉ 8–22 s giữa hai bài.
+- Phát khi đi dạo một mình hoặc trong server; thoát đi bộ thì nhỏ dần rồi tạm dừng (vào lại thì phát tiếp). Nút 🎵 bên phải
+  (dưới nút ẩn nhãn) mở bảng: bật/tắt, âm lượng, chuyển bài; phím **M** bật/tắt. Lưu trong `localStorage` `cs-music`.
+  Âm lượng 60% (mặc định) ≈ -26 dBFS RMS. `renderPreview(i, giây)` render offline để đo mức.
+
 ### Chế độ server (nhiều người chơi)
 
 - Nút **Vào server** trên `/map` (cần đăng nhập). Lần đầu chọn nhân vật (màu da, kiểu tóc, màu tóc, áo, quần, balo, kính);

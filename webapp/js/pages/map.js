@@ -6,6 +6,7 @@ import { Icon, Spinner, toast, openSheet } from '../ui.js';
 import { back, navigate } from '../router.js';
 import { WorldLayer, editLook, savedLook } from './map-world.js';
 import { devName } from '../world.js';
+import { musicStart, musicStop, musicState, subscribeMusic, setMusicOn, setMusicVolume, skipTrack } from '../music.js';
 
 // Zone names as printed on the official campus map.
 const ZONE_META = {
@@ -249,6 +250,50 @@ function showAd(id) {
   </div>`, { title: 'Ủng hộ DUT Campus Streak' });
 }
 
+// Background music while walking: on / off, volume, another track (M turns it on or off)
+function MusicControl() {
+  const [m, setM] = useState(musicState);
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => subscribeMusic(setM), []);
+  useEffect(() => () => musicStop(), []); // leaving the map page
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.code !== 'KeyM' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      const on = !musicState().on;
+      setMusicOn(on);
+      toast(on ? 'Đã bật nhạc nền 🎵' : 'Đã tắt nhạc nền', 'info', 1400);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  useEffect(() => {
+    if (!open) return undefined;
+    const off = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    window.addEventListener('pointerdown', off);
+    return () => window.removeEventListener('pointerdown', off);
+  }, [open]);
+  const vol = Math.round(m.vol * 100);
+  return html`<div class="map-music" ref=${ref}>
+    <button class=${'map-btn walk-music' + (m.on ? '' : ' off')} aria-label="Nhạc nền" aria-expanded=${open} title="Nhạc nền (M)"
+      onClick=${(e) => { e.currentTarget.blur(); setOpen((v) => !v); }}><${Icon} name=${m.on ? 'music' : 'musicOff'} size=${19} /></button>
+    ${open && html`<div class="music-pop pop-in" role="dialog" aria-label="Nhạc nền">
+      <label class="switch-row"><span>🎵 Nhạc nền</span>
+        <input type="checkbox" class="switch" checked=${m.on} onChange=${(e) => setMusicOn(e.currentTarget.checked)} /></label>
+      <div class="music-now">${!m.on ? 'Đang tắt' : html`${m.gap ? 'Bài tiếp theo' : 'Đang phát'}: <b>${m.title || '…'}</b>`}</div>
+      <div class="music-vol">
+        <${Icon} name=${vol ? 'music' : 'musicOff'} size=${16} />
+        <input type="range" min="0" max="100" step="1" value=${vol} aria-label="Âm lượng nhạc nền" disabled=${!m.on}
+          onInput=${(e) => setMusicVolume(e.currentTarget.value / 100)} />
+        <span>${vol}%</span>
+      </div>
+      <button class="btn btn-ghost btn-sm music-skip" disabled=${!m.on || !m.playing} onClick=${skipTrack}>⏭ Chuyển bài khác</button>
+      <div class="music-note">Nhạc không lời tự sáng tác, phát ngẫu nhiên. Hợp để học bài, thư giãn hay đi ngủ.</div>
+    </div>`}
+  </div>`;
+}
+
 export function MapPage() {
   const host = useRef();
   const labelsRef = useRef();
@@ -468,6 +513,7 @@ export function MapPage() {
     setHint(false);
     scene.startWalk(t ? frontOf(t) : null, t ? lookOf(t) : null);
     setWalking(true);
+    musicStart(); // inside the tap that started the walk, so the browser lets the music play
     setWalkHint(true);
     setTimeout(() => setWalkHint(false), 9000);
     history.replaceState(history.state, '', location.pathname);
@@ -494,6 +540,7 @@ export function MapPage() {
     sceneRef.current?.setLook(l);
   }
   function exitWalk() {
+    musicStop();
     setServer(false);
     sceneRef.current?.stopWalk();
     setWalking(false);
@@ -564,6 +611,7 @@ export function MapPage() {
     ${state === 'ready' && walking && html`<div class="map-mini"><canvas ref=${miniRef}></canvas><span class="map-mini-n" style=${`transform: rotate(${compass}rad)`}><b>N</b></span></div>`}
     ${state === 'ready' && walking && timeBtn('walk-time')}
     ${state === 'ready' && walking && pinsBtn('walk-pins')}
+    ${state === 'ready' && walking && html`<${MusicControl} />`}
     ${state === 'ready' && walking && html`<div class="map-ride" role="group" aria-label="Phương tiện">
       ${[['walk', '🚶', 'Đi bộ (1)'], ['scooter', '🛵', 'Xe tay ga (2)'], ['moto', '🏍️', 'Xe máy (3)']].map(([m, ico, label]) => html`
         <button class=${'map-ride-btn' + (view.mode === m ? ' on' : '')} title=${label} aria-label=${label} aria-pressed=${view.mode === m}
@@ -573,7 +621,7 @@ export function MapPage() {
       <${Icon} name="pin" size=${16} /><span>Gần <b>${near.title}</b></span><span class="map-near-key">${mobile ? 'Chạm để xem' : 'Nhấn E'}</span></button>`}
     ${state === 'ready' && walking && seat && html`<button class="map-seat pop-in" onClick=${(e) => { e.currentTarget.blur(); sceneRef.current?.toggleSit(); setSeat(sceneRef.current?.sitting() ? 'on' : 'can'); }}>
       🪑 <span>${seat === 'on' ? 'Đứng dậy' : 'Ngồi xuống ghế'}</span>${!mobile && html`<span class="map-near-key">E</span>`}</button>`}
-    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà${server ? html` · <b>/</b> chat` : ''} · <b>F1</b> ẩn giao diện · ${server ? html`nút <b>✕</b> rời server` : html`<b>Esc</b> thoát`}</div>`}
+    ${state === 'ready' && walking && walkHint && !mobile && html`<div class="map-hint pop-in"><b>W A S D</b> di chuyển · <b>Shift</b> chạy · <b>Space</b> nhảy (bóp còi khi đi xe) · <b>1 2 3</b> đi bộ / xe tay ga / xe máy · <b>H</b> ẩn nhãn · <b>M</b> bật/tắt nhạc · <b>O</b> khóa chuột để nhìn quanh · lăn chuột sát vào (hoặc <b>F</b>) để vào góc nhìn thứ nhất · <b>E</b> xem tòa nhà${server ? html` · <b>/</b> chat` : ''} · <b>F1</b> ẩn giao diện · ${server ? html`nút <b>✕</b> rời server` : html`<b>Esc</b> thoát`}</div>`}
     ${state === 'ready' && walking && (view.fp || view.locked) && html`<div class="map-crosshair" aria-hidden="true"></div>`}
     ${state === 'ready' && walking && !mobile && html`<div class=${'map-lock-chip' + (view.locked ? ' on' : '')}>${view.locked
       ? html`<b>Đang khóa chuột</b> · di chuột để nhìn · nhấn <b>O</b> hoặc <b>Esc</b> để mở`
