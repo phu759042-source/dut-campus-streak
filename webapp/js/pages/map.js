@@ -250,13 +250,12 @@ function showAd(id) {
   </div>`, { title: 'Ủng hộ DUT Campus Streak' });
 }
 
-// Background music while walking: on / off, volume, another track (M turns it on or off)
+// Background music on the whole map page (overview, walking, server): on / off, volume, another track (M turns it on or off)
 function MusicControl() {
   const [m, setM] = useState(musicState);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => subscribeMusic(setM), []);
-  useEffect(() => () => musicStop(), []); // leaving the map page
   useEffect(() => {
     const onKey = (e) => {
       if (e.code !== 'KeyM' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
@@ -281,7 +280,7 @@ function MusicControl() {
     ${open && html`<div class="music-pop pop-in" role="dialog" aria-label="Nhạc nền">
       <label class="switch-row"><span>🎵 Nhạc nền</span>
         <input type="checkbox" class="switch" checked=${m.on} onChange=${(e) => setMusicOn(e.currentTarget.checked)} /></label>
-      <div class="music-now">${!m.on ? 'Đang tắt' : html`${m.gap ? 'Bài tiếp theo' : 'Đang phát'}: <b>${m.title || '…'}</b>`}</div>
+      <div class="music-now">${!m.on ? 'Đang tắt' : m.waiting ? 'Chạm vào bản đồ để bắt đầu phát' : html`${m.gap ? 'Bài tiếp theo' : 'Đang phát'}: <b>${m.title || '…'}</b>`}</div>
       <div class="music-vol">
         <${Icon} name=${vol ? 'music' : 'musicOff'} size=${16} />
         <input type="range" min="0" max="100" step="1" value=${vol} aria-label="Âm lượng nhạc nền" disabled=${!m.on}
@@ -367,6 +366,9 @@ export function MapPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [walking]);
+  // background music on the whole map page, from the moment the map is ready until the page is left
+  useEffect(() => { if (state === 'ready') musicStart(); }, [state]);
+  useEffect(() => () => musicStop(), []);
   const [look, setLook] = useState(null);
   const worldFrame = useRef(null);
   const worldPick = useRef(null);
@@ -540,7 +542,6 @@ export function MapPage() {
     sceneRef.current?.setLook(l);
   }
   function exitWalk() {
-    musicStop();
     setServer(false);
     sceneRef.current?.stopWalk();
     setWalking(false);
@@ -645,6 +646,7 @@ export function MapPage() {
       <button class="map-btn" aria-label="Toàn cảnh" title="Toàn cảnh" onClick=${() => { select(null); sceneRef.current?.goHome(); }}><${Icon} name="crosshair" size=${19} /></button>
       ${timeBtn()}
       ${pinsBtn()}
+      <${MusicControl} />
     </div>`}
 
     ${state === 'ready' && !walking && hint && !sel && html`<div class="map-hint pop-in overview-hint">${isMobile()

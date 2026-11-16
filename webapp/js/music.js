@@ -1,4 +1,4 @@
-// Background music for the 3D map (walking alone or in the server).
+// Background music for the 3D map: the overview, walking alone and the server.
 // Original, generated pieces: each track is a small score (key, mode, tempo, chord progression, accompaniment style)
 // that a seeded composer turns into a few minutes of soft piano over warm pads, played through a long reverb, in the
 // calm, sparse spirit of ambient game soundtracks: for studying, resting or falling asleep. Nothing is downloaded.
@@ -257,7 +257,7 @@ function bell(bus, t, m, vel) {
 // --------------------------------------------------------------------------------------------------------------------
 const settings = (() => { try { const s = JSON.parse(readLocal(KEY) || '{}'); return { on: s.on !== false, vol: clamp(Number(s.vol ?? 0.6), 0, 1) }; } catch { return { on: true, vol: 0.6 }; } })();
 const subs = new Set();
-const state = { on: settings.on, vol: settings.vol, title: '', playing: false, gap: false };
+const state = { on: settings.on, vol: settings.vol, title: '', playing: false, gap: false, waiting: false };
 const emit = () => subs.forEach((f) => f({ ...state }));
 const save = () => { try { writeLocal(KEY, JSON.stringify({ on: state.on, vol: state.vol })); } catch { /* storage off */ } };
 
@@ -305,25 +305,28 @@ function setMaster(v, sec) {
   master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(master.gain.value, now); master.gain.linearRampToValueAtTime(v, now + sec);
 }
 
+// browsers only start audio after a tap or key press on the page: until then, wait for the first one
+function armUnlock() {
+  if (unlock) return;
+  unlock = () => { if (wanted && state.on && (!ctx || ctx.state !== 'running')) play(); };
+  ['pointerdown', 'keydown', 'touchend'].forEach((e) => window.addEventListener(e, unlock, { passive: true }));
+}
+
 function play() {
+  if (!ctx && navigator.userActivation && !navigator.userActivation.hasBeenActive) {
+    armUnlock(); state.waiting = true; emit(); return; // opened straight from a link: no tap yet
+  }
   if (!ctx) { try { initAudio(); } catch { return; } }
   if (!cur) startTrack(0.4);
-  const go = () => { setMaster(level(), 2.5); tick(); };
-  if (ctx.state !== 'running') {
-    ctx.resume().then(go, () => {});
-    // browsers only start audio after a tap or key press: try again on the next one
-    if (!unlock) {
-      unlock = () => { if (wanted && state.on && ctx.state !== 'running') ctx.resume().then(go, () => {}); };
-      ['pointerdown', 'keydown', 'touchend'].forEach((e) => window.addEventListener(e, unlock, { passive: true }));
-    }
-  } else go();
+  const go = () => { state.waiting = false; setMaster(level(), 2.5); tick(); emit(); };
+  if (ctx.state !== 'running') { state.waiting = true; ctx.resume().then(go, () => {}); armUnlock(); } else go();
   clearInterval(timer); timer = setInterval(tick, 250);
   state.playing = true; emit();
 }
 
 function pause() {
   clearInterval(timer); timer = 0;
-  state.playing = false; emit();
+  state.playing = false; state.waiting = false; emit();
   if (!ctx || ctx.state !== 'running') return;
   setMaster(0, 0.8);
   setTimeout(() => { if (!state.playing && ctx.state === 'running') ctx.suspend().catch(() => {}); }, 900);

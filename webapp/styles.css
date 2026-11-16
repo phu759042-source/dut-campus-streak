@@ -1012,6 +1012,7 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 /* map: background music */
 .map-music { position: absolute; z-index: 4; right: 16px; top: calc(318px + var(--safe-t)); }
 .map-music .walk-music .icon { color: #8b5cf6; }
+.map-tools .map-music { position: relative; top: auto; right: auto; }
 .map-music .walk-music.off .icon { color: var(--muted); }
 .music-pop { position: absolute; right: 54px; top: 0; width: min(270px, calc(100vw - 90px)); padding: 14px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;
   background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--border); box-shadow: var(--shadow); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }

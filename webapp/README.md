@@ -192,7 +192,8 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   mà bộ soạn có seed biến thành 3:50–5:20 phút: mở bài thưa, giai điệu theo motif 2 ô nhịp (A A' B A), đoạn giữa dùng
   vòng hợp âm khác, kết về chủ âm. Nhạc cụ: piano dịu (sóng tự định nghĩa + lọc thấp tắt dần), pad ấm, celesta, qua
   reverb dài 4 s và echo nhẹ. Phát ngẫu nhiên (không lặp bài vừa nghe), nghỉ 8–22 s giữa hai bài.
-- Phát khi đi dạo một mình hoặc trong server; thoát đi bộ thì nhỏ dần rồi tạm dừng (vào lại thì phát tiếp). Nút 🎵 bên phải
+- Phát suốt trang `/map`: xem toàn cảnh, đi dạo một mình, trong server; rời trang thì nhỏ dần rồi tạm dừng. Mở thẳng từ
+  link (chưa chạm gì) thì trình duyệt chưa cho phát: bắt đầu ở lần chạm / phím đầu tiên. Nút 🎵 bên phải
   (dưới nút ẩn nhãn) mở bảng: bật/tắt, âm lượng, chuyển bài; phím **M** bật/tắt. Lưu trong `localStorage` `cs-music`.
   Âm lượng 60% (mặc định) ≈ -26 dBFS RMS. `renderPreview(i, giây)` render offline để đo mức.
 
