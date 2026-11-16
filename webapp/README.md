@@ -231,30 +231,43 @@ Camera trên web cần HTTPS (hoặc `localhost`).
   giao bóng, trận 5 phút; bàn thắng có thông báo lớn, hết giờ có kết quả và danh sách ghi bàn, rồi tự đá trận mới.
   Thủ môn hai bên do máy điều khiển (bắt bóng, đẩy bóng, phát bóng).
 - Cách chơi: chạy vào bóng để dắt bóng. Máy tính (bóng bay theo hướng camera):
-  - **Chuột phải** giữ để lấy lực, thả để sút (sút gần khung thành thì bóng được nắn vào trong cột).
-  - **Chuột trái** bấm: chuyền thấp; giữ: chuyền cao (bổng qua đầu tới đồng đội). Kéo chuột trái vẫn là xoay camera.
+  - Bấm thật nhanh **chuột trái hoặc phải** (dưới 0,16 s / 0,25 s): chạm bóng nhẹ để dẫn bóng (xem bên dưới).
+  - **Chuột phải** giữ để lấy lực, thả để sút: nhẹ là chuyền sệt mạnh 14 m/s, hết lực 38 m/s (sút gần khung thành thì
+    bóng được nắn vào trong cột).
+  - **Chuột trái** giữ: chuyền cao (bổng qua đầu tới đồng đội). Kéo chuột trái vẫn là xoay camera.
+  - Lực đã đầy mà vẫn giữ thêm quá **1,2 giây** thì cú sút / chuyền bị hủy (thanh lực đếm ngược "hủy sau …s"), thả ra
+    bấm lại: đổi ý giữa chuyền cao và chuyền thấp vẫn kịp.
   - **Space** nhảy; đang ở trên không bấm (hoặc giữ) **chuột phải** để vô lê, **chuột trái** để đánh đầu khi bóng tới.
   - Giữ chuột trái hoặc phải rồi bấm **Space**: xe đạp chổng ngược (bóng bay về phía camera nhìn).
   - **E** xoạc cướp bóng, **Q** lừa bóng (lướt nhanh, đối thủ xoạc lúc đó sẽ hụt), **Shift** chạy nhanh (tốn thể lực).
-  - Điện thoại: nút Sút / Chuyền (chạm: thấp, giữ: cao) / Nhảy / Xoạc / Lừa; Nhảy rồi bấm Sút = vô lê, Nhảy rồi bấm
+  - Điện thoại: nút Sút / Chuyền (chạm nhanh: chạm bóng dẫn bóng, giữ: sút / chuyền cao) / Nhảy / Xoạc / Lừa; Nhảy rồi bấm Sút = vô lê, Nhảy rồi bấm
     Chuyền = đánh đầu, giữ Sút hoặc Chuyền rồi bấm Nhảy = xe đạp chổng ngược (bóng bay ra sau lưng).
 - Khi giữ bóng: đường chấm trắng là đường chuyền thấp; giữ chuyền thì hiện đường chấm vàng của chuyền cao và vòng chỗ
-  bóng rơi (giữ càng lâu càng xa: yếu nhất ~14 m, hết lực ~50 m, tức là từ vạch cầu môn rơi đúng giữa sân, cao ~8,5 m);
+  bóng rơi (giữ càng lâu càng xa: yếu nhất ~12 m, hết lực ~49 m, tức là từ vạch cầu môn rơi đúng giữa sân, cao ~7,4 m);
   giữ sút thì hiện đường chấm đỏ của cú sút theo lực.
-- Vật lý bóng (`js/soccer-core.js`) theo bóng thật: trọng lực 9,81 m/s², cản không khí K·v² (K ≈ 0,0106/m, Cd ≈ 0,2) cả khi
-  bay lẫn khi lăn, cỏ cản lăn thêm 0,8 m/s² (bài thử dốc FIFA: bóng 3,7 m/s lăn ~8 m). Nảy giữ ~60 % vận tốc đứng; theo
-  phương ngang cỏ chỉ ma sát khi bóng ép xuống (μ ≈ 0,55), nên bóng sệt/nảy thấp gần như không mất tốc, bóng rơi dốc mất tối đa 2/7.
+- Vật lý bóng (`js/soccer-core.js`, server và trình duyệt chạy chung) theo đo đạc bóng thật (Goff & Carré, Asai):
+  - Trọng lực 9,81 m/s². Cản không khí ½ρ·Cd·A·v² có **khủng hoảng lực cản** (drag crisis): chậm hơn ~10 m/s Cd ≈ 0,45,
+    từ ~12–14 m/s lớp biên chuyển rối, Cd giảm còn ≈ 0,25. Bóng bổng nhẹ chậm lại nhanh, cú sút mạnh giữ tốc lâu.
+  - **Lực Magnus** a = KM·(ω × v), C_L ≈ 0,9·rω/v (đo được C_L ≈ 0,23–0,29 ở 22 m/s): xoáy ~10 vòng/s ở 25 m/s cho
+    gia tốc ngang cỡ g. Chuyền cao có xoáy ngược (bóng bay lâu, rơi mềm ~5 m/s thay vì ~10 m/s), sút mạnh có chút
+    xoáy lên (bóng chúi xuống dưới xà). Xoáy giảm chậm (~6 %/s), lâu hơn vận tốc. Trạng thái bóng có thêm `wu, wy, wv`
+    (rad/s), lệnh `fk` gửi kèm `w`.
+  - Nảy giữ ~60 % vận tốc đứng. Cỏ bám vào điểm chạm của bóng: điểm chạm còn trượt thì cỏ kéo ngược (μ ≈ 0,55 khi
+    nảy, 0,4 khi trượt trên cỏ), bóng là vỏ rỗng (I = ⅔mr²) nên lấy tối đa 2/5 độ trượt. Vì vậy xoáy ngược làm bóng
+    khựng lại khi chạm đất, xoáy lên làm bóng lướt tiếp, bóng sút sệt trượt một đoạn rồi mới lăn hẳn.
+  - Khi lăn: cỏ cản 0,8 m/s² + cản không khí (bài thử dốc FIFA: bóng 3,7 m/s lăn ~8 m).
   Bóng bay nhanh (> 13 m/s) có vệt mờ phía sau.
 - Người giữ bóng có vòng tròn màu đội dưới chân (ai cũng thấy); người không đá còn thấy trái banh chỉ xuống đầu họ.
   Xoạc (trượt ~6,7 m trong 1 giây, tiếng cỏ quẹt kéo dài đúng lúc trượt) chỉ cướp được bóng khi chân đi qua giữa vòng
   tròn (`fxh`, server kiểm tra lại); cướp được thì bóng về luôn chân người xoạc; xoạc trúng bóng tự do thì lấy luôn bóng.
   Bóng bổng chạm người (ngực, đầu, cả khi nhảy; nhảy trên sân cao ~1,2 m) thì khống chế được luôn (`ft` với `c: 1`).
-  Giữ nút sút / chuyền vẫn chạy được, chậm hơn ~22 %. Sút 21–38 m/s (giữ nút 0,7 s là tối đa), vô lê 34, đánh đầu 21, xe đạp chổng ngược 29–31. Người bị xoạc ngã sấp nằm 2 giây rồi chống tay, quỳ, đứng dậy (~2,9 giây không chạm bóng).
+  Giữ nút sút / chuyền vẫn chạy được, chậm hơn ~22 %. Sút 14–38 m/s (giữ nút 0,16 + 0,7 s là tối đa), vô lê 34, đánh đầu 21, xe đạp chổng ngược 29–31. Người bị xoạc ngã sấp nằm 2 giây rồi chống tay, quỳ, đứng dậy (~2,9 giây không chạm bóng).
   Xoạc và lừa bóng hồi 2 giây; bấm khi chưa hồi xong có tiếng báo.
 - Vô lê / đánh đầu bấm lúc đang trên không thì chờ bóng 2 giây, kể cả sau khi đã chạm đất: trong 2 giây đó chạm bóng
   (bóng bay, lăn hay đứng yên) là đánh.
-- Chuột trái bấm nhanh (nút Chuyền chạm nhanh): đẩy bóng lên trước vừa đủ để chạy theo bắt lại (đứng yên ~4 m, đang chạy
-  bóng đi trước vài mét); giữ là chuyền cao. Không còn tự chuyền thấp cho đồng đội.
+- Chuột trái hoặc phải bấm thật nhanh (nút Chuyền / Sút chạm nhanh): chạm bóng nhẹ, bóng đã lăn sẵn (không trượt), chỉ
+  nhanh hơn người 1,3 m/s: đứng yên bóng đi ~2,2 m; đang chạy bóng lên trước 1–1,5 m rồi chạy tới là bắt lại (~2 s khi
+  chạy chậm, ~1,5 s chạy thường, ~0,5 s chạy nhanh). Dẫn bóng bằng những cú chạm thay vì dính bóng trong chân.
 - Giữ nút sút / chuyền trước khi có bóng: trong 2 giây, vừa chạm bóng là sút / chuyền luôn với lực đã tích tới lúc đó.
 - Cầu thủ trên sân có dáng chạy riêng (sải bước dài, người đổ về trước, tay đánh mạnh), không còn là đi bộ nhanh.
 - Khán đài 7 bậc hai bên sân (đi lên được, nhấn **E** hoặc nút 🪑 để ngồi xuống ghế). Khi một trận bắt đầu, người

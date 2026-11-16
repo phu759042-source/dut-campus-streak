@@ -2,15 +2,16 @@
 // Draws the ball and the two goalkeepers, predicts the ball between server updates with the same physics as the
 // world server (soccer-core.js), dresses players in their team kit, and turns keys / buttons into touches,
 // shots, passes and slide tackles. The world server is the referee: it decides who has the ball, goals and score.
-//   Desktop: run into the ball to take it · right mouse (hold for power) shoot · left mouse tap: push the ball ahead,
-//            hold: lofted pass · a kick button held before the ball comes fires on the touch with the power so far
+//   Desktop: run into the ball to take it · a quick tap of either mouse button: a light touch to dribble ·
+//            right mouse (hold for power) shoot, left mouse hold: lofted pass · full power held over 1.2 s calls the
+//            kick off · a kick button held before the ball comes fires on the touch with the power so far
 //            Space jump; in the air right mouse volley, left mouse header · hold a mouse button + Space = bicycle kick
 //            E slide tackle · Q dribble burst · Shift sprint
 //   Phones: buttons Sút / Chuyền / Nhảy / Xoạc / Lừa, push the joystick all the way to sprint
 import * as THREE from 'three';
 import {
   F, HL, HW, GOAL_W, BALL_R, KEEPER_U, STEP, STEP_MS, MATCH_MS, TEAM_SIZE, TEAM_NAMES, MAX_KICK,
-  toLocal, toWorld, dirLocal, dirWorld, ballAtFeet, newSim, cloneSim, step, keeperHolds,
+  toLocal, toWorld, dirLocal, dirWorld, ballAtFeet, newSim, cloneSim, step, keeperHolds, spinFor, R_REAL,
 } from './soccer-core.js';
 import { makeStudent, disposeStudent, SCALE, SOLE } from './walk.js';
 
@@ -27,7 +28,9 @@ const KEEPER_KITS = [
 const TURF = 0;               // the pitch lies flat on the ground (y = 0)
 const BALL_LOOK = 1.3;        // the ball is drawn a bit bigger than its physics size so it reads on a phone
 const RUN = 6.6, SPRINT = 9.2; // m/s in a match
-const CHARGE_MS = 700;        // holding the shoot button this long = full power
+const CHARGE_MS = 700;        // holding a kick button this long (after the tap time) = full power
+const TAP_MS = 160;           // a press shorter than this (either mouse button / Sút / Chuyền) = a light touch to dribble
+const KEEP_MS = 1200;         // full power is kept this long; still held after that, the kick is called off
 const PLAYING = ['warm', 'count', 'play', 'wait'];
 const IN_MATCH = ['kick', 'play', 'goal', 'wait'];
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -403,18 +406,18 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     const [fu, fv] = dirLocal(Math.sin(w.heading), Math.cos(w.heading));
     return ballAtFeet(mu, mv, fu, fv);
   };
-  function predict(u, v, y, vel) { // show the kick right away (the server sends the same thing back)
+  function predict(u, v, y, vel, w = [0, 0, 0]) { // show the kick right away (the server sends the same thing back)
     kickedAt = performance.now();
-    Object.assign(sim.b, { u, v, y, vu: vel[0], vv: vel[1], vy: vel[2], h: null });
+    Object.assign(sim.b, { u, v, y, vu: vel[0], vv: vel[1], vy: vel[2], wu: w[0], wy: w[1], wv: w[2], h: null });
     simAt = serverNow();
     pending = 0; touchWait = performance.now() + 350;
     off.u = off.v = off.y = 0;
   }
   /** Kick the ball at your feet: shot s, low pass p, lofted pass l, bicycle kick b (flicked up to height y). */
-  function kick([du, dv], sp, lift, kind, y = BALL_R) {
-    const [bu, bv] = feet(), vel = [du * sp, dv * sp, lift];
-    send({ t: 'fk', k: kind, p: [bu, bv, y], d: vel });
-    predict(bu, bv, y, vel);
+  function kick([du, dv], sp, lift, kind, y = BALL_R, back = 0) {
+    const [bu, bv] = feet(), vel = [du * sp, dv * sp, lift], w = spinFor(du, dv, back);
+    send({ t: 'fk', k: kind, p: [bu, bv, y], d: vel, w });
+    predict(bu, bv, y, vel, w);
     if (kind !== 'b') { const [wx, wz] = dirWorld(du, dv); walker.face(Math.atan2(wx, wz)); walker.kick(); }
     sfx('kick', sp / 32);
   }
@@ -444,34 +447,39 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     if (kind === 'v') strike('v', dir, 34, 1.2);
     else strike('h', dir, 21, b.y > 1.7 ? -1.5 : 0.8); // a header from high up goes down into the grass
   }
-  // What each kick does: { dir, sp (m/s along the grass), lift (m/s up), k }. The preview draws the same thing.
-  // Tap (quick press of pass): a short push ahead along the grass, just far enough to run onto it again. Standing it
-  // rolls about 4.6 m; running it stays a couple of metres in front of you (dribbling by touches).
-  const lowPlan = (aim) => ({ dir: aimDir(aim), sp: 2.8 + walker.state.speed * 0.9, lift: 0, k: 'p' });
-  // Lofted pass: the power decides how far. Weakest about 14 m (2.5 m high), full power about 50 m, i.e. from
-  // your own goal line it comes down at the halfway line (about 8.5 m high at the top, 2.6 s in the air).
-  const highPlan = (aim, p) => ({ dir: aimDir(aim), sp: 11.3 + p * 16.2, lift: 7.2 + p * 7.5, k: 'l' });
-  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: 21 + p * 17, lift: 0.6 + p * p * 5.4, k: 's' }; };
-  function shoot(p, aim) {
+  // What each kick does: { dir, sp (m/s along the grass), lift (m/s up), back (spin, rad/s: + backspin, - topspin), k }.
+  // The preview draws the same thing (soccer-core.js has the physics: drag crisis, Magnus force, grip of the grass).
+  // Tap (a quick press of either button): a light touch along the grass, already rolling. Standing it goes about
+  // 2.2 m; running it gets only 1.3 m/s ahead of you and slows on the grass: it gets 1-1.5 m in front and you run
+  // onto it again after about 2 s jogging, 1.5 s running, 0.5 s sprinting (dribbling by touches, not glued to your feet).
+  const lowPlan = (aim) => { const sp = Math.max(1.9, walker.state.speed + 1.3); return { dir: aimDir(aim), sp, lift: 0, back: -sp / R_REAL, k: 'p' }; };
+  // Lofted pass, struck under the ball with backspin: it climbs, hangs and drops softly. Weakest about 12 m (2 m
+  // high), full power about 49 m (7.4 m high, 2.8 s in the air), i.e. from your own goal line to the halfway line.
+  const highPlan = (aim, p) => ({ dir: aimDir(aim), sp: 11.8 + p * 15.2, lift: 6.8 + p * 4.7, back: 22 + p * 8, k: 'l' });
+  // Shot (instep drive): soft = a firm ground pass (14 m/s), full = 38 m/s (137 km/h) with a little topspin that
+  // makes it dip under the bar.
+  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: 14 + p * 24, lift: 0.6 + p * p * 5.4, back: -10 * p, k: 's' }; };
+  function doKick(P) {
     if (!holding() && !grabNear()) return;
-    const P = shotPlan(aim, p);
-    kick(P.dir, P.sp, P.lift, 's');
+    kick(P.dir, P.sp, P.lift, P.k, BALL_R, P.back);
   }
-  function lowPass(aim) {
-    if (!holding() && !grabNear()) return;
-    const P = lowPlan(aim);
-    kick(P.dir, P.sp, P.lift, 'p');
-  }
-  function highPass(aim, p) {
-    if (!holding() && !grabNear()) return;
-    const P = highPlan(aim, p);
-    kick(P.dir, P.sp, P.lift, 'l');
+  const shoot = (p, aim) => doKick(shotPlan(aim, p));
+  const lowPass = (aim) => doKick(lowPlan(aim));
+  const highPass = (aim, p) => doKick(highPlan(aim, p));
+  /** A held kick button: { p: power 0..1, full: ms spent at full power (< 0 before) }, or null while it is still a tap. */
+  function charge(kind, now = performance.now()) {
+    const h = hold[kind];
+    if (!h || (kind === 'pass' && h.moved)) return null;
+    const start = kind === 'shoot' ? TAP_MS : HIGH_MS, held = now - h.t;
+    if (held < start) return null;
+    return { p: Math.min(1, (held - start) / CHARGE_MS), full: held - start - CHARGE_MS };
   }
   /** Path of the ball for a planned pass from your feet (pitch coordinates), and where a lofted one comes down. */
   const pathEv = [];
   function passPath(P) {
     const S = cloneSim(sim), [bu, bv] = feet();
-    Object.assign(S.b, { u: bu, v: bv, y: BALL_R, vu: P.dir[0] * P.sp, vv: P.dir[1] * P.sp, vy: P.lift, h: null });
+    const [wu, wy, wv] = spinFor(P.dir[0], P.dir[1], P.back || 0);
+    Object.assign(S.b, { u: bu, v: bv, y: BALL_R, vu: P.dir[0] * P.sp, vv: P.dir[1] * P.sp, vy: P.lift, wu, wy, wv, h: null });
     const pts = [[bu, bv, BALL_R]];
     let last = pts[0], land = null;
     for (let t = 0; t < 4; t += STEP) {
@@ -518,9 +526,11 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     if (!h) return;
     changed(true);
     if (myTeam < 0 || !canPlay() || !have) return;
-    const held = performance.now() - h.t;
-    if (kind === 'shoot') shoot(Math.min(1, held / CHARGE_MS), h.aim);
-    else if (!h.moved) { if (held < HIGH_MS) lowPass(h.aim); else highPass(h.aim, Math.min(1, (held - HIGH_MS) / CHARGE_MS)); }
+    if (kind === 'pass' && h.moved) return; // that was a camera drag
+    hold[kind] = h; const c = charge(kind); hold[kind] = null;
+    if (!c) lowPass(h.aim);                  // a tap of either button: a light touch
+    else if (kind === 'shoot') shoot(c.p, h.aim);
+    else highPass(h.aim, c.p);
   }
   /** Space / Nhảy with a kick button held = bicycle kick (returns true); otherwise false (a normal jump). */
   function jumpKick(aim) {
@@ -638,6 +648,15 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       }
     }
     if (pending && performance.now() - pending > 450) pending = 0; // no answer: someone else got there first
+    // full power held too long: the kick is called off (changed your mind: let go and press again)
+    for (const k of ['shoot', 'pass']) {
+      const c = charge(k);
+      if (c && c.full > KEEP_MS) {
+        hold[k] = null;
+        flash = { text: 'Đã hủy cú ' + (k === 'shoot' ? 'sút' : 'chuyền') + ' – bấm lại', until: performance.now() + 1300 };
+        sfx('deny'); changed(true);
+      }
+    }
     // kick button held before the ball came: the touch kicks it straight away with the power charged until now
     for (const k of ['shoot', 'pass']) {
       const h = hold[k];
@@ -701,9 +720,8 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     let plan = null;
     if (myTeam >= 0 && holder === me() && !bike && canPlay() && performance.now() > kickedAt + 500) {
       const now = performance.now(), aim = (hold.shoot || hold.pass)?.aim || (touchFirst ? 'head' : 'cam');
-      const passHeld = hold.pass && !hold.pass.moved ? now - hold.pass.t : 0;
-      if (hold.shoot) plan = shotPlan(aim, Math.min(1, (now - hold.shoot.t) / CHARGE_MS));
-      else plan = passHeld > HIGH_MS ? highPlan(aim, Math.min(1, (passHeld - HIGH_MS) / CHARGE_MS)) : lowPlan(aim);
+      const cs = charge('shoot', now), cp = charge('pass', now);
+      plan = cs ? shotPlan(aim, cs.p) : cp ? highPlan(aim, cp.p) : lowPlan(aim);
     }
     marks.path(plan ? passPath(plan) : null, plan?.k);
     ball.mesh.position.set(x, TURF + pos[2] + BALL_R * (BALL_LOOK - 1), z);
@@ -759,8 +777,10 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
         st: ms.st, teams: ms.teams, score: ms.score, goals: ms.goals, n: ms.n, ko: ms.ko,
         clock: clock(), left: ms.until ? Math.max(0, ms.until - serverNow()) : 0,
         myTeam, holding: holding(), stamina, tired, banner, notice, flash, near: nearPitch(130), wantTeam,
-        power: hold.shoot ? Math.min(1, (performance.now() - hold.shoot.t) / CHARGE_MS) : null,
-        lob: hold.pass && !hold.pass.moved && performance.now() - hold.pass.t > HIGH_MS ? Math.min(1, (performance.now() - hold.pass.t - HIGH_MS) / CHARGE_MS) : null,
+        power: charge('shoot')?.p ?? null,
+        lob: charge('pass')?.p ?? null,
+        // seconds left before a kick held at full power is called off
+        keep: ((c) => (c && c.full >= 0 ? Math.max(0, (KEEP_MS - c.full) / 1000) : null))(charge('shoot') || charge('pass')),
         armed: air ? air.kind : null, fallen: walker.state.fall > 0,
       };
     },

@@ -78,12 +78,12 @@ export function SoccerHud({ v, soccer, mobile, onOpen }) {
     ${inTeam && html`<div class=${'soc-meters' + (mobile ? ' m' : '')}>
       ${v.armed && html`<div class="soc-armed">${v.armed === 'v' ? 'Vô lê' : 'Đánh đầu'}: chờ bóng tới (2 giây)…</div>`}
       ${v.fallen && html`<div class="soc-armed">Bị xoạc ngã, đang đứng dậy…</div>`}
-      ${v.power != null && html`<div class="soc-meter power"><span style=${`width:${Math.round(v.power * 100)}%`}></span><b>Lực sút</b></div>`}
-      ${v.lob != null && html`<div class="soc-meter lob"><span style=${`width:${Math.round(v.lob * 100)}%`}></span><b>Chuyền cao</b></div>`}
+      ${v.power != null && html`<div class="soc-meter power"><span style=${`width:${Math.round(v.power * 100)}%`}></span><b>${v.keep != null ? `Lực tối đa · hủy sau ${v.keep.toFixed(1)}s` : 'Lực sút'}</b></div>`}
+      ${v.lob != null && html`<div class="soc-meter lob"><span style=${`width:${Math.round(v.lob * 100)}%`}></span><b>${v.keep != null ? `Tối đa · hủy sau ${v.keep.toFixed(1)}s` : 'Chuyền cao'}</b></div>`}
       <div class=${'soc-meter stamina' + (v.tired ? ' tired' : '')}><span style=${`width:${Math.round(v.stamina * 100)}%`}></span><b>${v.tired ? 'Mệt, chờ hồi sức' : 'Thể lực'}</b></div>
     </div>`}
     ${inTeam && !mobile && html`<div class="soc-keys">
-      <span><b>Chuột phải</b> giữ rồi thả: sút · <b>Chuột trái</b> bấm nhanh: đẩy bóng lên để chạy theo, giữ: chuyền cao · <b>E</b> xoạc (trúng giữa vòng tròn mới cướp được) · <b>Q</b> lừa bóng · <b>Shift</b> chạy nhanh</span>
+      <span><b>Chuột trái/phải</b> bấm thật nhanh: chạm bóng nhẹ để dẫn bóng · <b>Chuột phải</b> giữ rồi thả: sút (nhẹ = chuyền sệt) · <b>Chuột trái</b> giữ: chuyền cao · giữ đủ lực quá 1,2 giây thì hủy, bấm lại · <b>E</b> xoạc (trúng giữa vòng tròn mới cướp được) · <b>Q</b> lừa bóng · <b>Shift</b> chạy nhanh</span>
       <span><b>Space</b> nhảy, trên không: <b>chuột phải</b> vô lê, <b>chuột trái</b> đánh đầu (chờ bóng 2 giây) · giữ chuột rồi bấm <b>Space</b>: xe đạp chổng ngược</span>
     </div>`}
     ${inTeam && mobile && html`<div class="soc-pad">

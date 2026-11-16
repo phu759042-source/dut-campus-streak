@@ -44,9 +44,39 @@ export const MAX_KICK = 38, MAX_LIFT = 16;      // fastest shot (m/s = 137 km/h;
 // A bounce keeps ~60 % of the vertical speed. Along the ground the grass rubs the ball only while it presses on it
 // (Coulomb friction, μ ≈ 0.55), so a low, skimming ball keeps almost all its speed and a steep one loses up to
 // 2/7 of it (the most friction can take before the ball rolls).
+//
+// In the air the drag is not a constant: a soccer ball goes through the "drag crisis" (Goff & Carré; Asai et al.).
+// Slower than about 10 m/s the air separates early behind the ball and Cd ≈ 0.45; from about 12-14 m/s the
+// boundary layer turns turbulent, clings on longer and Cd falls to ≈ 0.25. So a soft lob slows quickly, while a
+// hard shot keeps its pace and only "dies" at the end of a long flight.
+// A spinning ball is pushed sideways by the Magnus force, F = ½ρA·C_L·v² with C_L ≈ 0.9·S (spin parameter
+// S = rω/v; measured C_L ≈ 0.23-0.29 for a 22 m/s kick). Per unit mass that is a = KM·(ω × v). A curling free
+// kick (~10 rev/s = 63 rad/s) at 25 m/s gets about g sideways, as measured. Backspin lifts a long pass so it
+// hangs and drops softly; topspin makes a shot dip. The spin itself fades slowly (it outlasts the speed).
+// On every bounce the grass grips the spot of the ball touching it: backspin makes the ball check up, topspin makes
+// it skip on. A football is a hollow shell (I = ⅔mr²), so the grip can take at most 2/5 of the slip.
 const GRAVITY = 9.81, AIR_K = 0.0106;
+const AIR_RHO_A = 0.053;            // ρ·A / 2m per metre: K = AIR_RHO_A · Cd
+const KM = 0.0052;                  // Magnus: ½ρ·A·r·0.9 / m
+export const R_REAL = 0.11;                // the real radius (m) for the spin and grip
+const SPIN_FADE = 0.06;             // spin lost per second in the air
 const BOUNCE_UP = 0.6, BOUNCE_MIN = 1.2, GRASS_MU = 0.55;
 const ROLL_A = 0.8;                 // rolling resistance of the grass (m/s²), on top of the air drag
+const SLIDE_MU = 0.4;               // a ball skidding along the grass
+/** The grass pushes the spot touching it with impulse J (per kg) against the slip direction (nu, nv). */
+function grip(b, nu, nv, J) {
+  b.vu -= J * nu; b.vv -= J * nv;
+  b.wu += (1.5 / R_REAL) * J * nv; b.wv -= (1.5 / R_REAL) * J * nu;
+}
+/** Drag coefficient at speed v (m/s): ≈ 0.45 slow, the drag crisis around 12 m/s, ≈ 0.25 fast. */
+export function dragCd(v) {
+  const x = v / 12, x2 = x * x;
+  return 0.25 + 0.2 / (1 + x2 * x2);
+}
+/** Spin (rad/s) as the ball's (wu, wy, wv) for kick direction (du, dv): back > 0 = backspin, < 0 topspin; side about the vertical. */
+export function spinFor(du, dv, back, side = 0) {
+  return [-dv * back, side, du * back];
+}
 
 /** How far a ball rolls on the grass while slowing from v0 to v1 (m/s): dv/dx = -(ROLL_A + K v²) / v. */
 export function rollDistance(v0, v1) {
@@ -94,10 +124,10 @@ const newKeeper = () => ({ v: 0, dive: 0, dd: 0, hold: 0, cd: 0, dec: 0 });
 
 /** A fresh ball at the centre spot and both goalkeepers in the middle of their goals. */
 export function newSim(seed) {
-  return { b: { u: 0, v: 0, y: BALL_R, vu: 0, vv: 0, vy: 0, h: null }, k: [newKeeper(), newKeeper()], seed: seed >>> 0 };
+  return { b: { u: 0, v: 0, y: BALL_R, vu: 0, vv: 0, vy: 0, wu: 0, wy: 0, wv: 0, h: null }, k: [newKeeper(), newKeeper()], seed: seed >>> 0 };
 }
 export function resetBall(S) {
-  Object.assign(S.b, { u: 0, v: 0, y: BALL_R, vu: 0, vv: 0, vy: 0, h: null });
+  Object.assign(S.b, { u: 0, v: 0, y: BALL_R, vu: 0, vv: 0, vy: 0, wu: 0, wy: 0, wv: 0, h: null });
   S.k[0] = newKeeper(); S.k[1] = newKeeper();
 }
 export function cloneSim(S) {
@@ -122,6 +152,7 @@ export function step(S, dt, ev) {
   keeper(S, 1, dt, ev);
   const b = S.b;
   if (b.h != null) {
+    b.wu = b.wy = b.wv = 0;
     if (keeperHolds(S)) {
       const i = b.h === 'k0' ? 0 : 1;
       b.u = KEEPER_U[i] + (i ? -0.45 : 0.45); b.v = S.k[i].v; b.y = 1.05; b.vu = b.vv = b.vy = 0;
@@ -129,26 +160,35 @@ export function step(S, dt, ev) {
     return;
   }
   // flight, bounce, roll
+  if (!b.wu) b.wu = 0; if (!b.wy) b.wy = 0; if (!b.wv) b.wv = 0; // an older state without spin
   if (b.y > BALL_R + 0.001 || b.vy > 0) {
-    const sp = Math.sqrt(b.vu * b.vu + b.vv * b.vv + b.vy * b.vy), drag = 1 - AIR_K * sp * dt;
-    b.vu *= drag; b.vv *= drag; b.vy *= drag;
+    const sp = Math.sqrt(b.vu * b.vu + b.vv * b.vv + b.vy * b.vy), drag = 1 - AIR_RHO_A * dragCd(sp) * sp * dt;
+    // Magnus: a = KM (ω × v), axes in the order (u, y, v)
+    const mu = KM * (b.wy * b.vv - b.wv * b.vy), my = KM * (b.wv * b.vu - b.wu * b.vv), mv = KM * (b.wu * b.vy - b.wy * b.vu);
+    b.vu = b.vu * drag + mu * dt; b.vv = b.vv * drag + mv * dt; b.vy = b.vy * drag + my * dt;
     b.vy -= GRAVITY * dt;
     b.y += b.vy * dt;
+    const fade = 1 - SPIN_FADE * dt;
+    b.wu *= fade; b.wy *= fade; b.wv *= fade;
     if (b.y <= BALL_R) {
       b.y = BALL_R;
-      if (b.vy < -BOUNCE_MIN) {
-        const vn = -b.vy, sh = Math.sqrt(b.vu * b.vu + b.vv * b.vv);
-        b.vy = vn * BOUNCE_UP;
-        if (sh > 0) { // friction impulse: μ times the normal one, at most what makes the ball roll
-          const loss = Math.min(GRASS_MU * (1 + BOUNCE_UP) * vn, sh * (2 / 7)), f = (sh - loss) / sh;
-          b.vu *= f; b.vv *= f;
-        }
-        ev.push({ e: 'bounce' });
-      } else b.vy = 0;
+      const vn = -b.vy, bounce = b.vy < -BOUNCE_MIN;
+      b.vy = bounce ? vn * BOUNCE_UP : 0;
+      // grip of the grass on the spot touching it: slip = v + ω × (-r ŷ)
+      const su = b.vu + R_REAL * b.wv, sv = b.vv - R_REAL * b.wu, slip = Math.sqrt(su * su + sv * sv);
+      if (bounce && slip > 1e-6) { // μ times the normal impulse, at most what stops the slip
+        grip(b, su / slip, sv / slip, Math.min(GRASS_MU * (1 + BOUNCE_UP) * vn, 0.4 * slip));
+      }
+      if (bounce) { b.wy *= 0.7; ev.push({ e: 'bounce' }); }
     }
   } else {
+    // on the grass: a ball that skids (spin not matching its speed) is rubbed by the grass until it rolls
+    const su = b.vu + R_REAL * b.wv, sv = b.vv - R_REAL * b.wu, slip = Math.sqrt(su * su + sv * sv);
+    if (slip > 0.05) grip(b, su / slip, sv / slip, Math.min(SLIDE_MU * GRAVITY * dt, 0.4 * slip));
+    b.wy *= 1 - 2 * dt;
     const sp = Math.sqrt(b.vu * b.vu + b.vv * b.vv);
     if (sp > 0) { const f = Math.max(0, sp - (ROLL_A + AIR_K * sp * sp) * dt) / sp; b.vu *= f; b.vv *= f; }
+    if (slip <= 0.05) { b.wu = b.vv / R_REAL; b.wv = -b.vu / R_REAL; } // rolling: the spin follows the speed
   }
   const pu = b.u, pv = b.v;
   b.u += b.vu * dt; b.v += b.vv * dt;
@@ -163,6 +203,7 @@ export function step(S, dt, ev) {
       const frame = acv < GOAL_W + BALL_R && b.y < GOAL_H + BALL_R;
       b.u = side * (HL - 0.01);
       b.vu = -b.vu * (frame ? 0.7 : 0.5);
+      b.wu *= 0.3; b.wy *= 0.3; b.wv *= 0.3;
       if (frame) {
         if (acv >= GOAL_W - BALL_R * 0.5) b.vv += (cv > 0 ? 1 : -1) * 1.2; // off the post, outwards
         else b.vy = b.vy > 0 ? -b.vy * 0.4 : b.vy;                          // off the bar, downwards
@@ -194,6 +235,7 @@ function keeper(S, i, dt, ev) {
       const tv = (rand(S) * 2 - 1) * 16, du = -side * 32, dv = tv - k.v, L = Math.sqrt(du * du + dv * dv), sp = 22 + rand(S) * 4;
       b.h = null; b.u = ku - side * 1.1; b.v = k.v; b.y = 0.7;
       b.vu = (du / L) * sp; b.vv = (dv / L) * sp; b.vy = 10.5;
+      [b.wu, b.wy, b.wv] = spinFor(du / L, dv / L, 25); // a goal kick goes with backspin
       k.cd = 0.9;
       ev.push({ e: 'punt', k: i });
     }
@@ -239,6 +281,7 @@ function save(S, i, sp, ev) {
     b.vu = -b.vu * 0.3;
     b.vv = b.vv * 0.25 + (rand(S) < 0.5 ? -1 : 1) * (3 + rand(S) * 3);
     b.vy = 2.5 + rand(S) * 2.5;
+    b.wu = b.wy = b.wv = 0;
     b.u = KEEPER_U[i] - side * 0.6;
     k.cd = 0.6;
     ev.push({ e: 'parry', k: i });

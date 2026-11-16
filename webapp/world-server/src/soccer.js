@@ -287,7 +287,13 @@ export class Soccer {
     u = clamp(u, -HL + 0.2, HL - 0.2); v = clamp(v, -HW + 0.2, HW - 0.2);
     const y = clamp(num(msg.p[2]) || BALL_R, BALL_R, 2.6);
     const k = ['s', 'p', 'l', 'b'].includes(msg.k) ? msg.k : 's';
-    Object.assign(b, { u, v, y, vu, vv, vy: clamp(vy, 0, MAX_LIFT), h: null });
+    // spin (rad/s) for the Magnus force: backspin on a lofted pass, topspin on a shot, roll on a touch
+    const w = Array.isArray(msg.w) ? msg.w.map((x) => clamp(Number.isFinite(num(x)) ? num(x) : 0, -400, 400)) : [0, 0, 0];
+    w[1] = clamp(w[1], -80, 80); // sidespin
+    if (Math.abs(w[0]) > 80 || Math.abs(w[2]) > 80) { // only a ball kicked along the grass spins that fast (it rolls)
+      if (vy > 0.5) { w[0] = clamp(w[0], -80, 80); w[2] = clamp(w[2], -80, 80); }
+    }
+    Object.assign(b, { u, v, y, vu, vv, vy: clamp(vy, 0, MAX_LIFT), wu: w[0] || 0, wy: w[1] || 0, wv: w[2] || 0, h: null });
     this.lt = a.id; this.ltName = a.name; this.lk = k;
     this.cooldown(a.id, 'touch', now + 350);
     this.pushBall();
@@ -307,7 +313,7 @@ export class Soccer {
     if (!me || dist([u, v], [b.u, b.v]) > 2.6 || Math.abs(y - b.y) > 1.5 || dist([u, v], me) > 4.5) return;
     const max = { v: 36, h: 24, b: 33 }[k], sp = Math.sqrt(vu * vu + vv * vv);
     if (sp > max) { vu *= max / sp; vv *= max / sp; }
-    Object.assign(b, { u: clamp(u, -HL + 0.2, HL - 0.2), v: clamp(v, -HW + 0.2, HW - 0.2), y: clamp(y, BALL_R, 3), vu, vv, vy: clamp(vy, -4, 8), h: null });
+    Object.assign(b, { u: clamp(u, -HL + 0.2, HL - 0.2), v: clamp(v, -HW + 0.2, HW - 0.2), y: clamp(y, BALL_R, 3), vu, vv, vy: clamp(vy, -4, 8), wu: 0, wy: 0, wv: 0, h: null });
     this.lt = a.id; this.ltName = a.name; this.lk = k;
     this.cooldown(a.id, 'touch', now + 350);
     this.pushBall();
