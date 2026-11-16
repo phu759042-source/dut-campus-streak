@@ -283,7 +283,7 @@ function MusicControl() {
       <div class="music-now">${!m.on ? 'Đang tắt' : m.waiting ? 'Chạm vào bản đồ để bắt đầu phát' : html`${m.gap ? 'Bài tiếp theo' : 'Đang phát'}: <b>${m.title || '…'}</b>`}</div>
       <div class="music-vol">
         <${Icon} name=${vol ? 'music' : 'musicOff'} size=${16} />
-        <input type="range" min="0" max="100" step="1" value=${vol} aria-label="Âm lượng nhạc nền" disabled=${!m.on}
+        <input type="range" class="vol-range" min="0" max="100" step="1" value=${vol} style=${`--p:${vol}%`} aria-label="Âm lượng nhạc nền" disabled=${!m.on}
           onInput=${(e) => setMusicVolume(e.currentTarget.value / 100)} />
         <span>${vol}%</span>
       </div>
