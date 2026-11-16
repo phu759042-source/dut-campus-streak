@@ -42,7 +42,8 @@
   <script>
     // Apply the saved theme before first paint to avoid a flash.
     try {
-      var t = localStorage.getItem('cs-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      var t = location.pathname === '/gioi-thieu' ? 'dark' // the about page is always dark (see applyTheme)
+        : localStorage.getItem('cs-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       document.documentElement.dataset.theme = t;
     } catch (e) {}
   </script>

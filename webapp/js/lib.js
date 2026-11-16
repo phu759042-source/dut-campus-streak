@@ -68,11 +68,14 @@ export function currentUser() {
 // ------------------------------------------------------------------
 // Theme
 // ------------------------------------------------------------------
+// The public about page (/gioi-thieu) is always dark, whatever the saved choice; the choice itself is kept.
+export const FORCED_DARK = new Set(['/gioi-thieu']);
 export function applyTheme(mode) {
   const theme = mode === 'dark' ? 'dark' : 'light';
-  document.documentElement.dataset.theme = theme;
+  const shown = FORCED_DARK.has(location.pathname) ? 'dark' : theme;
+  document.documentElement.dataset.theme = shown;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = theme === 'dark' ? '#0b1020' : '#eef4ff';
+  if (meta) meta.content = shown === 'dark' ? '#0b1020' : '#eef4ff';
   writeLocal('cs-theme', theme);
   appStore.set({ theme });
 }
