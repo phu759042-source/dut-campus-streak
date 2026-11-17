@@ -66,26 +66,50 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [status, setStatus] = useState(null); // null | 'none' | 'unconfirmed' (why the login failed)
+  const [resent, setResent] = useState(false);
+  const goto = (path) => (ev) => { ev.preventDefault(); navigate(path); };
 
   async function submit(e) {
     e.preventDefault();
     if (!email.trim() || !password) return setError('Vui lòng nhập email và mật khẩu.');
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setStatus(null); setResent(false);
     const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (err) { setLoading(false); return setError(errMsg(err)); }
+    if (err) {
+      // Supabase says "invalid credentials" for a wrong password and for an address with no account alike:
+      // ask which it is, so a deleted or never-created account is told to sign up.
+      const { data: st, error: e0 } = await supabase.rpc('auth_email_status', { p_email: email.trim() });
+      setLoading(false);
+      if (!e0 && (st === 'none' || st === 'unconfirmed')) return setStatus(st);
+      return setError(errMsg(err));
+    }
     let next = '/';
     try { next = sessionStorage.getItem('cs-after-login') || '/'; sessionStorage.removeItem('cs-after-login'); } catch { /* storage off */ }
     navigate(next.startsWith('/map') ? next : '/', { replace: true });
+  }
+
+  async function resendConfirm() {
+    setLoading(true);
+    const { error: err } = await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: `${location.origin}/` } });
+    setLoading(false);
+    if (err) return setError(errMsg(err));
+    setResent(true);
   }
 
   return html`<${AuthShell} title="Chào mừng trở lại 👋" subtitle="Đăng nhập để tiếp tục chuỗi check-in của bạn.">
     ${signupEmail && html`<${SignupMailNote} email=${signupEmail} />`}
     <form class="stack" onSubmit=${submit}>
       <${IconInput} icon="mail" type="email" autocomplete="email" placeholder="Email" value=${email}
-        onInput=${(e) => setEmail(e.target.value)} />
+        onInput=${(e) => { setEmail(e.target.value); setStatus(null); }} />
       <${PasswordInput} autocomplete="current-password" placeholder="Mật khẩu" value=${password}
         onInput=${(e) => setPassword(e.target.value)} />
       <div class="row-end"><a class="link" href="/forgot" onClick=${(e) => { e.preventDefault(); navigate('/forgot'); }}>Quên mật khẩu?</a></div>
+      ${status === 'none' && html`<div class="form-error shake">
+        Tài khoản <b>${email.trim()}</b> chưa được tạo (hoặc đã bị xóa). Hãy kiểm tra lại email, hoặc <a class="link strong" href="/register" onClick=${goto('/register')}>đăng ký tài khoản mới</a>.</div>`}
+      ${status === 'unconfirmed' && html`<div class="form-error shake">
+        Tài khoản <b>${email.trim()}</b> đã đăng ký nhưng chưa xác nhận email. Hãy mở thư xác nhận (xem cả thư mục Spam / Junk Email) rồi đăng nhập lại.
+        <div style="margin-top:8px">${resent ? html`<span>Đã gửi lại email xác nhận ✓</span>`
+          : html`<button type="button" class="btn btn-sm btn-ghost" disabled=${loading} onClick=${resendConfirm}>Gửi lại email xác nhận</button>`}</div></div>`}
       ${error && html`<div class="form-error shake">${error}</div>`}
       <button class="btn btn-primary btn-lg btn-block" disabled=${loading}>
         ${loading ? html`<${Spinner} size=${18} />` : 'Đăng nhập'}
