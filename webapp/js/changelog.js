@@ -4,6 +4,7 @@
 //  - fixes and small changes: next patch version (1.9.2 -> 1.9.3)
 // 1.1.2 was the version of the mobile app when the web app was released (10/11/2026); it continues from there.
 export const CHANGELOG = [
+  { v: '1.9.6', d: '18/11/2026', items: ['Check-in: tự thử lại khi máy chủ nhận diện ảnh (Gemini) quá tải, báo rõ "đang quá tải" thay vì "không xác minh được phòng"'] },
   { v: '1.9.5', d: '18/11/2026', items: ['Tìm kiếm Google: trang bản đồ đổi tiêu đề thành "Map DUT 3D", thêm mô tả các khu và câu hỏi thường gặp cho Google đọc'] },
   { v: '1.9.4', d: '18/11/2026', items: ['Lịch sử cập nhật chỉ hiện với quản trị viên'] },
   { v: '1.9.3', d: '18/11/2026', items: ['Trang Liên hệ & Giới thiệu: số phiên bản, lịch sử cập nhật và giới thiệu đầy đủ các tính năng'] },

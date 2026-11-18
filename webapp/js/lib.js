@@ -355,6 +355,7 @@ const ERROR_VI = {
   'Error sending recovery email': 'Hôm nay đã chạm giới hạn gửi email. Bạn thử lại vào ngày mai nhé!',
   'email rate limit exceeded': 'Đang có quá nhiều lượt đăng ký cùng lúc. Bạn thử lại sau ít phút nhé!',
   'Check-in is not allowed at this time': 'Chưa đến giờ check-in hoặc lớp đã kết thúc.',
+  'Room recognition is busy': 'Máy chủ nhận diện ảnh đang quá tải. Bạn đợi vài giây rồi bấm check-in lại nhé.',
   'Room verification failed': 'Không xác minh được phòng học. Hãy chụp rõ biển số phòng.',
   'No active class occurrence found for today': 'Hôm nay không có buổi học này.',
   'Image does not belong to this class session': 'Ảnh không thuộc lớp này.',
