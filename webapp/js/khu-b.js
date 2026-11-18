@@ -4,13 +4,13 @@
 //  - the entrance tower in the middle of the front: stone cladding (đá chẻ) with a round porthole window either side
 //    of the door, a flat concrete canopy (mái sảnh) on two slanting wedge legs, breeze-block screens (gạch hoa thông
 //    gió) between vertical fins on the floors above, a big blue "B", and on top the zigzag crown with the school name
-//    in blue letters and the logo plate
+//    in blue letters and the school emblem (img/dut-logo.jpg, the whole image) in a white frame
 //  - a dog-leg staircase behind the entrance hall and one at each end of the bar; WCs in the block behind the east end
 //  - rooms B101-B107 on the ground floor, B201-B207 ... B401-B407 upstairs (boards at the west end of each room)
 // The three short wings behind (2 floors) stay plain blocks. Floors above the one you stand on are hidden while you
 // are inside, so the follow camera sees your floor (same as Khu H).
 import * as THREE from 'three';
-import { Builder, insideP, FLOOR_H, canvasTex } from './campus-details.js';
+import { Builder, insideP, FLOOR_H, canvasTex, emblemTex, LOGO_ASPECT } from './campus-details.js';
 import { latticeTex, stoneTex } from './landmarks.js';
 
 const FH = FLOOR_H, PL = 0.3, SLAB = 0.22, CD = 2.6, NF = 4; // floor height, low plinth, slab, corridor depth, floors
@@ -81,15 +81,6 @@ function letterTex(ch) {
     g.fillText(ch, w / 2, h / 2 + 12);
   });
 }
-function logoTex() {
-  return canvasTex(256, 256, (g, w, h) => {
-    g.fillStyle = '#f4f6f8'; g.fillRect(0, 0, w, h);
-    g.fillStyle = '#2350b8'; g.fillRect(18, 18, w - 36, h - 36);
-    g.fillStyle = '#f4f6f8'; g.font = '900 120px "Be Vietnam Pro", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('BK', w / 2, h / 2 + 8);
-  });
-}
-
 export function buildKhuB(b, out) {
   const P = b.osmPts || b.pts;
   const { F, L, wc0, wc1, wcD, outline } = layout(P);
@@ -230,24 +221,54 @@ export function buildKhuB(b, out) {
       wall(F.at(TC - TW, -TF), F.at(TC + TW, -TF), y0, y0 + FH);
     }
     { const m = new THREE.MeshLambertMaterial({ map: letterTex('B'), transparent: true }); plane(2, 1.5, 1.5, m, TC, -TF - 0.62, Y(2) - 0.05); }
-    // the canopy (mái sảnh): a thick flat slab standing out from the tower on two slanting wedge legs
+    // the canopy (mái sảnh), as in the close-up photo: a thick concrete slab with a sloping lower front edge, held on
+    // the right by one massive leaning blade pier that rises past the slab, on the left by a square column; two steps
+    // with steel handrails at both ends under it
     {
-      const B = lv[0].B, y0 = PL + 2.75, a0 = TC - 3.4, a1 = TC + 3.4, b0 = -TF - 5.6, b1 = -TF;
-      B.color(0xd9d8d2); boxF(B, F, a0, a1, b0, b1, y0, 0.55);
-      B.color(0xc9c8c1); B.cap(F.rect(a0, a1, b0, b1), y0 - 0.001);
-      // legs: narrow at the foot, wide under the slab, leaning out towards the front corners
-      for (const sd of [-1, 1]) {
-        const ax = TC + sd * 3.1, foot = [[ax - 0.22, b0 + 1.6], [ax + 0.22, b0 + 1.6], [ax + 0.22, b0 + 2.2], [ax - 0.22, b0 + 2.2]];
-        const head = [[ax - 0.3, b0 + 0.2], [ax + 0.3, b0 + 0.2], [ax + 0.3, b0 + 2.6], [ax - 0.3, b0 + 2.6]];
-        const f = foot.map(([a, bb]) => { const p = F.at(a, bb); return [p[0], 0, p[1]]; });
-        const h = head.map(([a, bb]) => { const p = F.at(a, bb); return [p[0], y0, p[1]]; });
-        B.color(0xcfcec7);
-        for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; B.quad(f[i], f[j], h[j], h[i]); }
-        solid(ax - 0.25, ax + 0.25, b0 + 1.55, b0 + 2.25);
+      const B = lv[0].B, y0 = PL + 2.6, T = 0.75, a0 = TC - 3.6, a1 = TC + 3.4, b0 = -TF - 5.2, b1 = -TF;
+      const V = (a, bb, y) => { const p = F.at(a, bb); return [p[0], y, p[1]]; };
+      /** Solid from a ring of (u, w) at y0 to another ring at y1 (same number of corners). */
+      const prism = (lo, hi, ya, yb, color) => {
+        const f = lo.map(([a, bb]) => V(a, bb, ya)), h = hi.map(([a, bb]) => V(a, bb, yb));
+        B.color(color);
+        for (let i = 0; i < f.length; i++) { const j = (i + 1) % f.length; B.quad(f[i], f[j], h[j], h[i]); }
+        B.tri(h[0], h[1], h[2]); B.tri(h[0], h[2], h[3]);
+      };
+      // slab: flat top and back, the front 0.9 m slopes up underneath (the chamfer in the photo)
+      B.color(0xd2d1cb); boxF(B, F, a0, a1, b0 + 0.9, b1, y0, T);
+      prism([[a0, b0 + 0.9], [a1, b0 + 0.9], [a1, b0], [a0, b0]], [[a0, b0 + 0.9], [a1, b0 + 0.9], [a1, b0], [a0, b0]], y0 + T * 0.45, y0 + T, 0xd2d1cb);
+      B.color(0xc4c3bc); B.quad(V(a0, b0 + 0.9, y0), V(a1, b0 + 0.9, y0), V(a1, b0, y0 + T * 0.45), V(a0, b0, y0 + T * 0.45));
+      B.color(0xbebdb6); B.cap(F.rect(a0, a1, b0 + 0.9, b1), y0 - 0.002);
+      // right: the leaning blade pier, wide at the foot, narrower and further out at the top, cut on a slant above the slab
+      {
+        const u0 = a1, u1 = a1 + 0.65;
+        const foot = [[u0, b0 + 2.4], [u1, b0 + 2.4], [u1, b0 - 0.2], [u0, b0 - 0.2]];
+        const head = [[u0, b0 + 1.5], [u1, b0 + 1.5], [u1, b0 + 0.1], [u0, b0 + 0.1]];
+        const yTop = y0 + T + 0.9;
+        prism(foot, head, 0, yTop, 0xc9c8c1);
+        // slanted cap: the back of the top is lower than the front
+        B.color(0xbab9b2); B.quad(V(u0, b0 + 1.5, yTop), V(u1, b0 + 1.5, yTop), V(u1, b0 + 0.1, yTop + 0.45), V(u0, b0 + 0.1, yTop + 0.45));
+        prism([[u0, b0 + 1.5], [u1, b0 + 1.5], [u1, b0 + 0.1], [u0, b0 + 0.1]], [[u0, b0 + 1.5], [u1, b0 + 1.5], [u1, b0 + 0.1], [u0, b0 + 0.1]], yTop, yTop, 0xbab9b2);
+        B.color(0xc9c8c1); B.quad(V(u0, b0 + 0.1, yTop), V(u0, b0 + 0.1, yTop + 0.45), V(u0, b0 + 1.5, yTop), V(u0, b0 + 1.5, yTop));
+        B.quad(V(u1, b0 + 0.1, yTop), V(u1, b0 + 0.1, yTop + 0.45), V(u1, b0 + 1.5, yTop), V(u1, b0 + 1.5, yTop));
+        B.quad(V(u0, b0 + 0.1, yTop), V(u1, b0 + 0.1, yTop), V(u1, b0 + 0.1, yTop + 0.45), V(u0, b0 + 0.1, yTop + 0.45));
+        solid(u0, u1, b0 - 0.2, b0 + 2.4);
       }
-      // entrance steps under the canopy up to the floor
-      B.color(0xbdb7ac); boxF(B, F, TC - 1.6, TC + 1.6, -TF - 0.9, -TF, 0, PL / 2);
-      out.surfaces.push({ pts: F.rect(TC - 1.6, TC + 1.6, -TF - 0.9, -TF + 0.05), y: PL / 2 });
+      // left: a plain square column near the front
+      B.color(0x8f8b84); boxF(B, F, a0 + 0.3, a0 + 0.9, b0 + 1.6, b0 + 2.2, 0, y0);
+      solid(a0 + 0.3, a0 + 0.9, b0 + 1.6, b0 + 2.2);
+      // two steps up to the door under the canopy, steel handrails at both ends
+      for (const [i, w0] of [[0, -TF - 1.6], [1, -TF - 0.8]]) {
+        B.color(i ? 0xc4beb2 : 0xb6b0a4); boxF(B, F, a0 + 1.2, a1 - 0.3, w0, -TF, 0, (PL * (i + 1)) / 2);
+        out.surfaces.push({ pts: F.rect(a0 + 1.2, a1 - 0.3, w0, -TF + 0.05), y: (PL * (i + 1)) / 2 });
+      }
+      B.color(0xd7dbe0);
+      for (const ua of [a0 + 1.25, a1 - 0.35]) {
+        for (const bb of [-TF - 2.6, -TF - 1.6, -TF - 0.3]) boxF(B, F, ua - 0.03, ua + 0.03, bb - 0.03, bb + 0.03, 0, 1.0);
+        boxF(B, F, ua - 0.03, ua + 0.03, -TF - 2.6, -TF - 0.3, 0.95, 0.06);
+        boxF(B, F, ua - 0.025, ua + 0.025, -TF - 2.6, -TF - 0.3, 0.5, 0.04);
+        wall(F.at(ua, -TF - 2.6), F.at(ua, -TF - 0.3), 0, 1.0);
+      }
     }
     // above the roof: the tower box, its zigzag crown, the name and the logo
     const top = Y(NF) + 1.6, tw = F.rect(TC - TW, TC + TW, -TF, 6.5), B = lv[NF].B;
@@ -262,7 +283,9 @@ export function buildKhuB(b, out) {
       }
     }
     plane(NF, 2 * TW - 0.4, 0.95, new THREE.MeshBasicMaterial({ map: nameTex(), transparent: true }), TC, -TF - 0.03, Y(NF) + 0.75);
-    plane(NF, 1.25, 1.25, new THREE.MeshLambertMaterial({ map: logoTex() }), TC, -TF - 0.04, top + 0.75);
+    // the school emblem in a white frame on the crown (the whole official image, as everywhere on the map)
+    B.color(0xf4f5f6); boxF(B, F, TC - 0.85, TC + 0.85, -TF - 0.08, -TF + 0.1, top + 0.05, 1.65);
+    plane(NF, 1.5, 1.5 * LOGO_ASPECT, new THREE.MeshLambertMaterial({ map: emblemTex() }), TC, -TF - 0.1, top + 0.87);
     B.color(0xdfe1e3); boxF(B, F, TC - 0.7, TC + 0.7, -TF + 0.02, -TF + 0.2, top, 1.4);
   }
 

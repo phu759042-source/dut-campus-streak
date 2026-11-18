@@ -5,7 +5,7 @@
 //    side behind white vertical fins, a front porch with fins either side of the doors under a flat canopy;
 //  - the stair tower where the hall meets the block: taller than the block, red tiled hip roof, a strip of glass
 //    blocks and a white face carrying the school's cube: a cube turned 45 degrees with half of it standing out of
-//    the wall, teal on top and the DUT logo (the blue square with the yellow P, cut from img/dut-logo.jpg, never
+//    the wall, teal on top and the full DUT emblem (img/dut-logo.jpg with its lettering, never cropped or
 //    redrawn) on both sides;
 //  - the stage in front of the hall: a low platform with stepped, rounded edges and three nested red squares;
 //  - sân F, the paved square east of the hall: stone slabs on a 3.25 m grid, light slabs with a pink middle in rows
@@ -194,8 +194,8 @@ export function buildKhuF(b) {
   const cen = [(WS[0] + WN[0] + FV[0]) / 3, (WS[1] + WN[1] + FV[1]) / 3], shrink = (p) => lerp2(cen, p, 0.45);
   B.color(C.tealLight).tri(V(shrink(WS), LY + 0.01), V(shrink(FV), LY + 0.01), V(shrink(WN), LY + 0.01));
   B.color(C.cubeUnder).tri(V(WS, LY - A), V(WN, LY - A), V(FV, LY - A));
-  const lpos = [], luv = [], U0 = 96 / 392, U1 = 376 / 392, VT = 1 - 93 / 386, VB = 1 - 369 / 386;
-  const face = (L, R) => { // one side of the cube: the logo's blue square with the yellow P, upright
+  const lpos = [], luv = [], U0 = 0, U1 = 1, VT = 1, VB = 0; // the whole emblem image, with its lettering
+  const face = (L, R) => { // one side of the cube: the full school emblem (img/dut-logo.jpg), upright
     const q = [V(L, LY), V(R, LY), V(R, LY - A), V(L, LY - A)], t = [[U0, VT], [U1, VT], [U1, VB], [U0, VB]];
     for (const i of [0, 1, 2, 0, 2, 3]) { lpos.push(...q[i]); luv.push(...t[i]); }
   };
