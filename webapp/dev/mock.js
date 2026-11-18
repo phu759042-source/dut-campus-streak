@@ -74,5 +74,6 @@ m.supabase.from = (name) => {
   });
   return q;
 };
+m.supabase.auth.getUser = async () => ({ data: { user: { id: me, email: 'demo@example.com' } }, error: null }); // the app signs out users the server does not know
 m.appStore.set({ session: { user: { id: me, email: 'demo@example.com' } }, profile: { display_name: 'Nguyễn Văn Demo', class_name: '23T_DT1', student_code: '102230000', email: 'demo@example.com' } });
 export const go = async (path) => { r.navigate('/about'); await new Promise((x) => setTimeout(x, 200)); r.navigate(path); };

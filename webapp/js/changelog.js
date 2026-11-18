@@ -4,6 +4,7 @@
 //  - fixes and small changes: next patch version (1.9.2 -> 1.9.3)
 // 1.1.2 was the version of the mobile app when the web app was released (10/11/2026); it continues from there.
 export const CHANGELOG = [
+  { v: '1.10.2', d: '19/11/2026', items: ['Tài khoản đã xóa trên máy khác: tự đăng xuất khi tải lại hoặc quay lại trang, không còn bị tạo lại và tính thêm vào số tài khoản'] },
   { v: '1.10.1', d: '19/11/2026', items: ['Bản đồ 3D: sửa không chọn được giới hạn FPS và bộ đếm FPS chỉ hiện "–"; bộ đếm và chế độ Tự động chạy cả trên máy rất yếu', 'Thống nhất tên DUT Campus Streak trên logo, tiêu đề và ứng dụng cài đặt'] },
   { v: '1.10.0', d: '19/11/2026', items: ['Bản đồ 3D: nút ⚙️ Cài đặt với chất lượng đồ họa (Tự động / Cao / Vừa / Thấp), giới hạn FPS (30 / 60 / không giới hạn) và bộ đếm FPS', 'Chế độ Tự động tự hạ đồ họa khi máy bị giật, hợp với laptop không có card đồ họa rời'] },
   { v: '1.9.7', d: '19/11/2026', items: ['Chat: hiện đúng tên, ảnh đại diện và lớp của người nhắn', 'Giao diện điện thoại: thanh điều hướng dưới luôn một dòng (tự chỉ hiện biểu tượng khi màn hình quá hẹp hoặc chữ hệ thống quá to), thanh chọn mục và ô nhắn tin gọn trên máy 320–430px'] },

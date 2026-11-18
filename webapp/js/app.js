@@ -1,6 +1,6 @@
 import { html, render, useState, useEffect, useRef } from 'preact';
 import { supabase, appStore, applyTheme, loadThemeFromServer, ensureCurrentUserData, loadMyProfile, readLocal, writeLocal } from './lib.js';
-import { Icon, Spinner, mountHosts } from './ui.js';
+import { Icon, Spinner, mountHosts, toast } from './ui.js';
 import { usePath, match, navigate } from './router.js';
 import { watchForUpdates } from './update.js';
 import { LoginPage, RegisterPage, ForgotPage, ResetPasswordPage } from './pages/auth.js';
@@ -10,7 +10,7 @@ import { LeaderboardPage } from './pages/leaderboard.js';
 import { SchedulePage } from './pages/schedule.js';
 import { DeadlinesPage } from './pages/deadlines.js';
 import { DocumentsPage } from './pages/documents.js';
-import { ProfilePage, WelcomePage, AFTER_WELCOME } from './pages/profile.js';
+import { ProfilePage, WelcomePage, AFTER_WELCOME, logout } from './pages/profile.js';
 import { AchievementsPage, AboutPage } from './pages/misc.js';
 import { SharedLinkPage } from './pages/sharelink.js';
 import { AdminPage, useIsAdmin } from './pages/admin.js';
@@ -179,12 +179,39 @@ try {
 // a tab left open past midnight still counts for the new day
 document.addEventListener('visibilitychange', () => { const s = appStore.get().session; if (!document.hidden && s) trackActivity(s.user.id); });
 
+// The session kept in this browser can outlive the account: deleted on another device, its access token stays valid
+// for up to an hour, and the app used to recreate the account's rows on a reload (the database now refuses that with
+// "account_deleted"). Ask the server whether the user still exists; if not, sign out here.
+async function accountGone() {
+  const { error } = await supabase.auth.getUser();
+  if (!error) return false;
+  if (!error.status) return false; // no network: not a reason to sign out
+  return error.status === 401 || error.status === 403 || error.code === 'user_not_found' || /does not exist|not found/i.test(error.message || '');
+}
+async function kickOut() {
+  bootstrappedFor = null;
+  await logout();
+  toast('Tài khoản này đã bị xóa nên bạn đã được đăng xuất. Muốn dùng tiếp thì đăng ký tài khoản mới nhé.', 'error', 7000);
+}
+let lastAccountCheck = 0;
+document.addEventListener('visibilitychange', () => {
+  // back to this tab after a while: the account may have been deleted elsewhere meanwhile
+  if (document.hidden || !appStore.get().session || Date.now() - lastAccountCheck < 60000) return;
+  lastAccountCheck = Date.now();
+  accountGone().then((gone) => { if (gone) kickOut(); }, () => {});
+});
+
 let bootstrappedFor = null;
 async function onSession(session) {
   appStore.set({ session });
   if (session && bootstrappedFor !== session.user.id) {
     bootstrappedFor = session.user.id;
-    try { await ensureCurrentUserData(); } catch (e) { console.warn('ensure user', e); }
+    lastAccountCheck = Date.now();
+    if (await accountGone().catch(() => false)) { await kickOut(); return; }
+    try { await ensureCurrentUserData(); } catch (e) {
+      if (String(e?.message || '').includes('account_deleted')) { await kickOut(); return; }
+      console.warn('ensure user', e);
+    }
     loadThemeFromServer();
     loadMyProfile().catch(() => {});
     syncPush();
