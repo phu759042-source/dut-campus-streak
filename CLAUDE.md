@@ -81,3 +81,6 @@ có mảng tính năng mới, cập nhật danh sách tính năng trong `js/page
 - Máy yếu (laptop không card đồ họa) phải chạy được bản đồ: giữ mức đồ họa Thấp và chế độ Tự động hoạt động.
 - Trang Giới thiệu và các trang đăng nhập/đăng ký/mật khẩu luôn giao diện tối.
 - Hỏi trước khi làm việc lớn ngoài `webapp/` (app Flutter, xóa dữ liệu thật, tốn tiền).
+- **Giữ file này luôn đúng**: mỗi lần cập nhật hay sửa gì làm thay đổi những điều ghi ở đây (file hoặc tính năng mới,
+  bảng / RPC / Edge Function mới, quy trình, quy tắc mới chủ dự án đặt ra), sửa luôn `CLAUDE.md` trong cùng commit.
+  Chỉ ghi điều phiên sau cần biết, không ghi nhật ký từng lần sửa (cái đó nằm trong `changelog.js` và git).
