@@ -126,7 +126,7 @@ function Conversation({ peer }) {
               <div class=${'chat-row' + (own ? ' own' : '') + (first ? ' first' : '')}>
                 ${!own && !peer && html`<button class="chat-av" aria-label=${'Hồ sơ ' + p.name} style=${last ? '' : 'visibility:hidden'} onClick=${() => openUserCard(m.sender_id)}><${Avatar} url=${p.avatar} name=${p.name} size=${32} /></button>`}
                 <div class="chat-col">
-                  ${!own && !peer && first && html`<button class="chat-name" onClick=${() => openUserCard(m.sender_id)}>${p.name}</button>`}
+                  ${!own && !peer && first && html`<button class="chat-name" onClick=${() => openUserCard(m.sender_id)}><b>${p.name}</b>${p.cls && html`<span>${p.cls}</span>`}</button>`}
                   <button class=${'chat-bubble' + (m.deleted_at ? ' deleted' : '')} disabled=${!!m.deleted_at} onClick=${() => menu(m)}>
                     ${m.deleted_at ? 'Tin nhắn đã bị xóa' : m.body}<span class="chat-time">${hm(m.created_at)}</span>
                   </button>
@@ -144,7 +144,7 @@ function Composer({ peer, onSent }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const ref = useRef();
-  const grow = () => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; } };
+  const grow = () => { const el = ref.current; if (el) { el.style.height = 'auto'; const h = Math.max(46, el.scrollHeight + 3); el.style.height = Math.min(h, 120) + 'px'; el.classList.toggle('scrolls', h > 120); } };
   async function send(e) {
     e?.preventDefault();
     const body = text.trim();
@@ -239,7 +239,7 @@ export function ChatPage({ id }) {
     return html`<div class="page narrow chat-page">
       <header class="page-head slide-down chat-head">
         <button class="icon-btn" aria-label="Quay lại" onClick=${() => back('/chat')}><${Icon} name="back" /></button>
-        <button class="chat-peer grow" onClick=${() => openUserCard(id)}><${Avatar} url=${p.avatar} name=${p.name} size=${38} /><span><b>${p.name}</b><span class="small muted">Xem hồ sơ</span></span></button>
+        <button class="chat-peer grow" onClick=${() => openUserCard(id)}><${Avatar} url=${p.avatar} name=${p.name} size=${38} /><span><b>${p.name}</b><span class="small muted">${p.cls ? `Lớp ${p.cls} · ` : ''}Xem hồ sơ</span></span></button>
       </header>
       <${Conversation} peer=${id} key=${id} />
     </div>`;
@@ -247,9 +247,9 @@ export function ChatPage({ id }) {
   return html`<div class=${'page narrow chat-page' + (tab === 'room' ? '' : ' scroll')}>
     <${PageHeader} title="Chat" subtitle=${tab === 'room' ? 'Phòng chung cho mọi sinh viên đã đăng nhập' : tab === 'dm' ? 'Tin nhắn riêng' : 'Bạn bè và lời mời kết bạn'} />
     <div class="chat-tabs"><${Segmented} value=${tab} onChange=${pick} options=${[
-      { value: 'room', label: '💬 Phòng chung' },
-      { value: 'dm', label: unread ? `✉️ Tin nhắn (${unread > 99 ? '99+' : unread})` : '✉️ Tin nhắn' },
-      { value: 'friends', label: '👥 Bạn bè' },
+      { value: 'room', label: html`<i class="seg-emoji">💬</i>Phòng chung` },
+      { value: 'dm', label: html`<i class="seg-emoji">✉️</i>Tin nhắn${unread ? html`<span class="seg-badge">${unread > 99 ? '99+' : unread}</span>` : ''}` },
+      { value: 'friends', label: html`<i class="seg-emoji">👥</i>Bạn bè` },
     ]} /></div>
     ${tab === 'room' ? html`<${Conversation} peer=${null} key="room" />` : tab === 'dm' ? html`<${Inbox} />` : html`<${Friends} />`}
   </div>`;

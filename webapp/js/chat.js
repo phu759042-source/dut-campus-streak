@@ -34,14 +34,17 @@ export function chatErr(e) {
 }
 
 // ---- names and avatars --------------------------------------------------------------------------
-const people = new Map(); // id -> { name, avatar }
-export const personOf = (id) => people.get(id) || { name: 'Sinh viên', avatar: null };
+const people = new Map(); // id -> { name, avatar, cls }
+export const personOf = (id) => people.get(id) || { name: 'Sinh viên', avatar: null, cls: '' };
+// profiles is readable only by its owner, so other people's names come from the chat_people RPC
 export async function loadPeople(ids) {
   const need = [...new Set(ids)].filter((id) => id && !people.has(id));
   if (!need.length) return;
-  const { data } = await supabase.from('profiles').select('id, display_name, avatar_url').in('id', need);
-  for (const p of data || []) people.set(p.id, { name: String(p.display_name || '').trim() || 'Sinh viên', avatar: hideStorageUrl(p.avatar_url) });
-  for (const id of need) if (!people.has(id)) people.set(id, { name: 'Sinh viên', avatar: null });
+  const { data } = await supabase.rpc('chat_people', { p_ids: need });
+  for (const p of data || []) {
+    people.set(p.user_id, { name: String(p.display_name || '').trim() || 'Sinh viên', avatar: hideStorageUrl(p.avatar_url), cls: String(p.class_name || '').trim() });
+  }
+  for (const id of need) if (!people.has(id)) people.set(id, { name: 'Sinh viên', avatar: null, cls: '' });
 }
 
 // ---- live feed ----------------------------------------------------------------------------------

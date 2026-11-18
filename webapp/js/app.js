@@ -1,4 +1,4 @@
-import { html, render, useState, useEffect } from 'preact';
+import { html, render, useState, useEffect, useRef } from 'preact';
 import { supabase, appStore, applyTheme, loadThemeFromServer, ensureCurrentUserData, loadMyProfile, readLocal, writeLocal } from './lib.js';
 import { Icon, Spinner, mountHosts } from './ui.js';
 import { usePath, match, navigate } from './router.js';
@@ -68,6 +68,21 @@ const SIDE_EXTRA = [
 function Shell({ path, children }) {
   const active = (href) => (href === '/' ? path === '/' || path.startsWith('/class') : path.startsWith(href));
   const navIndex = NAV.findIndex((n) => active(n.href)); // -1 on pages not in the bottom bar
+  // Bottom bar labels stay on one line; if one still doesn't fit (a very narrow phone, or large system text)
+  // the bar shows icons only. The labels keep their width while hidden, so this is checked again on resize.
+  const navRef = useRef();
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const check = () => setCompact([...nav.querySelectorAll('.bn-label')].some((l) => l.scrollWidth > l.clientWidth + 1));
+    check();
+    document.fonts?.ready?.then(check);
+    window.addEventListener('resize', check);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(check) : null;
+    ro?.observe(nav);
+    return () => { window.removeEventListener('resize', check); ro?.disconnect(); };
+  }, []);
   const go = (href) => (e) => { e.preventDefault(); navigate(href); };
   const admin = useIsAdmin();
   const { unread } = useChatStore();
@@ -85,10 +100,10 @@ function Shell({ path, children }) {
     </aside>
     <main class="main" key=${path}>${children}</main>
     <${UploadIndicator} path=${path} />
-    <nav class=${'bottom-nav' + (navIndex < 0 ? ' no-active' : '')} style=${`--i:${Math.max(0, navIndex)}`}>
+    <nav ref=${navRef} class=${'bottom-nav' + (navIndex < 0 ? ' no-active' : '') + (compact ? ' compact' : '')} style=${`--i:${Math.max(0, navIndex)}`}>
       <span class="bn-pill"></span>
       ${NAV.map((n) => html`<a href=${n.href} class=${'bn-item' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)} aria-label=${n.label}>
-        <span class="bn-icon"><${Icon} name=${n.icon} size=${22} />${dot(n.href)}</span><span>${n.label}</span></a>`)}
+        <span class="bn-icon"><${Icon} name=${n.icon} size=${22} />${dot(n.href)}</span><span class="bn-label">${n.label}</span></a>`)}
     </nav>
   </div>`;
 }

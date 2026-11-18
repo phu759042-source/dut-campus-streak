@@ -52,6 +52,7 @@ const chatRpc = {
   relation_with: [{ friend: 'none', i_blocked: false, blocked_me: false }],
   get_public_profile: [{ user_id: 'u1', display_name: 'Lê Minh Anh', avatar_url: null, banner_url: null, class_name: '23T_DT1', current_streak: 17, total_check_ins: 53 }],
   my_chat_ban: null,
+  chat_people: chatPeople.map((p, i) => ({ user_id: p.id, display_name: p.display_name, avatar_url: i % 2 ? "/icon-96.png" : null, class_name: ['23T_DT1', '24KTMT2', '22T_Nhat1', '23DTCLC', '24T_KHDL'][i % 5] })),
 };
 m.supabase.rpc = (fn, args) => Promise.resolve({
   data: fn === 'send_chat_message' ? { id: ++nextId, sender_id: me, recipient_id: args.p_to, body: args.p_body, created_at: new Date().toISOString(), deleted_at: null }
