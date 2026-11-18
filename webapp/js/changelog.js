@@ -4,6 +4,7 @@
 //  - fixes and small changes: next patch version (1.9.2 -> 1.9.3)
 // 1.1.2 was the version of the mobile app when the web app was released (10/11/2026); it continues from there.
 export const CHANGELOG = [
+  { v: '1.10.4', d: '19/11/2026', items: ['Bản đồ 3D khi xoay ngang điện thoại: số FPS nằm dưới nút ⚙️ thay vì đè lên nút chọn xe; cần điều khiển, nút nhảy và nút đổi góc nhìn nhỏ gọn hơn'] },
   { v: '1.10.3', d: '19/11/2026', items: ['Bản đồ 3D: bảng ⚙️ Cài đặt luôn nằm gọn trong màn hình và cuộn được trên máy tính', 'Bản đồ 3D khi xoay ngang điện thoại: nút, ô tìm kiếm, bản đồ nhỏ và hai nút Đi dạo / Vào server gọn hơn, không che bản đồ'] },
   { v: '1.10.2', d: '19/11/2026', items: ['Tài khoản đã xóa trên máy khác: tự đăng xuất khi tải lại hoặc quay lại trang, không còn bị tạo lại và tính thêm vào số tài khoản'] },
   { v: '1.10.1', d: '19/11/2026', items: ['Bản đồ 3D: sửa không chọn được giới hạn FPS và bộ đếm FPS chỉ hiện "–"; bộ đếm và chế độ Tự động chạy cả trên máy rất yếu', 'Thống nhất tên DUT Campus Streak trên logo, tiêu đề và ứng dụng cài đặt'] },
