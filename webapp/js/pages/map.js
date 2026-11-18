@@ -250,9 +250,58 @@ function showAd(id) {
   </div>`, { title: 'Ủng hộ DUT Campus Streak' });
 }
 
-// Background music on the whole map page (overview, walking, server): on / off, volume, another track (M turns it on or off)
+// ---- graphics settings (saved on this device): quality level, fps cap, fps counter ----
+const GFX_KEY = 'cs-map-gfx';
+const GFX_DEFAULT = { quality: 'auto', fps: 60, showFps: false, autoLevel: 'high' };
+const LEVEL_VI = { high: 'Cao', medium: 'Vừa', low: 'Thấp' };
+let gfx = (() => { try { return { ...GFX_DEFAULT, ...JSON.parse(localStorage.getItem(GFX_KEY) || '{}') }; } catch { return { ...GFX_DEFAULT }; } })();
+let gfxLive = { level: null, fps: null }; // what the scene runs at now
+let gfxScene = null;
+const gfxSubs = new Set();
+const gfxSnap = () => ({ ...gfx, ...gfxLive });
+const gfxEmit = () => { const v = gfxSnap(); for (const f of gfxSubs) f(v); };
+function gfxSave(patch) {
+  gfx = { ...gfx, ...patch };
+  try { localStorage.setItem(GFX_KEY, JSON.stringify(gfx)); } catch { /* storage off */ }
+  gfxEmit();
+}
+/** change quality / fps cap / counter from the settings panel */
+function setGfx(patch) {
+  if (patch.quality === 'auto' && gfx.quality !== 'auto') patch = { ...patch, autoLevel: 'high' }; // measure again from the top
+  gfxSave(patch);
+  const r = gfxScene?.setGraphics({ quality: gfx.quality, fps: gfx.fps });
+  if (r) { gfxLive.level = r.level; gfxEmit(); }
+}
+function useGfx() {
+  const [g, set] = useState(gfxSnap);
+  useEffect(() => { gfxSubs.add(set); return () => gfxSubs.delete(set); }, []);
+  return g;
+}
+/** options for createCampus */
+function gfxOptions() {
+  return {
+    gfx,
+    onGfx: ({ level, auto }) => {
+      gfxLive.level = level;
+      if (auto) {
+        gfxSave({ autoLevel: level });
+        toast(`Máy đang hơi giật nên đồ họa đã tự giảm xuống mức ${LEVEL_VI[level]} cho mượt hơn. Có thể đổi trong nút ⚙️ Cài đặt.`, 'info', 5000);
+      } else gfxEmit();
+    },
+    onFps: (n) => { gfxLive.fps = n; if (gfx.showFps) gfxEmit(); },
+  };
+}
+
+function Choice({ value, options, onChange, label }) {
+  return html`<div class="gfx-choice" role="radiogroup" aria-label=${label}>${options.map(([v, text]) => html`
+    <button type="button" role="radio" aria-checked=${value === v} class=${value === v ? 'on' : ''} onClick=${() => onChange(v)}>${text}</button>`)}</div>`;
+}
+
+// Settings on the whole map page (overview, walking, server): background music (on / off, volume, another track;
+// M turns it on or off) and graphics (quality, fps cap, fps counter)
 function MusicControl() {
   const [m, setM] = useState(musicState);
+  const g = useGfx();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => subscribeMusic(setM), []);
@@ -275,9 +324,10 @@ function MusicControl() {
   }, [open]);
   const vol = Math.round(m.vol * 100);
   return html`<div class="map-music" ref=${ref}>
-    <button class=${'map-btn walk-music' + (m.on ? '' : ' off')} aria-label="Nhạc nền" aria-expanded=${open} title="Nhạc nền (M)"
-      onClick=${(e) => { e.currentTarget.blur(); setOpen((v) => !v); }}><${Icon} name=${m.on ? 'music' : 'musicOff'} size=${19} /></button>
-    ${open && html`<div class="music-pop pop-in" role="dialog" aria-label="Nhạc nền">
+    <button class="map-btn walk-music" aria-label="Cài đặt nhạc nền và đồ họa" aria-expanded=${open} title="Cài đặt: nhạc nền (M), đồ họa, FPS"
+      onClick=${(e) => { e.currentTarget.blur(); setOpen((v) => !v); }}><${Icon} name="gear" size=${20} /></button>
+    ${g.showFps && !open && html`<span class=${'map-fps' + (g.fps && g.liveFps && g.liveFps < (g.fps || 60) * 0.62 ? ' slow' : '')} aria-hidden="true">${g.liveFps ? `${g.liveFps} FPS` : 'FPS –'}</span>`}
+    ${open && html`<div class="music-pop pop-in" role="dialog" aria-label="Cài đặt">
       <label class="switch-row"><span>🎵 Nhạc nền</span>
         <input type="checkbox" class="switch" checked=${m.on} onChange=${(e) => setMusicOn(e.currentTarget.checked)} /></label>
       <div class="music-now">${!m.on ? 'Đang tắt' : m.waiting ? 'Chạm vào bản đồ để bắt đầu phát' : html`${m.gap ? 'Bài tiếp theo' : 'Đang phát'}: <b>${m.title || '…'}</b>`}</div>
@@ -289,6 +339,20 @@ function MusicControl() {
       </div>
       <button class="btn btn-ghost btn-sm music-skip" disabled=${!m.on || !m.playing} onClick=${skipTrack}>⏭ Chuyển bài khác</button>
       <div class="music-note">Nhạc không lời tự sáng tác, phát ngẫu nhiên. Hợp để học bài, thư giãn hay đi ngủ.</div>
+      <div class="gfx-sep"></div>
+      <div class="gfx-title">🎮 Đồ họa</div>
+      <${Choice} label="Chất lượng đồ họa" value=${g.quality} onChange=${(q) => setGfx({ quality: q })}
+        options=${[['auto', 'Tự động'], ['high', 'Cao'], ['medium', 'Vừa'], ['low', 'Thấp']]} />
+      <div class="music-note">${g.quality === 'auto'
+        ? html`Tự giảm khi máy bị giật${g.level ? html` · đang chạy mức <b>${LEVEL_VI[g.level]}</b>` : ''}.`
+        : g.quality === 'low' ? 'Tắt bóng đổ, giảm độ nét: hợp với laptop không có card đồ họa rời.'
+        : g.quality === 'medium' ? 'Bóng đổ nhẹ hơn, độ nét vừa phải.' : 'Bóng đổ mềm, nét nhất. Cần máy khỏe.'}</div>
+      <div class="gfx-title small">Giới hạn FPS</div>
+      <${Choice} label="Giới hạn FPS" value=${g.fps} onChange=${(f) => setGfx({ fps: f })}
+        options=${[[30, '30'], [60, '60'], [0, 'Không giới hạn']]} />
+      <label class="switch-row gfx-row"><span>Hiện FPS</span>
+        <input type="checkbox" class="switch" checked=${g.showFps} onChange=${(e) => setGfx({ showFps: e.currentTarget.checked })} /></label>
+      ${g.showFps && html`<div class="music-now">Hiện tại: <b>${g.liveFps ? `${g.liveFps} FPS` : 'đang đứng yên'}</b>${g.level ? ` · mức ${LEVEL_VI[g.level]}` : ''}</div>`}
     </div>`}
   </div>`;
 }
@@ -395,7 +459,7 @@ export function MapPage() {
             || { key: `b${b.id}`, title: b.name || 'Tòa nhà', sub: b.name ? null : 'Chưa có tên trên bản đồ', kind: 'building', buildings: [info], box: A.bbox([b.pts]), height: info.height || 10 };
         };
         const scene = A.createCampus(host.current, data, {
-          dark, mobile: isMobile(),
+          dark, mobile: isMobile(), ...gfxOptions(),
           onPick: (b) => {
             if (!b) { if (!sceneRef.current?.walking()) select(null); return; }
             if (b.poi) { const t = ts.find((x) => x.key === b.poi); if (t) select(t, { fly: false }); return; } // the bridge
@@ -435,6 +499,7 @@ export function MapPage() {
           },
         });
         sceneRef.current = scene;
+        gfxScene = scene; gfxLive = { level: scene.graphics().level, fps: null }; gfxEmit();
         mmRef.current = minimapImage(data, A, dark);
         dataRef.current = { data, A };
         if (location.hostname === 'localhost') window.__map = scene;
@@ -481,7 +546,7 @@ export function MapPage() {
     return () => {
       disposed = true; mo.disconnect(); clearTimeout(hintTimer);
       if (onGoto) window.removeEventListener('cs-goto', onGoto);
-      sceneRef.current?.dispose(); sceneRef.current = null;
+      sceneRef.current?.dispose(); sceneRef.current = null; gfxScene = null;
       document.title = 'DUT Campus Streak';
     };
   }, []);

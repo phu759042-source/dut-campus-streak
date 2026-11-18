@@ -138,14 +138,34 @@ function rng(seed) {
 }
 
 // ---------- the scene ----------
-export function createCampus(container, data, { dark = false, mobile = false, onPick, onPickPlayer, onBillboard, onFrame, onNear, onInteract, onExitWalk, onView } = {}) {
+// Graphics levels (the "Đồ họa" settings on the map page). The cost on a weak laptop (Intel UHD 620, no graphics
+// card) is mostly the soft 2048 px sun shadow and drawing at 2x the screen pixels; "low" drops both.
+const LEVELS = ['high', 'medium', 'low'];
+function levelSpec(name, mobile) {
+  const dpr = window.devicePixelRatio || 1;
+  if (name === 'low') return { dpr: Math.min(dpr, 1) * 0.8, shadows: false, soft: false, map: 512 };
+  if (name === 'medium') return { dpr: Math.min(dpr, mobile ? 1.1 : 1.25), shadows: true, soft: false, map: 1024 };
+  return { dpr: Math.min(dpr, mobile ? 1.5 : 2), shadows: true, soft: true, map: mobile ? 1024 : 2048 };
+}
+
+/**
+ * gfx: { quality: 'auto' | 'high' | 'medium' | 'low', fps: 30 | 60 | 0 (no cap), autoLevel: level 'auto' starts from }.
+ * onGfx({ quality, level, fps, auto }) is called when 'auto' lowers the level (auto: true) or the settings change;
+ * onFps(n) about once a second while the map keeps drawing (null when it is idle).
+ */
+export function createCampus(container, data, { dark = false, mobile = false, gfx = {}, onGfx, onFps, onPick, onPickPlayer, onBillboard, onFrame, onNear, onInteract, onExitWalk, onView } = {}) {
+  let quality = gfx.quality || 'auto';
+  let fpsCap = gfx.fps ?? 60;
+  let level = quality === 'auto' ? (LEVELS.includes(gfx.autoLevel) ? gfx.autoLevel : 'high') : quality;
   let needs = true, raf = 0, disposed = false;
   function requestRender() { needs = true; }
   addEventListener('cs-redraw', requestRender); // an image texture (school emblem) finished loading
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // anti-aliasing can only be chosen when the renderer is made: off when the map starts on "low"
+  const renderer = new THREE.WebGLRenderer({ antialias: level !== 'low', powerPreference: 'high-performance' });
+  const spec0 = levelSpec(level, mobile);
+  renderer.setPixelRatio(spec0.dpr);
+  renderer.shadowMap.enabled = spec0.shadows;
+  renderer.shadowMap.type = spec0.soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -164,8 +184,8 @@ export function createCampus(container, data, { dark = false, mobile = false, on
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff4e0, 2);
   sun.position.set(190, 430, 250); // afternoon sun from the south-west: lights the main fronts (bottom of the map)
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
+  sun.castShadow = spec0.shadows;
+  sun.shadow.mapSize.set(spec0.map, spec0.map);
   Object.assign(sun.shadow.camera, { left: -520, right: 520, top: 480, bottom: -480, near: 50, far: 1300 });
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.6;
@@ -594,11 +614,57 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     });
     requestRender();
   }
+  // ---------- graphics level, fps cap, fps meter ----------
+  function applyLevel(name) {
+    level = name;
+    const L = levelSpec(name, mobile);
+    const type = L.soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    const relink = renderer.shadowMap.enabled !== L.shadows || renderer.shadowMap.type !== type;
+    renderer.shadowMap.enabled = L.shadows;
+    renderer.shadowMap.type = type;
+    sun.castShadow = L.shadows;
+    if (sun.shadow.mapSize.x !== L.map) { sun.shadow.mapSize.set(L.map, L.map); sun.shadow.map?.dispose(); sun.shadow.map = null; }
+    // materials are compiled for one shadow setup: rebuild them
+    if (relink) scene.traverse((o) => { const m = o.material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
+    renderer.setPixelRatio(L.dpr);
+    resize();
+    settleUntil = performance.now() + 4000;
+    slowWindows = 0;
+  }
+  // fps is measured only over frames drawn back to back (the map draws on demand, idle is not "slow")
+  let lastDraw = 0, lastFrame = 0, winN = 0, winMs = 0, slowWindows = 0, settleUntil = performance.now() + 5000, idleSent = false;
+  function meter(now) {
+    const gap = now - lastDraw;
+    lastDraw = now;
+    if (gap > 250) return;
+    winN++; winMs += gap;
+    if (winMs < 1000) return;
+    const fps = Math.round((winN * 1000) / winMs);
+    winN = 0; winMs = 0; idleSent = false;
+    onFps?.(fps);
+    // 'auto': two slow seconds in a row (well under the target) -> one level down, remembered for next time
+    if (quality !== 'auto' || now < settleUntil || document.hidden) return;
+    const target = fpsCap || 60;
+    slowWindows = fps < target * 0.62 ? slowWindows + 1 : 0;
+    if (slowWindows >= 2 && level !== 'low') {
+      applyLevel(LEVELS[LEVELS.indexOf(level) + 1]);
+      onGfx?.({ quality, level, fps: fpsCap, auto: true });
+    }
+  }
+
   let last = performance.now();
   function tick() {
     if (disposed) return;
     raf = requestAnimationFrame(tick);
-    const now = performance.now(), dt = (now - last) / 1000;
+    const now = performance.now();
+    // fps cap: skip this screen refresh if the last frame was too recent (keeps an even 30 / 60 on 120 Hz screens)
+    if (fpsCap) {
+      const step = 1000 / fpsCap;
+      if (now - lastFrame < step - 1.5) return;
+      lastFrame = Math.max(lastFrame + step, now - step);
+    }
+    if (!idleSent && now - lastDraw > 1500) { idleSent = true; winN = 0; winMs = 0; onFps?.(null); }
+    const dt = (now - last) / 1000;
     last = now;
     // other students first: riding pillion, you sit on where their bike is drawn this frame
     if (players.update(Math.min(dt, 0.1))) needs = true;
@@ -621,6 +687,7 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     if (!needs) return;
     needs = false;
     renderer.render(scene, camera);
+    meter(now);
     const w = walker.state;
     onFrame?.({ project, compass: compassAngle(), distance: w.on ? 60 : camera.position.distanceTo(controls.target) / fit(),
       walk: w.on ? { x: w.x, z: w.z, heading: w.heading, yaw: w.yaw } : null });
@@ -681,6 +748,17 @@ export function createCampus(container, data, { dark = false, mobile = false, on
     canSit: () => !!seatHere(), toggleSit, sitting: () => !!walker.state.sit,
     watchMatch() { const s = stadium?.randomSeat(); if (!s || !walker.state.on) return false; walker.sitAt(s); requestRender(); return true; },
     setJoy: (x, y, held) => walker.setJoy(x, y, held), setMode: (m) => walker.setMode(m), toggleLock: () => walker.toggleLock(), relockMouse: () => walker.relock(), mouseLocked: () => walker.isLocked(), setFirstPerson: (on) => walker.setFirstPerson(on), jump: () => walker.jump(), teleport: (x, z, lookAt, y) => walker.teleport(x, z, lookAt, y),
+    /** graphics settings: quality 'auto' | 'high' | 'medium' | 'low', fps 30 | 60 | 0 */
+    setGraphics({ quality: q = quality, fps = fpsCap } = {}) {
+      fpsCap = fps;
+      const was = quality;
+      quality = q;
+      const want = q === 'auto' ? (was === 'auto' ? level : 'high') : q;
+      if (want !== level) applyLevel(want); else { settleUntil = performance.now() + 4000; slowWindows = 0; }
+      requestRender();
+      return { quality, level, fps: fpsCap };
+    },
+    graphics: () => ({ quality, level, fps: fpsCap }),
     zoom(f) { flyTo([controls.target.x, controls.target.y, controls.target.z], THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * f, controls.minDistance, controls.maxDistance), { polar: controls.getPolarAngle(), ms: 350 }); },
     dispose() {
       removeEventListener('cs-redraw', requestRender);
