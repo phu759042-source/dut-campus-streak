@@ -1674,3 +1674,20 @@ button.world-ride { padding: 9px 10px 9px 14px; }
   .joy-eye { width: 44px; height: 44px; right: calc(max(18px, env(safe-area-inset-right)) + 9px); bottom: calc(92px + var(--safe-b)); }
   .walk-hint-m { font-size: 11.5px; max-width: 360px; padding: 6px 10px; }
 }
+/* phone held sideways, continued: the right-hand buttons (and the minimap) go up to the top row, level with the
+   search box, which leaves them room by getting narrower; in the server the top row is the server bar (online,
+   mic, emotes, ...), so there they sit a little lower, clear of it */
+@media (orientation: landscape) and (max-height: 520px) {
+  .map-page:not(.server) .map-search { max-width: min(300px, calc(100vw - 430px)); }
+  .map-page:not(.server) > .map-tools,
+  .map-page:not(.server) > .map-mini,
+  .map-page:not(.server) > .map-btn.walk-time,
+  .map-page:not(.server) > .map-btn.walk-pins,
+  .map-page:not(.server) > .map-music { top: calc(8px + var(--safe-t)); }
+  .map-page:not(.server) > .map-ride { top: calc(6px + var(--safe-t)); }
+  .map-page.server > .map-mini,
+  .map-page.server > .map-btn.walk-time,
+  .map-page.server > .map-btn.walk-pins,
+  .map-page.server > .map-music { top: calc(70px + var(--safe-t)); }
+  .map-page.server > .map-ride { top: calc(68px + var(--safe-t)); }
+}
