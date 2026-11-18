@@ -1,6 +1,6 @@
 // /map: 3D map of the DUT campus. Public (no login needed) so new students can explore it.
 // Three.js is loaded only when this page opens.
-import { html, useState, useEffect, useRef } from 'preact';
+import { html, useState, useEffect, useRef, useLayoutEffect } from 'preact';
 import { appStore, loadTodayClasses, fmtTime, readLocal, writeLocal, supabase, setUserCount, getUserCount, watchUserCount } from '../lib.js';
 import { Icon, Spinner, toast, openSheet } from '../ui.js';
 import { back, navigate } from '../router.js';
@@ -305,7 +305,32 @@ function MusicControl() {
   const g = useGfx();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const popRef = useRef(null);
   useEffect(() => subscribeMusic(setM), []);
+  // The panel opens down from the gear, wherever the gear is (low in the column on a computer, in a row on a phone
+  // held sideways): keep it inside the screen. It moves up when there is not enough room below, and scrolls when
+  // even the whole height is not enough.
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const fit = () => {
+      const el = popRef.current;
+      if (!el || !ref.current) return;
+      el.style.top = '0px';
+      el.style.maxHeight = 'none';
+      const vh = window.visualViewport?.height || window.innerHeight;
+      // from the gear's box: the panel itself may still be in its pop-in animation (moved / scaled)
+      const top = ref.current.getBoundingClientRect().top;
+      const want = Math.min(el.scrollHeight, vh - 24);
+      const below = vh - 12 - top;
+      const shift = below < want ? Math.min(top - 12, want - below) : 0;
+      el.style.top = `${-shift}px`;
+      el.style.maxHeight = `${below + shift}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    window.visualViewport?.addEventListener('resize', fit);
+    return () => { window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); };
+  }, [open, g.showFps]);
   useEffect(() => {
     const onKey = (e) => {
       if (e.code !== 'KeyM' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
@@ -328,7 +353,7 @@ function MusicControl() {
     <button class="map-btn walk-music" aria-label="Cài đặt nhạc nền và đồ họa" aria-expanded=${open} title="Cài đặt: nhạc nền (M), đồ họa, FPS"
       onClick=${(e) => { e.currentTarget.blur(); setOpen((v) => !v); }}><${Icon} name="gear" size=${20} /></button>
     ${g.showFps && !open && html`<span class=${'map-fps' + (g.fps && g.liveFps && g.liveFps < (g.fps || 60) * 0.62 ? ' slow' : '')} aria-hidden="true">${g.liveFps ? `${g.liveFps} FPS` : 'FPS –'}</span>`}
-    ${open && html`<div class="music-pop pop-in" role="dialog" aria-label="Cài đặt">
+    ${open && html`<div class="music-pop pop-in" ref=${popRef} role="dialog" aria-label="Cài đặt">
       <label class="switch-row"><span>🎵 Nhạc nền</span>
         <input type="checkbox" class="switch" checked=${m.on} onChange=${(e) => setMusicOn(e.currentTarget.checked)} /></label>
       <div class="music-now">${!m.on ? 'Đang tắt' : m.waiting ? 'Chạm vào bản đồ để bắt đầu phát' : html`${m.gap ? 'Bài tiếp theo' : 'Đang phát'}: <b>${m.title || '…'}</b>`}</div>
