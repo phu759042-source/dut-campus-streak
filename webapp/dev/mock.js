@@ -27,13 +27,41 @@ const docs = [
   { id: 'f3', name: 'Bao_cao.docx', item_type: 'file', file_size: 84000, storage_path: 'x/2.docx' },
 ];
 
-m.supabase.rpc = (fn) => Promise.resolve({
-  data: fn === 'get_my_today_classes' ? today : fn === 'get_leaderboard' ? lb : fn === 'get_public_profile_banners' ? []
+const ago = (min) => new Date(Date.now() - min * 60e3).toISOString();
+const chatMsgs = [
+  { id: 1, sender_id: 'u0', recipient_id: null, body: 'Có ai học Giải tích 2 lớp thầy A không? 😭', created_at: ago(70), deleted_at: null },
+  { id: 2, sender_id: 'u1', recipient_id: null, body: 'Mình nè, thứ 5 kiểm tra giữa kỳ đó', created_at: ago(68), deleted_at: null },
+  { id: 3, sender_id: 'u1', recipient_id: null, body: 'Ôn chương 3 với 4 là được', created_at: ago(67), deleted_at: null },
+  { id: 4, sender_id: me, recipient_id: null, body: 'Cảm ơn nha, tối nay ai lên server đá bóng không?', created_at: ago(20), deleted_at: null },
+  { id: 5, sender_id: 'u2', recipient_id: null, body: '·', created_at: ago(15), deleted_at: ago(14) },
+  { id: 6, sender_id: 'u4', recipient_id: null, body: 'Đá 8h nhé, sân vận động 🏟️', created_at: ago(3), deleted_at: null },
+];
+const chatPeople = names.map((n, i) => ({ id: i === 3 ? me : 'u' + i, display_name: n, avatar_url: null }));
+let nextId = 100;
+const chatRpc = {
+  chat_unread_total: 2,
+  chat_conversations: [
+    { peer_id: 'u1', display_name: 'Lê Minh Anh', avatar_url: null, last_body: 'Mai đi học sớm không?', last_at: ago(5), last_mine: false, last_deleted: false, unread: 2 },
+    { peer_id: 'u4', display_name: 'Võ Thu Hà', avatar_url: null, last_body: 'Ok bạn', last_at: ago(300), last_mine: true, last_deleted: false, unread: 0 },
+  ],
+  my_friends: [
+    { user_id: 'u5', display_name: 'Đặng Khoa', avatar_url: null, status: 'received', since: ago(30) },
+    { user_id: 'u1', display_name: 'Lê Minh Anh', avatar_url: null, status: 'friends', since: ago(3000) },
+    { user_id: 'u6', display_name: 'Bùi Lan', avatar_url: null, status: 'sent', since: ago(60) },
+  ],
+  relation_with: [{ friend: 'none', i_blocked: false, blocked_me: false }],
+  get_public_profile: [{ user_id: 'u1', display_name: 'Lê Minh Anh', avatar_url: null, banner_url: null, class_name: '23T_DT1', current_streak: 17, total_check_ins: 53 }],
+  my_chat_ban: null,
+};
+m.supabase.rpc = (fn, args) => Promise.resolve({
+  data: fn === 'send_chat_message' ? { id: ++nextId, sender_id: me, recipient_id: args.p_to, body: args.p_body, created_at: new Date().toISOString(), deleted_at: null }
+    : fn in chatRpc ? chatRpc[fn]
+    : fn === 'get_my_today_classes' ? today : fn === 'get_leaderboard' ? lb : fn === 'get_public_profile_banners' ? []
     : fn === 'get_my_achievement_stats' ? [{ total_check_ins: 12, longest_streak: 5 }]
     : fn === 'get_class_absence_info' ? { quota_left: 1, absences: [{ date: '2026-11-13', kind: 'rescheduled', makeup_date: '2026-11-14', makeup_start: '07:00:00', makeup_end: '09:00:00', makeup_room: 'F305' }] } : null,
   error: null,
 });
-const table = { class_sessions: sessions, deadline_tasks: tasks, documents: docs };
+const table = { class_sessions: sessions, deadline_tasks: tasks, documents: docs, chat_messages: [...chatMsgs].reverse(), profiles: chatPeople, user_blocks: [] };
 m.supabase.from = (name) => {
   const result = { data: table[name] || null, error: null };
   const q = new Proxy({}, {

@@ -59,6 +59,10 @@ const P = {
   music: 'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
   musicOff: 'M9 9V5l11-2v9M9 13v5a3 3 0 1 1-6 0 3 3 0 0 1 6 0M3 3l18 18',
   ban: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8',
+  chat: 'M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z',
+  send: 'M22 2 11 13M22 2l-7 20-4-9-9-4z',
+  userPlus: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M19 8v6M16 11h6',
+  userCheck: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M16 11l2 2 4-4',
 };
 
 export function Icon({ name, size = 22, stroke = 2, class: cls = '', style }) {

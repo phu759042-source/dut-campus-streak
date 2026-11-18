@@ -5,6 +5,7 @@ import { supabase, errMsg, getUserCount, watchUserCount } from '../lib.js';
 import { Icon, Skeleton, ErrorBox, Segmented } from '../ui.js';
 import { PageHeader } from './shared.js';
 import { Stars, STAR_LABELS } from '../rating.js';
+import { ReportsCard } from './admin-reports.js';
 
 // two-series palette (checked for colour-blind separation and contrast on light and dark surfaces)
 const C1 = '#2f6bff', C2 = '#c96a12';
@@ -260,6 +261,7 @@ export function AdminPage() {
         <${Tile} label="Đăng ký chưa xác nhận" value=${n(T.unconfirmed)} sub="Không nhận được / chưa bấm email xác nhận" />
       </div>
 
+      <${ReportsCard} />
       <${RatingsCard} />
 
       <${Card} title="Người dùng hoạt động mỗi ngày" note="Mỗi tài khoản tính một lần mỗi ngày: người mới (đăng ký hôm đó) và người quay lại (đăng ký từ trước).">

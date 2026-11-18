@@ -14,6 +14,8 @@ import { ProfilePage, WelcomePage, AFTER_WELCOME } from './pages/profile.js';
 import { AchievementsPage, AboutPage } from './pages/misc.js';
 import { SharedLinkPage } from './pages/sharelink.js';
 import { AdminPage, useIsAdmin } from './pages/admin.js';
+import { ChatPage } from './pages/chat.js';
+import { startChat, useChatStore } from './chat.js';
 import { IntroPage } from './pages/intro.js';
 import { syncPush } from './push.js';
 import { InstallButton } from './install.js';
@@ -36,6 +38,8 @@ const ROUTES = [
   ['/checkin/:id', CheckInPage, { bare: true }],
   ['/checkins-today', TodayCheckInsPage],
   ['/leaderboard', LeaderboardPage],
+  ['/chat', ChatPage],
+  ['/chat/:id', ChatPage],
   ['/achievements', AchievementsPage],
   ['/schedule', SchedulePage],
   ['/deadlines', DeadlinesPage],
@@ -50,6 +54,7 @@ const NAV = [
   { href: '/', icon: 'home', label: 'Trang chủ' },
   { href: '/schedule', icon: 'calendar', label: 'Lịch học' },
   { href: '/leaderboard', icon: 'chart', label: 'Xếp hạng' },
+  { href: '/chat', icon: 'chat', label: 'Chat' },
   { href: '/deadlines', icon: 'flag', label: 'Deadline' },
   { href: '/profile', icon: 'user', label: 'Hồ sơ' },
 ];
@@ -65,13 +70,15 @@ function Shell({ path, children }) {
   const navIndex = NAV.findIndex((n) => active(n.href)); // -1 on pages not in the bottom bar
   const go = (href) => (e) => { e.preventDefault(); navigate(href); };
   const admin = useIsAdmin();
+  const { unread } = useChatStore();
+  const dot = (href) => href === '/chat' && unread > 0 && html`<span class="nav-badge">${unread > 99 ? '99+' : unread}</span>`;
   const side = admin ? [...NAV, ...SIDE_EXTRA, { href: '/admin', icon: 'chart', label: 'Quản trị' }] : [...NAV, ...SIDE_EXTRA];
   return html`<div class="shell">
     <aside class="sidebar">
       <a class="side-brand" href="/" onClick=${go('/')}><img class="brand-logo" src="/icon-96.png" alt="" width="36" height="36" /><span>Campus<b>Streak</b></span></a>
       <nav>
         ${side.map((n) => html`<a href=${n.href} class=${'side-link' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)}>
-          <${Icon} name=${n.icon} size=${20} /><span>${n.label}</span></a>`)}
+          <${Icon} name=${n.icon} size=${20} /><span>${n.label}</span>${dot(n.href)}</a>`)}
       </nav>
       <${InstallButton} variant="side" />
       <div class="side-foot muted small">DUT Campus Streak · Web</div>
@@ -81,7 +88,7 @@ function Shell({ path, children }) {
     <nav class=${'bottom-nav' + (navIndex < 0 ? ' no-active' : '')} style=${`--i:${Math.max(0, navIndex)}`}>
       <span class="bn-pill"></span>
       ${NAV.map((n) => html`<a href=${n.href} class=${'bn-item' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)} aria-label=${n.label}>
-        <${Icon} name=${n.icon} size=${22} /><span>${n.label}</span></a>`)}
+        <span class="bn-icon"><${Icon} name=${n.icon} size=${22} />${dot(n.href)}</span><span>${n.label}</span></a>`)}
     </nav>
   </div>`;
 }
@@ -167,6 +174,7 @@ async function onSession(session) {
     loadMyProfile().catch(() => {});
     syncPush();
     trackActivity(session.user.id);
+    startChat();
   }
   if (!session) bootstrappedFor = null;
 }

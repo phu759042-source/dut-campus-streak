@@ -5,6 +5,7 @@ import { PageHeader } from './shared.js';
 import { WORLD_HTTP } from '../world.js';
 import { navigate } from '../router.js';
 import { titleOf } from '../lost-core.js';
+import { ProfileActions } from '../chat.js';
 
 const PAGE_SIZE = 50;
 const name = (r) => String(r.display_name || '').trim() || 'Sinh viên';
@@ -39,7 +40,7 @@ async function loadMerit() {
   return top.map((t) => ({ ...(byId[t.id] || {}), user_id: t.id, display_name: byId[t.id]?.display_name || t.name, pts: t.pts, n: t.n, rank: null }));
 }
 
-function ProfileSheet({ row, rank, metric }) {
+function ProfileSheet({ row, rank, metric, close }) {
   const me = row.user_id === currentUser()?.id;
   return html`<div class="pcard">
     <div class=${'pcard-banner' + (row.banner_url ? ' zoomable' : '')} style=${row.banner_url ? `background-image:url('${row.banner_url}')` : ''}
@@ -56,6 +57,7 @@ function ProfileSheet({ row, rank, metric }) {
         <div><b>📅 ${num(row.weekly_streak)}</b><span>Streak tuần</span></div>
         <div><b>${num(row.total_check_ins)}</b><span>Check-in</span></div>
       </div>
+      <${ProfileActions} userId=${row.user_id} name=${name(row)} onDone=${close} />
     </div>
   </div>`;
 }
@@ -130,7 +132,7 @@ export function LeaderboardPage() {
   }
   useEffect(() => { if (scope === 'all' || klass) load(); }, [metric, scope, klass]);
 
-  const open = (r) => openSheet(() => html`<${ProfileSheet} row=${r} rank=${r.rank} metric=${metric} />`, { title: 'Hồ sơ' });
+  const open = (r) => openSheet(({ close }) => html`<${ProfileSheet} row=${r} rank=${r.rank} metric=${metric} close=${close} />`, { title: 'Hồ sơ' });
 
   function locateMe() {
     setQuery('');
