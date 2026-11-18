@@ -3,12 +3,14 @@
 //    and a kitchen behind a serving counter. Room for a dozen or more students.
 //  - Khu E1: open corridors along the front on both floors and a staircase at the end next to the canteen.
 //  - Khu H: the whole 4-storey block from its floor plan (see khu-h.js).
+//  - Khu B: the long front bar with its corridors, classrooms, stairs and entrance tower (see khu-b.js).
 // Produces geometry plus what the walker needs: solids (footprints), walls with a height range,
 // walkable surfaces (2nd-floor slab, stairs) and meshes that fade/hide when they block the view.
 import * as THREE from 'three';
 import { Builder, offsetPoly, insideP, FLOOR_H } from './campus-details.js';
 import { isKhuH, buildKhuH, khuHOutline } from './khu-h.js';
 import { isKhuF, buildKhuF, khuFSplit, khuFFront } from './khu-f.js';
+import { isKhuB, buildKhuB, khuBOutline } from './khu-b.js';
 
 const FLOOR2 = FLOOR_H; // top of the 2nd-floor slab
 
@@ -39,6 +41,10 @@ export function prepareInteriors(data) {
     if (isKhuH(b) && !b.osmPts) { // walk-in from its floor plan; the short wing is rebuilt (see khu-h.js layout())
       b.osmPts = b.pts; b.pts = khuHOutline(b.pts);
       b.interior = 'khuH'; b.hollow = true; b.entrance_edge ??= 3; // main entrance under the glass bay
+    }
+    if (isKhuB(b) && !b.osmPts) { // walk-in: corridors, classrooms, stairs (see khu-b.js); 4 floors as in the photo
+      b.osmPts = b.pts; b.pts = khuBOutline(b.pts);
+      b.interior = 'khuB'; b.hollow = true; b.levels = 4; b.entrance_edge ??= 2; // the front of the entrance tower
     }
     if (b.corridor && !b.roofPts) {
       const F = frame(b.pts, b.corridor.edge);
@@ -302,8 +308,8 @@ export function buildInteriors(buildings) {
       out.occluders.push(wallsMesh);
       out.meshFor.set(b.id, wallsMesh);
     }
-    if (b.interior === 'khuH') {
-      const h = buildKhuH(b, out);
+    if (b.interior === 'khuH' || b.interior === 'khuB') {
+      const h = b.interior === 'khuH' ? buildKhuH(b, out) : buildKhuB(b, out);
       out.group.add(h.group);
       out.occluders.push(...h.meshes);
       out.meshFor.set(b.id, h.meshes[0]);

@@ -46,7 +46,7 @@ const rectIn = (F, u0, u1, n0, n1) => [F.at(u0, n0), F.at(u1, n0), F.at(u1, n1),
 
 // ---------------- textures ----------------
 /** Breeze blocks: square cells with a round hole and a cross, as cast in the 1970s-80s blocks of Khu A and Khu B. */
-function latticeTex(cellsU, cellsV) {
+export function latticeTex(cellsU, cellsV) {
   const C = 64, t = canvasTex(C * 4, C * 4, (g) => {
     for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
       const x = i * C, y = j * C;
@@ -61,7 +61,7 @@ function latticeTex(cellsU, cellsV) {
   return t;
 }
 /** Rough stone cladding (đá chẻ) round the Khu B entrance. */
-function stoneTex() {
+export function stoneTex() {
   const t = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#6d645a'; g.fillRect(0, 0, w, h);
     let s = 7; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
@@ -354,8 +354,9 @@ export function buildLandmarks(data) {
   }
 
   // ---- Khu B: entrance tower in the middle of the long front ----
+  // (when the bar is the walk-in building of khu-b.js, the tower is built there)
   const KB = blds.filter((b) => b.zone === 'B').sort((a, b) => b.pts.length - a.pts.length)[0];
-  if (KB) {
+  if (KB && !KB.osmPts) {
     let li = 0, lb = 0;
     for (let i = 0; i < KB.pts.length; i++) { const a = KB.pts[i], c = KB.pts[(i + 1) % KB.pts.length], L = Math.hypot(c[0] - a[0], c[1] - a[1]); if (L > lb) { lb = L; li = i; } }
     const F = edgeFrame(KB.pts, li), h = heightOf(KB), TW = 4.6, top = h + 1.6;
