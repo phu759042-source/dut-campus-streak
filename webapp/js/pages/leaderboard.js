@@ -10,6 +10,8 @@ const PAGE_SIZE = 50;
 const name = (r) => String(r.display_name || '').trim() || 'Sinh viên';
 const cls = (r) => String(r.class_name || '').trim() || 'Chưa có lớp';
 const num = (v) => Number(v) || 0;
+// search text: lower case, no Vietnamese marks (so "nguyen van a" finds "Nguyễn Văn A"), single spaces
+const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
 // what each board ranks by: streak days, streak weeks, or merit points of the lost-and-found event on the 3D map
 const SCORE = {
   daily: (r) => html`<b>${num(r.current_streak)}</b><small>ngày</small>`,
@@ -83,6 +85,7 @@ export function LeaderboardPage() {
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
   const [highlight, setHighlight] = useState(null);
+  const [query, setQuery] = useState('');
   const listRef = useRef();
   const me = currentUser()?.id;
 
@@ -130,6 +133,7 @@ export function LeaderboardPage() {
   const open = (r) => openSheet(() => html`<${ProfileSheet} row=${r} rank=${r.rank} metric=${metric} />`, { title: 'Hồ sơ' });
 
   function locateMe() {
+    setQuery('');
     const idx = rows.findIndex((r) => r.user_id === me);
     if (idx < 0) return;
     const p = Math.floor(idx / PAGE_SIZE) + 1;
@@ -139,10 +143,13 @@ export function LeaderboardPage() {
     setTimeout(() => setHighlight(null), 2600);
   }
 
-  const totalPages = rows ? Math.max(1, Math.ceil(rows.length / PAGE_SIZE)) : 1;
+  // search by display name or class: every word typed has to match one of them; the ranks stay the real ones
+  const q = fold(query);
+  const shown = rows && q ? rows.filter((r) => { const hay = fold(name(r) + ' ' + cls(r)); return q.split(' ').every((w) => hay.includes(w)); }) : rows;
+  const totalPages = shown ? Math.max(1, Math.ceil(shown.length / PAGE_SIZE)) : 1;
   const myRow = rows?.find((r) => r.user_id === me);
-  const pageRows = rows ? rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : [];
-  const listRows = page === 1 ? pageRows.slice(3) : pageRows;
+  const pageRows = shown ? shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : [];
+  const listRows = page === 1 && !q ? pageRows.slice(3) : pageRows;
 
   return html`<div class="page narrow">
     <${PageHeader} title="Xếp hạng" subtitle=${rows ? `${scope === 'class' ? klass || '' : 'Toàn trường'} · ${metric === 'merit' ? 'công đức (sự kiện Đồ thất lạc)' : metric === 'weekly' ? 'streak tuần' : 'streak ngày'} · ${rows.length} sinh viên` : ' '}
@@ -153,6 +160,12 @@ export function LeaderboardPage() {
       ${scope === 'class' && html`<select class="input fade-in" value=${klass || ''} onChange=${(e) => setKlass(e.target.value)}>
         ${classes.length ? classes.map((k) => html`<option value=${k}>${k}</option>`) : html`<option value="">Chưa có dữ liệu lớp</option>`}
       </select>`}
+      <div class="input-wrap lb-search">
+        <${Icon} name="search" size=${18} class="input-icon" />
+        <input class="input has-icon" type="search" placeholder="Tìm theo tên hoặc lớp…" value=${query} aria-label="Tìm theo tên hoặc lớp"
+          onInput=${(e) => { setQuery(e.target.value); setPage(1); }} />
+        ${query && html`<button type="button" class="lb-search-clear" aria-label="Xóa tìm kiếm" onClick=${() => { setQuery(''); setPage(1); }}><${Icon} name="x" size=${16} /></button>`}
+      </div>
     </div>
 
     ${myRow && html`<button class="me-card slide-up" onClick=${locateMe}>
@@ -166,9 +179,11 @@ export function LeaderboardPage() {
 
     ${error ? html`<${ErrorBox} message=${'Không thể tải bảng xếp hạng. ' + error} onRetry=${load} />`
       : !rows ? html`<${Skeleton} h=${200} r=${24} /><${Skeleton} h=${64} count=${4} />`
+      : q && !shown.length ? html`<${Empty} icon="search" title=${`Không tìm thấy ai có tên hoặc lớp khớp với "${query.trim()}".`} />`
       : !rows.length ? html`<${Empty} icon="chart" title=${metric === 'merit' ? 'Chưa ai nhặt được đồ thất lạc nào.' : 'Chưa có dữ liệu xếp hạng.'} />`
       : html`
-        ${page === 1 && html`<${Podium} rows=${pageRows} metric=${metric} onOpen=${open} />`}
+        ${q && html`<div class="small muted lb-found">Tìm thấy ${shown.length} sinh viên</div>`}
+        ${page === 1 && !q && html`<${Podium} rows=${pageRows} metric=${metric} onOpen=${open} />`}
         <div class="lb-list" ref=${listRef}>
           ${listRows.map((r, i) => html`<button key=${r.user_id} id=${'lb-' + r.user_id}
               class=${'lb-row slide-up' + (r.user_id === me ? ' me' : '') + (highlight === r.user_id ? ' flash' : '')}
