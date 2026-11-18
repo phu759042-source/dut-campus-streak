@@ -374,7 +374,7 @@ export function MapPage() {
   const worldPick = useRef(null);
 
   useEffect(() => {
-    document.title = 'Bản đồ DUT 3D · Campus Streak';
+    document.title = 'Map DUT 3D – Bản đồ Bách khoa Đà Nẵng · Campus Streak';
     let disposed = false, onGoto = null;
     const labelEls = [];
     (async () => {

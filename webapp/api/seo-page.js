@@ -7,9 +7,11 @@ const SITE = 'https://www.campusstreak.com';
 const PAGES = {
   map: {
     path: '/map',
-    title: 'Bản đồ DUT 3D – Khám phá Trường Đại học Bách khoa Đà Nẵng | Campus Streak',
-    ogTitle: 'Bản đồ DUT 3D – Khuôn viên Trường Đại học Bách khoa Đà Nẵng',
-    description: 'Bản đồ 3D khuôn viên Trường Đại học Bách khoa – ĐHĐN (54 Nguyễn Lương Bằng): tìm khu A, B, C, D, E, F, H, L (Trung tâm Học liệu), Nhà S, căn tin, ký túc xá, sân vận động; tìm phòng như F305 và đi dạo nhập vai quanh trường. Dành cho tân sinh viên, không cần đăng nhập.',
+    // "map dut" / "dut map" are the most searched words for this page (Search Console, Nov 2026): say them first
+    title: 'Map DUT 3D – Bản đồ Trường Đại học Bách khoa Đà Nẵng | Campus Streak',
+    ogTitle: 'Map DUT 3D – Bản đồ khuôn viên Trường Đại học Bách khoa Đà Nẵng',
+    description: 'Map DUT 3D: xem toàn bộ khuôn viên Bách khoa Đà Nẵng (54 Nguyễn Lương Bằng), tìm phòng F305 ở khu nào, đi dạo nhập vai, vào tận phòng học Khu H, Khu B. Miễn phí, không cần đăng nhập.',
+    mapPage: true,
     image: `${SITE}/og-map.jpg`,
     jsonld: {
       '@context': 'https://schema.org',
@@ -18,7 +20,8 @@ const PAGES = {
           '@type': 'WebPage',
           '@id': `${SITE}/map#page`,
           url: `${SITE}/map`,
-          name: 'Bản đồ DUT 3D',
+          name: 'Map DUT 3D – Bản đồ DUT 3D',
+          alternateName: ['Bản đồ DUT', 'DUT map', 'Bản đồ Bách khoa Đà Nẵng'],
           inLanguage: 'vi',
           description: 'Bản đồ 3D tương tác của khuôn viên Trường Đại học Bách khoa – Đại học Đà Nẵng, có tìm phòng học và chế độ đi dạo nhập vai.',
           isPartOf: { '@type': 'WebSite', name: 'DUT Campus Streak', url: `${SITE}/` },
@@ -53,6 +56,37 @@ const PAGES = {
   },
 };
 
+// /map: what the map shows, in words, for crawlers (the 3D scene itself has no text) and a few questions as FAQPage
+const MAP_ZONES = [
+  ['Khu A', 'khu hiệu bộ (nhà hành chính) chữ H, có hai hồ cá trong sân và tượng trên bãi cỏ phía trước'],
+  ['Khu B', 'dãy nhà học 4 tầng với tháp sảnh gạch hoa, mái sảnh bê tông; vào được hành lang và các phòng B101–B407'],
+  ['Khu C, D, E1, E2, G, I, K, M, N, P, X', 'các dãy nhà học, xưởng và viện; căn tin nằm cạnh Khu E1, đi vào bên trong được'],
+  ['Khu F', 'dãy nhà học 4 tầng, Hội trường F, tháp có khối logo trường và sân F lát đá'],
+  ['Khu H', 'khối nhà học hình chữ V, vào được cả 4 tầng theo sơ đồ phòng thật (H101–H402)'],
+  ['Khu L – Trung tâm Học liệu', 'thư viện, Trung tâm Học liệu và Truyền thông'],
+  ['Nhà S', 'tòa nhà cao nhất trường (10 tầng, khoảng 42 m) có logo và tên trường'],
+  ['Sân vận động, ký túc xá, đài phun nước', 'đường chạy 400 m và khán đài, các nhà ký túc xá, hồ và đài phun nước cạnh Khu F'],
+  ['Cổng trường', 'cổng chính đường Nguyễn Lương Bằng và cổng phụ đường Ngô Sĩ Liên (cầu vượt đường sắt)'],
+];
+const MAP_FAQ = [
+  ['Map DUT 3D là gì?', 'Là bản đồ 3D khuôn viên Trường Đại học Bách khoa – Đại học Đà Nẵng tại 54 Nguyễn Lương Bằng, Liên Chiểu, Đà Nẵng. Mở trên trình duyệt, miễn phí, không cần đăng nhập.'],
+  ['Phòng F305 nằm ở đâu?', 'Chữ cái đầu là khu, chữ số đầu là tầng: F305 nằm ở Khu F, tầng 3. Gõ mã phòng vào ô tìm kiếm của Map DUT 3D để bản đồ bay tới đúng khu đó.'],
+  ['Có đi vào bên trong các tòa nhà được không?', 'Có. Ở chế độ đi dạo nhập vai, bạn vào được căn tin, hành lang Khu E1, cả 4 tầng Khu H và Khu B với các phòng học.'],
+  ['Map DUT có dùng được trên điện thoại không?', 'Có, trên điện thoại có joystick để đi dạo; trên máy tính dùng phím WASD. Có chế độ ngày/đêm và nhạc nền.'],
+];
+function mapExtras(page) {
+  const url = SITE + page.path;
+  const jsonld = { ...page.jsonld, '@graph': [...page.jsonld['@graph'], {
+    '@type': 'FAQPage', '@id': `${url}#faq`, url, inLanguage: 'vi',
+    mainEntity: MAP_FAQ.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+  }] };
+  const body = `<h1>${esc(page.ogTitle)}</h1><p>${esc(page.description)}</p>` +
+    `<h2>Các khu trong Map DUT 3D</h2><ul>${MAP_ZONES.map(([t, x]) => `<li><b>${esc(t)}</b>: ${esc(x)}</li>`).join('')}</ul>` +
+    `<h2>Câu hỏi thường gặp về Map DUT</h2>${MAP_FAQ.map(([q, a]) => `<h3>${esc(q)}</h3><p>${esc(a)}</p>`).join('')}` +
+    `<p><a href="/">DUT Campus Streak</a> – ứng dụng check-in lớp học, streak, thời khóa biểu và deadline cho sinh viên Bách khoa Đà Nẵng · <a href="/gioi-thieu">Giới thiệu</a></p>`;
+  return { jsonld, body };
+}
+
 // FAQPage + AboutPage structured data and a plain-HTML copy of the page for crawlers
 function introExtras(d, page) {
   const url = SITE + page.path;
@@ -84,7 +118,7 @@ function introExtras(d, page) {
   const body = `<h1>Giới thiệu DUT Campus Streak</h1><p>${esc(d.intro)}</p>` +
     `<h2>Tính năng chính</h2>${d.features.map(([t, x]) => `<h3>${esc(t)}</h3><p>${esc(x)}</p>`).join('')}` +
     `<h2>Câu hỏi thường gặp</h2>${d.faq.map(([q, a]) => `<h3>${esc(q)}</h3><p>${esc(a)}</p>`).join('')}` +
-    `<p><a href="/register">Đăng ký</a> · <a href="/login">Đăng nhập</a> · <a href="/map">Bản đồ DUT 3D</a></p>`;
+    `<p><a href="/register">Đăng ký</a> · <a href="/login">Đăng nhập</a> · <a href="/map">Map DUT 3D – bản đồ trường</a></p>`;
   return { jsonld, body };
 }
 
@@ -105,6 +139,7 @@ module.exports = async (req, res) => {
     const url = SITE + page.path;
     let jsonld = page.jsonld;
     let noscript = `<h1>${esc(page.ogTitle)}</h1><p>${esc(page.description)}</p><p><a href="/">DUT Campus Streak</a> – ứng dụng check-in lớp học, streak, thời khóa biểu và deadline cho sinh viên Bách khoa Đà Nẵng.</p>`;
+    if (page.mapPage) { const x = mapExtras(page); jsonld = x.jsonld; noscript = x.body; }
     if (page.faq) {
       try {
         const d = await (await fetch(`https://${host}/data/faq.json`)).json();
