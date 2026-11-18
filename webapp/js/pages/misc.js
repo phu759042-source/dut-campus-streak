@@ -1,6 +1,6 @@
 // Achievements and About pages.
 import { html, useState, useEffect } from 'preact';
-import { supabase, loadMyLeaderboardRow, errMsg, ASSET_BASE, APP_VERSION } from '../lib.js';
+import { supabase, loadMyLeaderboardRow, errMsg, ASSET_BASE, APP_VERSION, CHANGELOG } from '../lib.js';
 import { Icon, Skeleton, ErrorBox } from '../ui.js';
 import { PageHeader } from './shared.js';
 import { CountUp } from './home.js';
@@ -66,19 +66,43 @@ export function AboutPage() {
     ['Tác giả / Nhóm phát triển', 'Nguyễn Tấn Phú', 'Sinh viên phát triển sản phẩm DUT Campus Streak.'],
     ['Liên hệ', 'phu759042@gmail.com', 'Email liên hệ về sản phẩm, góp ý và báo lỗi.'],
     ['Bản quyền & sở hữu trí tuệ', 'DUT Campus Streak © 2026', 'Mã nguồn, giao diện, thiết kế và nội dung do tác giả tự phát triển được bảo lưu quyền sở hữu trí tuệ trong phạm vi pháp luật áp dụng. Các thư viện, SDK và thành phần của bên thứ ba tuân theo giấy phép riêng của chúng.'],
-    ['Về sản phẩm', null, 'DUT Campus Streak hỗ trợ sinh viên theo dõi lịch học, check-in lớp học, xác minh phòng, duy trì streak và xem thành tích. Đồng thời còn hỗ trợ học sinh tạo nhắc hẹn deadline và lưu trữ tài liệu.'],
+  ];
+  // what the product does, one line per area (kept in step with data/faq.json)
+  const FEATURES = [
+    ['📸', 'Check-in lớp học', 'chụp biển số phòng, AI xác minh đúng phòng của buổi học'],
+    ['🔥', 'Streak & thành tích', 'giữ chuỗi ngày đi học đều, huy hiệu theo mốc'],
+    ['🏆', 'Bảng xếp hạng', 'theo streak ngày, tuần và điểm công đức; chung hoặc theo lớp, tìm theo tên'],
+    ['📅', 'Thời khóa biểu', 'nhập từ trang đào tạo DUT, báo nghỉ và học bù'],
+    ['⏰', 'Deadline', 'nhắc bằng thông báo đẩy trước hạn'],
+    ['📁', 'Tài liệu', 'lưu trữ, xem trước, chia sẻ bằng link, tải cả thư mục thành ZIP'],
+    ['💬', 'Chat', 'phòng chung, nhắn tin riêng, kết bạn, chặn và báo cáo'],
+    ['🗺️', 'Bản đồ 3D khuôn viên', 'tìm phòng, ngày/đêm, đi dạo nhập vai, vào bên trong Khu H, Khu B, căn tin; nhạc nền piano'],
+    ['🌐', 'Server online', 'gặp nhau trên bản đồ: chat, voice chat, đá bóng ở sân vận động, sự kiện Đồ thất lạc'],
+    ['🎮', 'Mini game hằng ngày', 'Lật thẻ, Toán nhanh, Bắt lửa'],
   ];
   return html`<div class="page narrow">
     <${PageHeader} title="Liên hệ & Giới thiệu" />
     <section class="about-hero pop-in">
       <img src="/icon-192.png" alt="" width="88" height="88" />
       <div class="about-name">DUT Campus Streak</div>
-      <div class="muted small">Phiên bản web ${APP_VERSION}</div>
+      <div class="muted small">Phiên bản web ${APP_VERSION} · cập nhật ${CHANGELOG[0].d}</div>
     </section>
     ${sections.map(([t, strong, text], i) => html`<section class="card slide-up" style=${`--d:${i * 60}ms`}>
       <h3 class="card-title">${t}</h3>
       ${strong && (t === 'Liên hệ' ? html`<a class="link strong" href=${'mailto:' + strong}>${strong}</a>` : html`<div class="strong">${strong}</div>`)}
       <div class="muted">${text}</div>
     </section>`)}
+    <section class="card slide-up" style="--d:180ms">
+      <h3 class="card-title">Về sản phẩm</h3>
+      <div class="muted">Ứng dụng miễn phí cho sinh viên Trường Đại học Bách khoa – Đại học Đà Nẵng, gom việc học và đời sống sinh viên vào một chỗ:</div>
+      <ul class="about-feats">${FEATURES.map(([e, t, x]) => html`<li><span class="about-feat-ic">${e}</span><span><b>${t}</b><span class="muted"> — ${x}</span></span></li>`)}</ul>
+    </section>
+    <section class="card slide-up" style="--d:240ms">
+      <h3 class="card-title">Lịch sử cập nhật</h3>
+      ${CHANGELOG.map((r, i) => html`<details class="about-ver" open=${i === 0}>
+        <summary><b>${r.v}</b><span class="muted small">${r.d}</span>${i === 0 && html`<span class="chip chip-blue">Hiện tại</span>`}</summary>
+        <ul>${r.items.map((t) => html`<li>${t}</li>`)}</ul>
+      </details>`)}
+    </section>
   </div>`;
 }

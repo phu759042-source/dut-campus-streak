@@ -1573,3 +1573,15 @@ button.world-ride { padding: 9px 10px 9px 14px; }
 .rp-who { display: flex; align-items: center; gap: 10px; text-align: left; padding: 0; min-width: 0; }
 .rp-who > span { display: flex; flex-direction: column; }
 .rp-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+/* about page: feature list and version history */
+.about-feats { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.about-feats li { display: flex; gap: 10px; align-items: flex-start; line-height: 1.45; }
+.about-feat-ic { flex: none; width: 30px; height: 30px; border-radius: 10px; background: var(--primary-soft); display: grid; place-items: center; font-size: 16px; }
+.about-ver { border-top: 1px solid var(--border); padding: 10px 2px; }
+.about-ver:first-of-type { border-top: 0; padding-top: 2px; }
+.about-ver summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.about-ver summary::-webkit-details-marker { display: none; }
+.about-ver summary::after { content: '›'; margin-left: auto; color: var(--muted); transition: transform 0.2s; font-size: 18px; }
+.about-ver[open] summary::after { transform: rotate(90deg); }
+.about-ver ul { margin: 8px 0 2px; padding-left: 20px; color: var(--muted); display: grid; gap: 4px; }

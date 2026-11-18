@@ -14,7 +14,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 export const ASSET_BASE =
   'https://cdn.jsdelivr.net/gh/phu759042-source/dut-campus-streak@abec9614caea31d1ea23587c98f918b243a8b8b4/assets';
 
-export const APP_VERSION = '1.1.2-web';
+// version shown on the about page: the newest entry of js/changelog.js (bump it there with every release)
+export { CHANGELOG } from './changelog.js';
+import { CHANGELOG as _CL } from './changelog.js';
+export const APP_VERSION = _CL[0].v;
 
 // Storage links go through our own domain (Vercel rewrites /files and /media to Supabase Storage),
 // so users never see the Supabase project address when they open or download a file.
