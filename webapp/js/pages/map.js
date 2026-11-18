@@ -258,7 +258,8 @@ let gfx = (() => { try { return { ...GFX_DEFAULT, ...JSON.parse(localStorage.get
 let gfxLive = { level: null, fps: null }; // what the scene runs at now
 let gfxScene = null;
 const gfxSubs = new Set();
-const gfxSnap = () => ({ ...gfx, ...gfxLive });
+// the live fps must not overwrite gfx.fps (the chosen cap): it goes in as liveFps
+const gfxSnap = () => ({ ...gfx, level: gfxLive.level, liveFps: gfxLive.fps });
 const gfxEmit = () => { const v = gfxSnap(); for (const f of gfxSubs) f(v); };
 function gfxSave(patch) {
   gfx = { ...gfx, ...patch };
@@ -318,7 +319,7 @@ function MusicControl() {
   }, []);
   useEffect(() => {
     if (!open) return undefined;
-    const off = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const off = (e) => { if (!(e.target instanceof Node) || !ref.current?.contains(e.target)) setOpen(false); };
     window.addEventListener('pointerdown', off);
     return () => window.removeEventListener('pointerdown', off);
   }, [open]);
@@ -438,7 +439,7 @@ export function MapPage() {
   const worldPick = useRef(null);
 
   useEffect(() => {
-    document.title = 'Map DUT 3D – Bản đồ Bách khoa Đà Nẵng · Campus Streak';
+    document.title = 'Map DUT 3D – Bản đồ Bách khoa Đà Nẵng · DUT Campus Streak';
     let disposed = false, onGoto = null;
     const labelEls = [];
     (async () => {

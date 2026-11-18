@@ -418,7 +418,7 @@ export function WelcomePage() {
   async function finish(e) {
     e?.preventDefault();
     if (!(await save({ quiet: true }))) return;
-    toast(fresh ? 'Xong rồi! Chào mừng bạn đến với Campus Streak 🎉' : 'Đã cập nhật hồ sơ. Cảm ơn bạn!', 'success', 4000);
+    toast(fresh ? 'Xong rồi! Chào mừng bạn đến với DUT Campus Streak 🎉' : 'Đã cập nhật hồ sơ. Cảm ơn bạn!', 'success', 4000);
     let next = '/';
     try { next = sessionStorage.getItem(AFTER_WELCOME) || '/'; sessionStorage.removeItem(AFTER_WELCOME); } catch { /* storage off */ }
     navigate(next === '/welcome' ? '/' : next, { replace: true });

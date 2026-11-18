@@ -631,12 +631,15 @@ export function createCampus(container, data, { dark = false, mobile = false, gf
     settleUntil = performance.now() + 4000;
     slowWindows = 0;
   }
-  // fps is measured only over frames drawn back to back (the map draws on demand, idle is not "slow")
-  let lastDraw = 0, lastFrame = 0, winN = 0, winMs = 0, slowWindows = 0, settleUntil = performance.now() + 5000, idleSent = false;
+  // fps is measured only over frames drawn back to back (the map draws on demand, idle is not "slow"): a gap
+  // counts when the frame before it was drawn too, however long it took (a very weak machine can take 300 ms+)
+  let lastDraw = 0, lastFrame = 0, winN = 0, winMs = 0, slowWindows = 0, settleUntil = performance.now() + 5000, idleSent = false, drewLast = false;
   function meter(now) {
     const gap = now - lastDraw;
     lastDraw = now;
-    if (gap > 250) return;
+    const counted = drewLast && gap < 3000;
+    drewLast = true;
+    if (!counted) return;
     winN++; winMs += gap;
     if (winMs < 1000) return;
     const fps = Math.round((winN * 1000) / winMs);
@@ -663,7 +666,7 @@ export function createCampus(container, data, { dark = false, mobile = false, gf
       if (now - lastFrame < step - 1.5) return;
       lastFrame = Math.max(lastFrame + step, now - step);
     }
-    if (!idleSent && now - lastDraw > 1500) { idleSent = true; winN = 0; winMs = 0; onFps?.(null); }
+    if (!idleSent && now - lastDraw > 1500 && !drewLast) { idleSent = true; winN = 0; winMs = 0; onFps?.(null); }
     const dt = (now - last) / 1000;
     last = now;
     // other students first: riding pillion, you sit on where their bike is drawn this frame
@@ -684,7 +687,7 @@ export function createCampus(container, data, { dark = false, mobile = false, gf
     }
     for (const f of frameHooks) if (f(Math.min(dt, 0.1))) needs = true;
     if (!walker.state.on && controls.update()) needs = true;
-    if (!needs) return;
+    if (!needs) { drewLast = false; return; }
     needs = false;
     renderer.render(scene, camera);
     meter(now);

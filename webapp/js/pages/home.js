@@ -179,7 +179,7 @@ function PushPrompt() {
     <div class="grow">
       <b>Bật thông báo nhắc deadline?</b>
       <div class="small">${status === 'ios-install'
-        ? 'Trên iPhone: bấm nút Chia sẻ → "Thêm vào MH chính", mở Campus Streak từ màn hình chính rồi bật ở đây.'
+        ? 'Trên iPhone: bấm nút Chia sẻ → "Thêm vào MH chính", mở DUT Campus Streak từ màn hình chính rồi bật ở đây.'
         : 'Nhắc lúc 7h, 13h, 19h và trước hạn 24 giờ, 6 giờ, 1 giờ, 15 phút — kể cả khi đã đóng trang.'}</div>
       <div class="row gap push-actions">
         ${status !== 'ios-install' && html`<button class="btn btn-light btn-sm" disabled=${busy} onClick=${enable}>${busy ? 'Đang bật…' : 'Bật thông báo'}</button>`}

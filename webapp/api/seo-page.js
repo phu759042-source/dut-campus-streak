@@ -8,7 +8,7 @@ const PAGES = {
   map: {
     path: '/map',
     // "map dut" / "dut map" are the most searched words for this page (Search Console, Nov 2026): say them first
-    title: 'Map DUT 3D – Bản đồ Trường Đại học Bách khoa Đà Nẵng | Campus Streak',
+    title: 'Map DUT 3D – Bản đồ Trường Đại học Bách khoa Đà Nẵng | DUT Campus Streak',
     ogTitle: 'Map DUT 3D – Bản đồ khuôn viên Trường Đại học Bách khoa Đà Nẵng',
     description: 'Map DUT 3D: xem toàn bộ khuôn viên Bách khoa Đà Nẵng (54 Nguyễn Lương Bằng), tìm phòng F305 ở khu nào, đi dạo nhập vai, vào tận phòng học Khu H, Khu B. Miễn phí, không cần đăng nhập.',
     mapPage: true,

@@ -90,7 +90,7 @@ function Shell({ path, children }) {
   const side = admin ? [...NAV, ...SIDE_EXTRA, { href: '/admin', icon: 'chart', label: 'Quản trị' }] : [...NAV, ...SIDE_EXTRA];
   return html`<div class="shell">
     <aside class="sidebar">
-      <a class="side-brand" href="/" onClick=${go('/')}><img class="brand-logo" src="/icon-96.png" alt="" width="36" height="36" /><span>Campus<b>Streak</b></span></a>
+      <a class="side-brand" href="/" onClick=${go('/')}><img class="brand-logo" src="/icon-96.png" alt="" width="36" height="36" /><span>DUT Campus <b>Streak</b></span></a>
       <nav>
         ${side.map((n) => html`<a href=${n.href} class=${'side-link' + (active(n.href) ? ' active' : '')} onClick=${go(n.href)}>
           <${Icon} name=${n.icon} size=${20} /><span>${n.label}</span>${dot(n.href)}</a>`)}

@@ -1,7 +1,7 @@
 {
   "id": "/",
   "name": "DUT Campus Streak",
-  "short_name": "Campus Streak",
+  "short_name": "DUT Campus Streak",
   "description": "Check-in lớp học, giữ lửa streak và đua bảng xếp hạng.",
   "start_url": "/",
   "scope": "/",

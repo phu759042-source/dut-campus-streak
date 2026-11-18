@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
     html = html
       .replace(/^\s*<meta (property="og:[^"]*"|name="twitter:[^"]*"|name="description")[^>]*>\s*$/gm, '')
       .replace(/^\s*<link rel="canonical"[^>]*>\s*$/m, '')
-      .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)} · Campus Streak</title>`)
+      .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)} · DUT Campus Streak</title>`)
       .replace('</title>', `</title>
   <meta name="description" content="${esc(description)}" />
   <link rel="canonical" href="${esc(url)}" />

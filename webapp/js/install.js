@@ -25,7 +25,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 window.addEventListener('appinstalled', () => {
   store.set({ prompt: null, installed: true });
-  toast('Đã cài Campus Streak 🎉 Mở từ màn hình chính hoặc danh sách ứng dụng nhé!', 'success', 6000);
+  toast('Đã cài DUT Campus Streak 🎉 Mở từ màn hình chính hoặc danh sách ứng dụng nhé!', 'success', 6000);
 });
 matchMedia('(display-mode: standalone)').addEventListener?.('change', (e) => store.set({ installed: e.matches }));
 
@@ -47,7 +47,7 @@ function Guide() {
       html`Mở trang này bằng <b>Safari</b> (hoặc Chrome trên iOS 16.4+).`,
       html`Bấm nút <b>Chia sẻ</b> <span class="kbd">⬆︎</span> ở thanh dưới (iPad: góc trên bên phải).`,
       html`Kéo xuống, chọn <b>“Thêm vào MH chính”</b> <span class="kbd">＋</span>, rồi bấm <b>Thêm</b>.`,
-      html`Mở <b>Campus Streak</b> từ màn hình chính. Bật thông báo nhắc deadline ở đó.`,
+      html`Mở <b>DUT Campus Streak</b> từ màn hình chính. Bật thông báo nhắc deadline ở đó.`,
     ];
   } else if (isAndroid) {
     title = 'Cài trên Android';
@@ -67,12 +67,12 @@ function Guide() {
     ];
   } else if (isMacSafari) {
     title = 'Cài trên Mac (Safari)';
-    steps = [html`Trên thanh menu chọn <b>Tệp</b> → <b>“Thêm vào Dock”</b>.`, html`Bấm <b>Thêm</b>. Campus Streak sẽ nằm trong Dock như một app.`];
+    steps = [html`Trên thanh menu chọn <b>Tệp</b> → <b>“Thêm vào Dock”</b>.`, html`Bấm <b>Thêm</b>. DUT Campus Streak sẽ nằm trong Dock như một app.`];
   } else if (isOpera) {
     title = 'Opera trên máy tính chưa hỗ trợ cài app';
     steps = [
       html`Mở <b>www.campusstreak.com</b> bằng <b>Edge</b> (có sẵn trên Windows) hoặc <b>Chrome</b>.`,
-      html`Bấm nút <b>Cài app</b> ở góc trên → <b>Cài đặt</b>. Campus Streak sẽ có trong menu Start và taskbar như một app riêng; bạn vẫn dùng Opera bình thường.`,
+      html`Bấm nút <b>Cài app</b> ở góc trên → <b>Cài đặt</b>. DUT Campus Streak sẽ có trong menu Start và taskbar như một app riêng; bạn vẫn dùng Opera bình thường.`,
       html`Hoặc trong Opera: bấm <span class="kbd">Ctrl</span> + <span class="kbd">D</span> để lưu trang, hay thêm vào <b>Speed Dial</b> để mở nhanh.`,
     ];
   } else if (isFirefox) {
@@ -83,7 +83,7 @@ function Guide() {
     steps = [
       html`Bấm biểu tượng <b>Cài đặt</b> <span class="kbd">⊕</span> ở cuối thanh địa chỉ.`,
       html`Hoặc mở menu <span class="kbd">⋮</span> → <b>“Truyền, lưu và chia sẻ”</b> → <b>“Cài đặt trang dưới dạng ứng dụng”</b> (Edge: <b>Ứng dụng → Cài đặt trang web này</b>).`,
-      html`Nếu đã cài rồi, mở Campus Streak từ menu Start / Launchpad.`,
+      html`Nếu đã cài rồi, mở DUT Campus Streak từ menu Start / Launchpad.`,
     ];
   }
   return html`<div class="stack">
@@ -103,7 +103,7 @@ export async function installApp() {
     if (choice?.outcome === 'accepted') return true;
     return false;
   }
-  await openSheet(Guide, { title: 'Cài Campus Streak' });
+  await openSheet(Guide, { title: 'Cài DUT Campus Streak' });
   return false;
 }
 
@@ -115,7 +115,7 @@ export function InstallButton({ variant = 'pill' }) {
   if (variant === 'setting') {
     return html`<button class="setting" onClick=${installApp}>
       <span class="list-icon blue"><${Icon} name="download" /></span>
-      <span class="grow"><b>Cài Campus Streak như ứng dụng</b><br /><span class="muted small">${s.prompt ? 'Cài ngay, mở toàn màn hình như app' : 'Xem cách thêm vào màn hình chính'}</span></span>
+      <span class="grow"><b>Cài DUT Campus Streak như ứng dụng</b><br /><span class="muted small">${s.prompt ? 'Cài ngay, mở toàn màn hình như app' : 'Xem cách thêm vào màn hình chính'}</span></span>
       <${Icon} name="chevron" size=${18} /></button>`;
   }
   if (variant === 'side') {

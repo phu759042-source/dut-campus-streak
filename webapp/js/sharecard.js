@@ -101,7 +101,7 @@ export async function drawShareCard(item, owner) {
   try { ctx.drawImage(await loadImage('/icon-96.png'), 70, 52, 58, 58); } catch { /* optional */ }
   ctx.fillStyle = 'rgba(255,255,255,0.95)';
   ctx.font = `600 30px ${FONT}`;
-  ctx.fillText('Campus Streak · Chia sẻ tài liệu', 146, 92);
+  ctx.fillText('DUT Campus Streak · Chia sẻ tài liệu', 146, 92);
 
   // icon
   const folder = item.item_type === 'folder';

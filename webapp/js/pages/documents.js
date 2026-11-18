@@ -111,7 +111,7 @@ function ShareSheet({ item }) {
     catch { prompt('Sao chép link này:', url); }
   }
   async function shareNative(url) {
-    try { await navigator.share({ title: item.name, text: `Tài liệu "${item.name}" trên Campus Streak`, url }); } catch { /* cancelled */ }
+    try { await navigator.share({ title: item.name, text: `Tài liệu "${item.name}" trên DUT Campus Streak`, url }); } catch { /* cancelled */ }
   }
   const folder = item.item_type === 'folder';
   return html`<div class="stack">

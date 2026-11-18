@@ -135,12 +135,12 @@ export function SharedLinkPage({ token }) {
   };
 
   const brand = html`<a class="share-brand" href="/" onClick=${(e) => { e.preventDefault(); navigate(loggedIn ? '/' : '/login'); }}>
-    <img src="/icon-96.png" alt="" width="34" height="34" /><span>Campus<b>Streak</b></span></a>`;
+    <img src="/icon-96.png" alt="" width="34" height="34" /><span>DUT Campus <b>Streak</b></span></a>`;
   const top = html`<div class="share-top">${brand}<${InstallButton} /></div>`;
 
   if (error) return html`<div class="share-page"><div class="page narrow">${top}
     <${Empty} icon="ban" title="Không mở được link" text=${error}>
-      <button class="btn btn-primary" onClick=${() => navigate(loggedIn ? '/' : '/login')}>Về Campus Streak</button><//></div></div>`;
+      <button class="btn btn-primary" onClick=${() => navigate(loggedIn ? '/' : '/login')}>Về DUT Campus Streak</button><//></div></div>`;
 
   return html`<div class="share-page"><div class="page">
     ${top}
