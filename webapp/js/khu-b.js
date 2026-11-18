@@ -188,18 +188,28 @@ export function buildKhuB(b, out) {
 
   // ---------- entrance tower ----------
   {
-    const stone = (w, h, a, y) => { const m = new THREE.MeshLambertMaterial({ map: stoneTex() }); m.map.repeat.set(w / 2.5, h / 2.3); m.map.needsUpdate = true; return plane(0, w, h, m, a, -TF - 0.02, y); };
-    // ground floor: stone either side of the door, a round porthole in each, the door opening in the middle
+    // ground floor: stone walls either side of the door, each with a round porthole cut right through (you see the
+    // hall behind), framed by a white concrete ring
+    const outw = [-F.u[1], F.u[0]], local = dot(outw, F.w) > 0 ? 1 : -1; // where the extrusion's +z points (+1 = inwards)
     for (const sd of [-1, 1]) {
-      const a0 = TC + sd * 1.6, a1 = TC + sd * TW, mid = (a0 + a1) / 2, w = Math.abs(a1 - a0);
-      stone(w, FH + PL, mid, (FH + PL) / 2);
-      lv[0].B.color(0x6d645a); boxF(lv[0].B, F, Math.min(a0, a1), Math.max(a0, a1), -TF, -TF + 0.3, 0, FH + PL);
+      const a0 = TC + sd * 1.6, a1 = TC + sd * TW, lo = Math.min(a0, a1), hi = Math.max(a0, a1), mid = (lo + hi) / 2, H = FH + PL, R = 0.68;
+      const sh = new THREE.Shape([new THREE.Vector2(lo, 0), new THREE.Vector2(hi, 0), new THREE.Vector2(hi, H), new THREE.Vector2(lo, H)]);
+      const hole = new THREE.Path(); hole.absarc(mid, 2.0, R, 0, Math.PI * 2, true); sh.holes.push(hole);
+      const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.3, bevelEnabled: false, curveSegments: 28 });
+      const tex = stoneTex(); tex.repeat.set(1 / 2.5, 1 / 2.3); tex.needsUpdate = true;
+      const wallMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
+      // shape x = u along the front, y = height, z = 0.3 m through the wall
+      const org = F.at(0, local > 0 ? -TF : -TF + 0.3);
+      wallMesh.position.set(org[0], 0, org[1]); wallMesh.rotation.y = -F.ang; wallMesh.castShadow = wallMesh.receiveShadow = true;
+      lv[0].group.add(wallMesh);
       wall(F.at(a0, -TF + 0.15), F.at(a1, -TF + 0.15), 0, Y(1));
-      const p = F.at(mid, -TF - 0.04);
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.8, 24), new THREE.MeshLambertMaterial({ color: 0xf2f1ec }));
-      ring.position.set(p[0], 2.0, p[1]); ring.rotation.y = Math.atan2(-F.w[0], -F.w[1]); lv[0].group.add(ring);
-      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.62, 24), new THREE.MeshLambertMaterial({ color: 0x2f3a43 }));
-      hole.position.set(p[0], 2.0, p[1] ); hole.rotation.y = ring.rotation.y; lv[0].group.add(hole);
+      // the white ring round the hole, a short tube standing a little proud of the stone
+      const c = F.at(mid, -TF + 0.12);
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.12, R + 0.12, 0.5, 32, 1, true), new THREE.MeshLambertMaterial({ color: 0xf2f1ec, side: THREE.DoubleSide }));
+      tube.position.set(c[0], 2.0, c[1]); tube.rotation.set(Math.PI / 2, 0, 0); tube.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.atan2(F.w[0], F.w[1]));
+      lv[0].group.add(tube);
+      const rim = new THREE.Mesh(new THREE.RingGeometry(R, R + 0.14, 32), new THREE.MeshLambertMaterial({ color: 0xf6f5f1, side: THREE.DoubleSide }));
+      const rp = F.at(mid, -TF - 0.14); rim.position.set(rp[0], 2.0, rp[1]); rim.rotation.y = Math.atan2(-F.w[0], -F.w[1]); lv[0].group.add(rim);
       // tower side walls (from the front of the tower back to the corridor line), every floor
       for (let k = 0; k < NF; k++) seg(k, F.at(TC + sd * TW, -TF), F.at(TC + sd * TW, 0), k ? Y(k) : 0, k ? FH : FH + PL, k ? C_WALL : 0x6d645a, 0.3);
     }
@@ -221,9 +231,8 @@ export function buildKhuB(b, out) {
       wall(F.at(TC - TW, -TF), F.at(TC + TW, -TF), y0, y0 + FH);
     }
     { const m = new THREE.MeshLambertMaterial({ map: letterTex('B'), transparent: true }); plane(2, 1.5, 1.5, m, TC, -TF - 0.62, Y(2) - 0.05); }
-    // the canopy (mái sảnh), as in the close-up photo: a thick concrete slab with a sloping lower front edge, held on
-    // the right by one massive leaning blade pier that rises past the slab, on the left by a square column; two steps
-    // with steel handrails at both ends under it
+    // the canopy (mái sảnh), as in the close-up photo: a thick concrete slab with a sloping lower front edge on two
+    // identical leaning blade piers that rise past the slab; two steps with steel handrails between them
     {
       const B = lv[0].B, y0 = PL + 2.6, T = 0.75, a0 = TC - 3.6, a1 = TC + 3.4, b0 = -TF - 5.2, b1 = -TF;
       const V = (a, bb, y) => { const p = F.at(a, bb); return [p[0], y, p[1]]; };
@@ -239,31 +248,27 @@ export function buildKhuB(b, out) {
       prism([[a0, b0 + 0.9], [a1, b0 + 0.9], [a1, b0], [a0, b0]], [[a0, b0 + 0.9], [a1, b0 + 0.9], [a1, b0], [a0, b0]], y0 + T * 0.45, y0 + T, 0xd2d1cb);
       B.color(0xc4c3bc); B.quad(V(a0, b0 + 0.9, y0), V(a1, b0 + 0.9, y0), V(a1, b0, y0 + T * 0.45), V(a0, b0, y0 + T * 0.45));
       B.color(0xbebdb6); B.cap(F.rect(a0, a1, b0 + 0.9, b1), y0 - 0.002);
-      // right: the leaning blade pier, wide at the foot, narrower and further out at the top, cut on a slant above the slab
-      {
-        const u0 = a1, u1 = a1 + 0.65;
-        const foot = [[u0, b0 + 2.4], [u1, b0 + 2.4], [u1, b0 - 0.2], [u0, b0 - 0.2]];
-        const head = [[u0, b0 + 1.5], [u1, b0 + 1.5], [u1, b0 + 0.1], [u0, b0 + 0.1]];
+      // two identical leaning blade piers, set in from the ends of the slab: wide at the foot, narrower at the top,
+      // rising past the slab with the top cut on a slant
+      for (const [u0, u1] of [[a0 + 0.35, a0 + 1.0], [a1 - 1.0, a1 - 0.35]]) {
+        const foot = [[u0, b0 + 2.6], [u1, b0 + 2.6], [u1, b0 + 0.25], [u0, b0 + 0.25]];
+        const head = [[u0, b0 + 1.8], [u1, b0 + 1.8], [u1, b0 + 0.45], [u0, b0 + 0.45]];
         const yTop = y0 + T + 0.9;
         prism(foot, head, 0, yTop, 0xc9c8c1);
-        // slanted cap: the back of the top is lower than the front
-        B.color(0xbab9b2); B.quad(V(u0, b0 + 1.5, yTop), V(u1, b0 + 1.5, yTop), V(u1, b0 + 0.1, yTop + 0.45), V(u0, b0 + 0.1, yTop + 0.45));
-        prism([[u0, b0 + 1.5], [u1, b0 + 1.5], [u1, b0 + 0.1], [u0, b0 + 0.1]], [[u0, b0 + 1.5], [u1, b0 + 1.5], [u1, b0 + 0.1], [u0, b0 + 0.1]], yTop, yTop, 0xbab9b2);
-        B.color(0xc9c8c1); B.quad(V(u0, b0 + 0.1, yTop), V(u0, b0 + 0.1, yTop + 0.45), V(u0, b0 + 1.5, yTop), V(u0, b0 + 1.5, yTop));
-        B.quad(V(u1, b0 + 0.1, yTop), V(u1, b0 + 0.1, yTop + 0.45), V(u1, b0 + 1.5, yTop), V(u1, b0 + 1.5, yTop));
-        B.quad(V(u0, b0 + 0.1, yTop), V(u1, b0 + 0.1, yTop), V(u1, b0 + 0.1, yTop + 0.45), V(u0, b0 + 0.1, yTop + 0.45));
-        solid(u0, u1, b0 - 0.2, b0 + 2.4);
+        B.color(0xbab9b2); B.quad(V(u0, b0 + 1.8, yTop), V(u1, b0 + 1.8, yTop), V(u1, b0 + 0.45, yTop + 0.45), V(u0, b0 + 0.45, yTop + 0.45));
+        B.color(0xc9c8c1);
+        B.tri(V(u0, b0 + 0.45, yTop), V(u0, b0 + 0.45, yTop + 0.45), V(u0, b0 + 1.8, yTop));
+        B.tri(V(u1, b0 + 0.45, yTop), V(u1, b0 + 0.45, yTop + 0.45), V(u1, b0 + 1.8, yTop));
+        B.quad(V(u0, b0 + 0.45, yTop), V(u1, b0 + 0.45, yTop), V(u1, b0 + 0.45, yTop + 0.45), V(u0, b0 + 0.45, yTop + 0.45));
+        solid(u0, u1, b0 + 0.25, b0 + 2.6);
       }
-      // left: a plain square column near the front
-      B.color(0x8f8b84); boxF(B, F, a0 + 0.3, a0 + 0.9, b0 + 1.6, b0 + 2.2, 0, y0);
-      solid(a0 + 0.3, a0 + 0.9, b0 + 1.6, b0 + 2.2);
       // two steps up to the door under the canopy, steel handrails at both ends
       for (const [i, w0] of [[0, -TF - 1.6], [1, -TF - 0.8]]) {
-        B.color(i ? 0xc4beb2 : 0xb6b0a4); boxF(B, F, a0 + 1.2, a1 - 0.3, w0, -TF, 0, (PL * (i + 1)) / 2);
-        out.surfaces.push({ pts: F.rect(a0 + 1.2, a1 - 0.3, w0, -TF + 0.05), y: (PL * (i + 1)) / 2 });
+        B.color(i ? 0xc4beb2 : 0xb6b0a4); boxF(B, F, a0 + 1.1, a1 - 1.1, w0, -TF, 0, (PL * (i + 1)) / 2);
+        out.surfaces.push({ pts: F.rect(a0 + 1.1, a1 - 1.1, w0, -TF + 0.05), y: (PL * (i + 1)) / 2 });
       }
       B.color(0xd7dbe0);
-      for (const ua of [a0 + 1.25, a1 - 0.35]) {
+      for (const ua of [a0 + 1.2, a1 - 1.2]) {
         for (const bb of [-TF - 2.6, -TF - 1.6, -TF - 0.3]) boxF(B, F, ua - 0.03, ua + 0.03, bb - 0.03, bb + 0.03, 0, 1.0);
         boxF(B, F, ua - 0.03, ua + 0.03, -TF - 2.6, -TF - 0.3, 0.95, 0.06);
         boxF(B, F, ua - 0.025, ua + 0.025, -TF - 2.6, -TF - 0.3, 0.5, 0.04);
