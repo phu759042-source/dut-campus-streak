@@ -4,6 +4,7 @@ import { supabase, loadMyLeaderboardRow, errMsg, ASSET_BASE, APP_VERSION, CHANGE
 import { Icon, Skeleton, ErrorBox } from '../ui.js';
 import { PageHeader } from './shared.js';
 import { CountUp } from './home.js';
+import { useIsAdmin } from './admin.js';
 
 const ACHIEVEMENTS = [
   { id: 'first_check_in', title: 'Bước đầu tiên', desc: 'Hoàn thành check-in đầu tiên.', target: 1, streak: false, emoji: '👣' },
@@ -62,6 +63,7 @@ export function AchievementsPage() {
 }
 
 export function AboutPage() {
+  const admin = useIsAdmin(); // the update history is only for the site owner (accounts in app_admins)
   const sections = [
     ['Tác giả / Nhóm phát triển', 'Nguyễn Tấn Phú', 'Sinh viên phát triển sản phẩm DUT Campus Streak.'],
     ['Liên hệ', 'phu759042@gmail.com', 'Email liên hệ về sản phẩm, góp ý và báo lỗi.'],
@@ -97,12 +99,12 @@ export function AboutPage() {
       <div class="muted">Ứng dụng miễn phí cho sinh viên Trường Đại học Bách khoa – Đại học Đà Nẵng, gom việc học và đời sống sinh viên vào một chỗ:</div>
       <ul class="about-feats">${FEATURES.map(([e, t, x]) => html`<li><span class="about-feat-ic">${e}</span><span><b>${t}</b><span class="muted"> — ${x}</span></span></li>`)}</ul>
     </section>
-    <section class="card slide-up" style="--d:240ms">
-      <h3 class="card-title">Lịch sử cập nhật</h3>
+    ${admin && html`<section class="card slide-up" style="--d:240ms">
+      <h3 class="card-title">Lịch sử cập nhật <span class="chip chip-gray">Chỉ quản trị viên thấy</span></h3>
       ${CHANGELOG.map((r, i) => html`<details class="about-ver" open=${i === 0}>
         <summary><b>${r.v}</b><span class="muted small">${r.d}</span>${i === 0 && html`<span class="chip chip-blue">Hiện tại</span>`}</summary>
         <ul>${r.items.map((t) => html`<li>${t}</li>`)}</ul>
       </details>`)}
-    </section>
+    </section>`}
   </div>`;
 }

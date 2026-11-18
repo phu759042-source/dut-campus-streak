@@ -4,6 +4,7 @@
 //  - fixes and small changes: next patch version (1.9.2 -> 1.9.3)
 // 1.1.2 was the version of the mobile app when the web app was released (10/11/2026); it continues from there.
 export const CHANGELOG = [
+  { v: '1.9.4', d: '18/11/2026', items: ['Lịch sử cập nhật chỉ hiện với quản trị viên'] },
   { v: '1.9.3', d: '18/11/2026', items: ['Trang Liên hệ & Giới thiệu: số phiên bản, lịch sử cập nhật và giới thiệu đầy đủ các tính năng'] },
   { v: '1.9.2', d: '18/11/2026', items: ['Khu B: mái sảnh trên hai chân trụ giống nhau, cửa sổ tròn khoét xuyên qua tường đá'] },
   { v: '1.9.1', d: '18/11/2026', items: ['Khu B: mái sảnh theo ảnh thật; logo trường đầy đủ trên Khu B và khối lập phương Khu F'] },
