@@ -440,7 +440,18 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     // volley / header: any touch of the ball, on the grass (rolling or still) or in the air, up to head height
     if (kind === 'v') return d < 1.45 && y > -0.4 && y < 1.6;
     if (kind === 'h') return d < 1.2 && y > -0.4 && y < 2.35;
-    return d < 1.9 && y > 0.25 && y < 2.8;
+    // bicycle kick: measured from the grass, not from your feet. Your feet are already 0.8-1.3 m up during the flip,
+    // so "above your feet" missed every ball at waist height (and most crosses)
+    const g = b.y - (w.ground || 0);
+    return d < 2.0 && g > 0.5 && g < 3.2;
+  }
+  /** Bicycle kick on a free ball lying or rolling by your feet (dribbling by touches leaves it free most of the time):
+   * flicked up and struck like the one you were holding. */
+  function looseAtFeet() {
+    const b = sim.b, w = walker.state;
+    if (!have || b.h != null || keeperHolds(sim) || performance.now() - kickedAt < 380) return false;
+    const [mu, mv] = mine();
+    return Math.hypot(b.u - mu, b.v - mv) < 1.8 && b.y - (w.ground || 0) <= 0.5 && Math.hypot(b.vu, b.vv) < 9;
   }
   function fireAir(kind, aim) {
     const b = sim.b, dir = onTarget(aimDir(aim), b.u, b.v);
@@ -667,10 +678,18 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     // bicycle kick: hit the ball when it comes in reach during the flip (or flick up the one you were dribbling)
     if (bike && !bike.done) {
       const bt = performance.now() - bike.t0;
-      if (bt > 650 || !canPlay()) bike = null;
-      else if (bt > 160) {
+      if (bt > 700 || !canPlay()) bike = null;
+      else if (bt > 120) {
         if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 29, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
         else if (inReach('b')) { bike.done = true; strike('b', onTarget(bike.dir, sim.b.u, sim.b.v), 31, 2); }
+        else if (bt > 220 && looseAtFeet()) { // flicked up off the grass, then struck (the server allows 1.5 m above the ball)
+          bike.done = true;
+          const b = sim.b, dir = onTarget(bike.dir, b.u, b.v), vel = [dir[0] * 29, dir[1] * 29, 2.2];
+          send({ t: 'fa', k: 'b', p: [b.u, b.v, 1.3], d: vel });
+          predict(b.u, b.v, 1.3, vel);
+          flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 };
+          sfx('kick', 1); changed(true);
+        }
       }
     } else if (bike && performance.now() - bike.t0 > 900) bike = null;
     // volley / header waiting in the air
