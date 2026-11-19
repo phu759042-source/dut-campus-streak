@@ -364,7 +364,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   // aim 'cam' = where the camera looks (mouse players), 'head' = where you face (phone buttons).
   const hold = { shoot: null, pass: null };
   let air = null;     // volley (v) / header (h) waiting in the air for the ball: { kind, aim }
-  let bike = null;    // bicycle kick in progress: { dir, t0, done }
+  let bike = null;    // bicycle kick in progress: { dir, t (ms of game time since the take-off), done }
   let dribbleWait = 0;
   const HIGH_MS = 250; // holding pass longer than this = lofted pass
   const AIR_MS = 2000; // a volley / header pressed in the air waits this long for the ball
@@ -463,9 +463,9 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   // Tap (a quick press of either button): a light touch along the grass, already rolling. Standing it goes about
   // 2.2 m; running it gets only 1.3 m/s ahead of you and slows on the grass: it gets 1-1.5 m in front and you run
   // onto it again after about 2 s jogging, 1.5 s running, 0.5 s sprinting (dribbling by touches, not glued to your feet).
-  // PACE: every pass, shot and strike 20 % faster than the first tuning (the owner found the ball too slow,
-  // 19/11/2026); light touches for dribbling keep their speed. The server's caps (MAX_KICK, strike) match it.
-  const PACE = 1.2;
+  // PACE: every pass, shot and strike 38 % faster than the first tuning (the owner found the ball too slow,
+  // 19/11/2026: +20 %, then +15 % more); light touches for dribbling keep their speed. The server's caps (MAX_KICK, strike) match it.
+  const PACE = 1.38;
   const lowPlan = (aim) => { const sp = Math.max(1.9, walker.state.speed + 1.3); return { dir: aimDir(aim), sp, lift: 0, back: -sp / R_REAL, k: 'p' }; };
   // Lofted pass, struck under the ball with backspin: it climbs, hangs and drops softly. Weakest about 12 m (2 m
   // high), full power about 49 m (7.4 m high, 2.8 s in the air), i.e. from your own goal line to the halfway line.
@@ -515,7 +515,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
     if (aim === 'head') dir = [-dir[0], -dir[1]];
     const [wx, wz] = dirWorld(-dir[0], -dir[1]);
     if (!walker.bicycle(Math.atan2(wx, wz))) return false;
-    bike = { dir, t0: performance.now(), done: false };
+    bike = { dir, t: 0, done: false };
     hold.shoot = hold.pass = null; air = null;
     sfx('dash');
     changed(true);
@@ -679,8 +679,11 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       else if (holding() && canPlay() && !w.fall) release(k);
     }
     // bicycle kick: hit the ball when it comes in reach during the flip (or flick up the one you were dribbling)
+    // its timing runs on game time, at most 50 ms a frame: a hitch right at the take-off (the first sound, a slow
+    // phone) used to let the whole window pass between two frames, and the kick was called off without a touch
+    if (bike) bike.t += Math.min(dt, 0.05) * 1000;
     if (bike && !bike.done) {
-      const bt = performance.now() - bike.t0;
+      const bt = bike.t;
       if (bt > 700 || !canPlay()) bike = null;
       else if (bt > 120) {
         if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 29 * PACE, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
@@ -694,7 +697,7 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
           sfx('kick', 1); changed(true);
         }
       }
-    } else if (bike && performance.now() - bike.t0 > 900) bike = null;
+    } else if (bike && bike.t > 900) bike = null;
     // volley / header waiting in the air
     if (air) {
       if (performance.now() > air.until || !canPlay() || w.fall > 0) { air = null; changed(true); }
@@ -806,6 +809,8 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
         armed: air ? air.kind : null, fallen: walker.state.fall > 0,
       };
     },
+    /** debug (localhost tests): the ball, where you are, a bicycle kick in progress */
+    _debug: () => ({ ball: { ...sim.b }, ballWorld: toWorld(sim.b.u, sim.b.v), me: mine(), bike: bike && { ...bike }, hold: { s: !!hold.shoot, p: !!hold.pass }, have, myTeam, st: ms.st, air: walker.airborne(), y: walker.state.y, ground: walker.state.ground, flash: flash?.text }),
     join(team) { wantTeam = team; send({ t: 'fjoin', team }); notice = null; changed(true); },
     leave() { wantTeam = null; send({ t: 'fleave' }); changed(true); },
     watch() { notice = null; map.watchMatch(); changed(true); },
