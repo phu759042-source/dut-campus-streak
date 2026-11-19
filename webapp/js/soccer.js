@@ -455,21 +455,24 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
   }
   function fireAir(kind, aim) {
     const b = sim.b, dir = onTarget(aimDir(aim), b.u, b.v);
-    if (kind === 'v') strike('v', dir, 34, 1.2);
-    else strike('h', dir, 21, b.y > 1.7 ? -1.5 : 0.8); // a header from high up goes down into the grass
+    if (kind === 'v') strike('v', dir, 34 * PACE, 1.2);
+    else strike('h', dir, 21 * PACE, b.y > 1.7 ? -1.5 : 0.8); // a header from high up goes down into the grass
   }
   // What each kick does: { dir, sp (m/s along the grass), lift (m/s up), back (spin, rad/s: + backspin, - topspin), k }.
   // The preview draws the same thing (soccer-core.js has the physics: drag crisis, Magnus force, grip of the grass).
   // Tap (a quick press of either button): a light touch along the grass, already rolling. Standing it goes about
   // 2.2 m; running it gets only 1.3 m/s ahead of you and slows on the grass: it gets 1-1.5 m in front and you run
   // onto it again after about 2 s jogging, 1.5 s running, 0.5 s sprinting (dribbling by touches, not glued to your feet).
+  // PACE: every pass, shot and strike 20 % faster than the first tuning (the owner found the ball too slow,
+  // 19/11/2026); light touches for dribbling keep their speed. The server's caps (MAX_KICK, strike) match it.
+  const PACE = 1.2;
   const lowPlan = (aim) => { const sp = Math.max(1.9, walker.state.speed + 1.3); return { dir: aimDir(aim), sp, lift: 0, back: -sp / R_REAL, k: 'p' }; };
   // Lofted pass, struck under the ball with backspin: it climbs, hangs and drops softly. Weakest about 12 m (2 m
   // high), full power about 49 m (7.4 m high, 2.8 s in the air), i.e. from your own goal line to the halfway line.
-  const highPlan = (aim, p) => ({ dir: aimDir(aim), sp: 11.8 + p * 15.2, lift: 6.8 + p * 4.7, back: 22 + p * 8, k: 'l' });
+  const highPlan = (aim, p) => ({ dir: aimDir(aim), sp: (11.8 + p * 15.2) * PACE, lift: 6.8 + p * 4.7, back: 22 + p * 8, k: 'l' });
   // Shot (instep drive): soft = a firm ground pass (14 m/s), full = 38 m/s (137 km/h) with a little topspin that
   // makes it dip under the bar.
-  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: 14 + p * 24, lift: 0.6 + p * p * 5.4, back: -10 * p, k: 's' }; };
+  const shotPlan = (aim, p) => { const [bu, bv] = feet(); return { dir: onTarget(aimDir(aim), bu, bv), sp: (14 + p * 24) * PACE, lift: 0.6 + p * p * 5.4, back: -10 * p, k: 's' }; };
   function doKick(P) {
     if (!holding() && !grabNear()) return;
     kick(P.dir, P.sp, P.lift, P.k, BALL_R, P.back);
@@ -680,11 +683,11 @@ export function createSoccer({ map, send, serverNow, myId, onChange }) {
       const bt = performance.now() - bike.t0;
       if (bt > 700 || !canPlay()) bike = null;
       else if (bt > 120) {
-        if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 29, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
-        else if (inReach('b')) { bike.done = true; strike('b', onTarget(bike.dir, sim.b.u, sim.b.v), 31, 2); }
+        if (sim.b.h === me() && bt > 220) { bike.done = true; kick(onTarget(bike.dir, ...feet()), 29 * PACE, 2.2, 'b', 1.3); flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 }; }
+        else if (inReach('b')) { bike.done = true; strike('b', onTarget(bike.dir, sim.b.u, sim.b.v), 31 * PACE, 2); }
         else if (bt > 220 && looseAtFeet()) { // flicked up off the grass, then struck (the server allows 1.5 m above the ball)
           bike.done = true;
-          const b = sim.b, dir = onTarget(bike.dir, b.u, b.v), vel = [dir[0] * 29, dir[1] * 29, 2.2];
+          const b = sim.b, dir = onTarget(bike.dir, b.u, b.v), vel = [dir[0] * 29 * PACE, dir[1] * 29 * PACE, 2.2];
           send({ t: 'fa', k: 'b', p: [b.u, b.v, 1.3], d: vel });
           predict(b.u, b.v, 1.3, vel);
           flash = { text: 'Xe đạp chổng ngược!', until: performance.now() + 1300 };

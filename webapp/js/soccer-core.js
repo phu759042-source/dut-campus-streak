@@ -36,7 +36,7 @@ export const MATCH_MS = 5 * 60 * 1000;
 export const TEAM_NAMES = ['Xanh', 'Cam'];
 export const STEP = 1 / 60;                     // fixed physics step (s)
 export const STEP_MS = 1000 / 60;
-export const MAX_KICK = 38, MAX_LIFT = 16;      // fastest shot (m/s = 137 km/h; a real power shot is 30-38) and the most upward speed
+export const MAX_KICK = 46, MAX_LIFT = 16;      // fastest shot (m/s = 137 km/h; a real power shot is 30-38) and the most upward speed
 // Real ball (size 5: 0.43 kg, 22 cm): gravity 9.81 m/s², air drag K·v² (K = ρ·Cd·A / 2m ≈ 1.2·0.2·0.038 / 0.86
 // ≈ 0.0106 per metre, Cd ≈ 0.2 above the drag crisis: a 30 m/s shot loses about 9.5 m/s² to the air, a slow pass
 // almost nothing). The air slows a rolling ball the same way, and the grass adds a rolling resistance of about
@@ -61,7 +61,7 @@ const KM = 0.0052;                  // Magnus: ½ρ·A·r·0.9 / m
 export const R_REAL = 0.11;                // the real radius (m) for the spin and grip
 const SPIN_FADE = 0.06;             // spin lost per second in the air
 const BOUNCE_UP = 0.6, BOUNCE_MIN = 1.2, GRASS_MU = 0.55;
-const ROLL_A = 0.8;                 // rolling resistance of the grass (m/s²), on top of the air drag
+const ROLL_A = 0.6;                 // rolling resistance of the grass (m/s²), on top of the air drag (0.8 felt slow)
 const SLIDE_MU = 0.4;               // a ball skidding along the grass
 /** The grass pushes the spot touching it with impulse J (per kg) against the slip direction (nu, nv). */
 function grip(b, nu, nv, J) {

@@ -4,6 +4,7 @@
 //  - fixes and small changes: next patch version (1.9.2 -> 1.9.3)
 // 1.1.2 was the version of the mobile app when the web app was released (10/11/2026); it continues from there.
 export const CHANGELOG = [
+  { v: '1.10.8', d: '19/11/2026', items: ['Đá bóng: bóng đi nhanh hơn 20% (sút, chuyền cao, vô lê, đánh đầu, xe đạp chổng ngược) và lăn trên cỏ xa hơn'] },
   { v: '1.10.7', d: '19/11/2026', items: ['Đá bóng: sửa xe đạp chổng ngược không ra chân khi bóng nằm hoặc lăn sát chân (lúc dẫn bóng bằng chạm) và khi bóng bay ngang hông; thời điểm chạm bóng dễ hơn'] },
   { v: '1.10.6', d: '19/11/2026', items: ['Máy tính: mục Hồ sơ chuyển xuống cuối thanh bên trái, ngay trên nút cài ứng dụng'] },
   { v: '1.10.5', d: '19/11/2026', items: ['Bản đồ 3D khi xoay ngang: các nút bên phải và bản đồ nhỏ lên sát mép trên; trong server thì nằm thấp hơn, không chạm thanh công cụ server'] },
