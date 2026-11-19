@@ -58,6 +58,13 @@ git push -q origin $C:refs/heads/main && git update-ref refs/heads/web $C
 
 Sau đó chờ Vercel (khoảng 1 phút) và kiểm tra file thật, ví dụ `curl -s https://www.campusstreak.com/js/changelog.js | grep <phiên bản>`.
 
+### Server bản đồ (Cloudflare)
+
+`webapp/world-server` đóng gói cả `webapp/js/soccer-core.js` và `lost-core.js` khi deploy, và là bên quyết định bóng
+đi đâu. Đổi vật lý bóng, giới hạn lực sút hay luật chơi thì **deploy server trước**
+(`cd webapp/world-server && npx wrangler deploy`, cần chủ dự án cho phép), rồi mới đẩy web; nếu không, bóng trên máy
+người chơi sẽ bị giật về chỗ server tính. Deploy làm người đang trong server mất kết nối vài giây.
+
 ### Phiên bản
 
 Mỗi lần đẩy web, thêm một dòng **đầu tiên** vào `webapp/js/changelog.js` trong cùng commit: tính năng mới hoặc thay
