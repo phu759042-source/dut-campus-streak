@@ -87,7 +87,9 @@ function Shell({ path, children }) {
   const admin = useIsAdmin();
   const { unread } = useChatStore();
   const dot = (href) => href === '/chat' && unread > 0 && html`<span class="nav-badge">${unread > 99 ? '99+' : unread}</span>`;
-  const side = admin ? [...NAV, ...SIDE_EXTRA, { href: '/admin', icon: 'chart', label: 'Quản trị' }] : [...NAV, ...SIDE_EXTRA];
+  // computer sidebar: Hồ sơ goes last, right above the "install the app" button (the phone bar keeps NAV's order)
+  const profileItem = NAV.find((n) => n.href === '/profile');
+  const side = [...NAV.filter((n) => n !== profileItem), ...SIDE_EXTRA, ...(admin ? [{ href: '/admin', icon: 'chart', label: 'Quản trị' }] : []), profileItem];
   return html`<div class="shell">
     <aside class="sidebar">
       <a class="side-brand" href="/" onClick=${go('/')}><img class="brand-logo" src="/icon-96.png" alt="" width="36" height="36" /><span>DUT Campus <b>Streak</b></span></a>

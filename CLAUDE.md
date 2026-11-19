@@ -20,7 +20,7 @@ chơi). Chủ dự án làm một mình, giao tiếp bằng tiếng Việt: tr�
 
 ### Bản web: file chính (`webapp/js/`)
 
-- `app.js`: khởi động, phiên đăng nhập, khung điều hướng (sidebar trên máy tính, thanh 6 mục dưới trên điện thoại), router. Tự đăng xuất nếu tài khoản đã bị xóa ở máy khác (`accountGone`).
+- `app.js`: khởi động, phiên đăng nhập, khung điều hướng (sidebar trên máy tính, Hồ sơ ở cuối ngay trên nút cài ứng dụng; thanh 6 mục dưới trên điện thoại), router. Tự đăng xuất nếu tài khoản đã bị xóa ở máy khác (`accountGone`).
 - `lib.js`: Supabase client, giờ VN, `ensureCurrentUserData`, `errMsg` (dịch lỗi sang tiếng Việt), theme (`FORCED_DARK` cho trang giới thiệu và đăng nhập), số tài khoản, `APP_VERSION`.
 - `ui.js`: icon (SVG path trong `P`), `openSheet`, `toast`, `Avatar`, `Segmented`...
 - `changelog.js`: lịch sử phiên bản (xem "Quy trình").
